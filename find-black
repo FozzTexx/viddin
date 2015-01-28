@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+DUR=2		# Set the minimum detected black duration (in seconds)
+PIC=0.98	# Set the threshold for considering a picture as "black" (in percent)
+PXL=0.15	# Set the threshold for considering a pixel "black" (in luminance)
+
+LOGFILE=/tmp/split.$$
+
+VIDEO="$1"
+SPLITS="$2"
+
+ffmpeg -i "${VIDEO}" -vf blackdetect=d=${DUR}:pic_th=${PIC}:pix_th=${PXL} -an -f null - 2>&1 | tee ${LOGFILE}
+
+tr '\015' '\012' < ${LOGFILE} | egrep 'black_start:.*black_end:' | sed -e 's/:/ /g' | awk '{printf "%.3f %.3f %.3f %.3f\n", $5, $7, $9, $5 + ($9 / 2)}' > "${SPLITS}"
+
+rm -f ${LOGFILE}

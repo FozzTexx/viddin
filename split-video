@@ -19,7 +19,7 @@ TIMES="$1"
 VIDEO="$2"
 
 # FIXME - allow specifying start & end points, not just split points
-SEGMENTS=`awk '{print $4}' < "${TIMES}"
+SEGMENTS=`awk '{print $4}' < "${TIMES}"`
 
 BASE="${VIDEO%.*}"
 EXT="${VIDEO##*.}"

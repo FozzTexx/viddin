@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/awk -f
 #
 # Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -15,24 +15,26 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-VIDEO="$1"
-SPLITS="$2"
+BEGIN {
+    p = 0;
+    c = 1
+}
 
-# FIXME - allow specifying start & end points, not just split points
-SEGMENTS=`awk '!/ *#/ {print $4}' < "${SPLITS}"`
+!/ *#/ {
+    n = $4;
 
-BASE="${VIDEO%.*}"
-EXT="${VIDEO##*.}"
-COUNTER=1
-PREV=0
-for SEGMENT in ${SEGMENTS} ; do
-    ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
-    COUNTER=`expr $COUNTER + 1`
-    ffmpeg -i "${VIDEO}" -ss ${PREV} -to ${SEGMENT}  -codec copy "${BASE}_${ep}.${EXT}"
-    PREV=${SEGMENT}
-done
+    ph = int(p / 3600);
+    pm = int((p - ph * 3600) / 60);
+    ps = p - ph * 3600 - pm * 60;
 
-# Split last segment
-ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
-ffmpeg -i "${VIDEO}" -ss ${PREV}  -codec copy "${BASE}_${ep}.${EXT}"
+    nh = int(n / 3600);
+    nm = int((n - nh * 3600) / 60);
+    ns = n - nh * 3600 - nm * 60;
 
+    printf "%02i. %02i:%02i:%02i - %02i:%02i:%02i\n", c,
+	ph, pm, int(ps+0.5),
+	nh, nm, int(ns+0.5);
+
+    p = n;
+    c++
+}

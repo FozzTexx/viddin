@@ -21,7 +21,7 @@ BEGIN {
 }
 
 !/ *#/ {
-    n = $4;
+    n = $1;
 
     ph = int(p / 3600);
     pm = int((p - ph * 3600) / 60);
@@ -38,3 +38,5 @@ BEGIN {
     p = n;
     c++
 }
+
+# FIXME - print out the last time!

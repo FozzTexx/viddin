@@ -19,16 +19,18 @@ VIDEO="$1"
 SPLITS="$2"
 
 # FIXME - allow specifying start & end points, not just split points
-SEGMENTS=`awk '!/ *#/ {print $4}' < "${SPLITS}"`
+SEGMENTS=`awk '!/ *#/ {print $1}' < "${SPLITS}"`
 
 BASE="${VIDEO%.*}"
 EXT="${VIDEO##*.}"
 COUNTER=1
 PREV=0
 for SEGMENT in ${SEGMENTS} ; do
+    segstart=${PREV}
+    segend=`echo 'scale = 3; 1132.865067 - 568.501267' | bc`
     ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
     COUNTER=`expr $COUNTER + 1`
-    ffmpeg -i "${VIDEO}" -ss ${PREV} -to ${SEGMENT}  -codec copy "${BASE}_${ep}.${EXT}"
+    ffmpeg -ss ${segstart} -i "${VIDEO}" -to ${segend}  -codec copy "${BASE}_${ep}.${EXT}"
     PREV=${SEGMENT}
 done
 

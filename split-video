@@ -27,16 +27,17 @@ COUNTER=1
 PREV=0
 for SEGMENT in ${SEGMENTS} ; do
     segstart=${PREV}
-    segend=`echo 'scale = 6; '${SEGMENT}' - '${segstart} | bc`
+    segend=${SEGMENT}
+    segdur=`echo 'scale = 6; '${segend}' - '${segstart} | bc`
     ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
-    ffmpeg -ss ${segstart} -i "${VIDEO}" -to ${segend} -codec copy "${BASE}_${ep}.${EXT}"
+#    ffmpeg -i "${VIDEO}" -ss ${segstart} -to ${segend} -codec copy "${BASE}_${ep}.${EXT}"
+    ffmpeg -ss ${segstart} -i "${VIDEO}" -t ${segdur} -codec copy "${BASE}_${ep}.${EXT}"
+#    ffmpeg -i "${VIDEO}" -ss ${segstart} -vframes 1 "${BASE}_${ep}.png"
     PREV=${SEGMENT}
     COUNTER=`expr $COUNTER + 1`
 done
 
 # Split last segment
 segstart=${PREV}
-segend=`echo 'scale = 6; '${SEGMENT}' - '${segstart} | bc`
 ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
 ffmpeg -ss ${segstart} -i "${VIDEO}" -codec copy "${BASE}_${ep}.${EXT}"
-

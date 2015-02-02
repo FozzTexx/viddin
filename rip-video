@@ -38,11 +38,15 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    shift
 	    ;;
 	--film)
-	    FLAGS="${FLAGS} -r 23.976 --vfr --x264-tune film --decomb --detelecine"
+	    FLAGS="${FLAGS} --loose-anamorphic -r 23.976 --vfr --x264-tune film --decomb --detelecine"
+	    shift
+	    ;;
+	--decomb)
+	    FLAGS="${FLAGS} --decomb"
 	    shift
 	    ;;
 	--subtitles)
-	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced --subtitle-default"
+	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
 	    shift
 	    ;;
 	*)
@@ -64,7 +68,14 @@ fi
 # FIXME - add way to specify chapter range of DVD
 
 if [ -z "${DEST}" ] ; then
-    DEST="${SOURCE%.*}".mkv    
+    DEST="${SOURCE%.*}"
+    while [ -e "${DEST}${COUNTER}.mkv" ] ; do
+	if [ -z "${COUNTER}" ] ; then
+	    COUNTER=1
+	fi
+	COUNTER=`expr ${COUNTER} + 1`
+    done
+    DEST=${DEST}${COUNTER}.mkv
 fi
 
 HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}"

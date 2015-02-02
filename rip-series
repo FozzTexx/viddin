@@ -33,12 +33,16 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} --animation"
 	    shift
 	    ;;
+	--decomb)
+	    FLAGS="${FLAGS} --decomb"
+	    shift
+	    ;;
 	--pal-animation)
 	    FLAGS="${FLAGS} --pal-animation"
 	    shift
 	    ;;
 	*)
-	    unknown flag "$1"
+	    echo "Unknown flag:" "$1"
 	    exit 1
 	    ;;
     esac

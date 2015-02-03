@@ -18,7 +18,8 @@
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     case "$1" in
 	--dvd)
-	    DVD="--dvd $2"
+	    DVDFLAG="--dvd"
+	    DVD="$2"
 	    shift 2
 	    ;;
 	--season)
@@ -60,7 +61,7 @@ fi
 for i in $@ ; do
     ep=`echo $EPISODE |awk '{printf "%02i\n", $1}'`
     EPISODE=`expr $EPISODE + 1`
-    rip-video ${DVD} ${FLAGS} --title $i ${SEASON}x${ep}.mkv
+    rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title $i ${SEASON}x${ep}.mkv
 done
 
 if [ -z "${DVD}" ] ; then

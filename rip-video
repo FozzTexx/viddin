@@ -78,4 +78,4 @@ if [ -z "${DEST}" ] ; then
     DEST=${DEST}${COUNTER}.mkv
 fi
 
-HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}"
+HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}" 2>/dev/null

@@ -58,7 +58,14 @@ if [ -z "${EPISODE}" ] ; then
     shift
 fi
 
-for i in $@ ; do
+TITLES="$@"
+
+# If no titles specified, rip all of them
+if [ $# = 0 ] ; then
+    TITLES=`(lsdvd "${DVD}" 2>/dev/null) | egrep '^Title:' | awk '{printf "%i\n", $2}' | sed -e 's/,//'`
+fi
+
+for i in ${TITLES} ; do
     ep=`echo $EPISODE |awk '{printf "%02i\n", $1}'`
     EPISODE=`expr $EPISODE + 1`
     rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title $i ${SEASON}x${ep}.mkv

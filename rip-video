@@ -29,6 +29,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    TITLE="$2"
 	    shift 2
 	    ;;
+	--chapters)
+	    CHAPTERS="$2"
+	    shift 2
+	    ;;
 	--animation)
 	    FLAGS="${FLAGS} -r 23.976 --vfr --x264-tune animation --decomb --detelecine"
 	    shift
@@ -65,7 +69,9 @@ else
     DEST="$2"
 fi
 
-# FIXME - add way to specify chapter range of DVD
+if [ -n "${CHAPTERS}" ] ; then
+    FLAGS="${FLAGS} --chapters ${CHAPTERS}"
+fi
 
 if [ -z "${DEST}" ] ; then
     DEST="${SOURCE%.*}"

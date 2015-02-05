@@ -68,7 +68,11 @@ fi
 for i in ${TITLES} ; do
     ep=`echo $EPISODE |awk '{printf "%02i\n", $1}'`
     EPISODE=`expr $EPISODE + 1`
-    rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title $i ${SEASON}x${ep}.mkv
+    if [ -n "${DVD}" ] ; then
+	rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title $i ${SEASON}x${ep}.mkv
+    else
+	rip-video ${FLAGS} --title $i ${SEASON}x${ep}.mkv
+    fi
 done
 
 if [ -z "${DVD}" ] ; then

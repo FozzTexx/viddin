@@ -44,7 +44,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    shift
 	    ;;
 	--film)
-	    FLAGS="${FLAGS} -r 23.976 --vfr --x264-tune film --decomb --detelecine"
+	    FLAGS="${FLAGS} -m -r 23.976 --vfr --x264-tune film --decomb --detelecine"
 	    shift
 	    ;;
 	--decomb)

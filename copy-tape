@@ -1,0 +1,25 @@
+#!/bin/sh
+TAPE=$1
+
+if [ -z "${TAPE}" ] ; then
+   echo Please specify tape name
+   exit 1
+fi
+  
+TDIR=~/Videos/"${TAPE}"
+
+mkdir -p "${TDIR}"
+cd "${TDIR}"
+if [ ! -e "${TAPE}.mp4" ] ; then
+   if [ ! -e all.dv ] ; then
+       date
+       dvgrab -rewind
+       date
+       dvcont rewind
+       pv dv* > all.dv
+   fi
+   
+   HandBrakeCLI -d -i all.dv -o "${TAPE}.mp4"
+fi
+
+rsync -P "${TAPE}.mp4" ayce:/buffet/public/video/Home-Movies/.

@@ -26,20 +26,20 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    SEASON="$2"
 	    shift 2
 	    ;;
+	--title)
+	    TITLE="$2 --chapters"
+	    shift 2
+	    ;;
+	--chapters)
+	    CHAPTERS="--chapters $2"
+	    shift 2
+	    ;;
 	--firstep)
 	    EPISODE="$2"
 	    shift 2
 	    ;;
-	--animation)
-	    FLAGS="${FLAGS} --animation"
-	    shift
-	    ;;
-	--decomb)
-	    FLAGS="${FLAGS} --decomb"
-	    shift
-	    ;;
-	--pal-animation)
-	    FLAGS="${FLAGS} --pal-animation"
+	--animation|--film|--decomb|--pal-animation|--subtitles)
+	    FLAGS="${FLAGS} $1"
 	    shift
 	    ;;
 	*)
@@ -69,7 +69,7 @@ for i in ${TITLES} ; do
     ep=`echo $EPISODE |awk '{printf "%02i\n", $1}'`
     EPISODE=`expr $EPISODE + 1`
     if [ -n "${DVD}" ] ; then
-	rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title $i ${SEASON}x${ep}.mkv
+	rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title ${TITLE} ${CHAPTERS} $i ${SEASON}x${ep}.mkv
     else
 	rip-video ${FLAGS} --title $i ${SEASON}x${ep}.mkv
     fi

@@ -16,8 +16,8 @@
 # more details.
 
 TY="$1"
-MPG="${TY.*}.mpg"
-MKV="${TY.*}.mkv"
+MPG="${TY%.*}.mpg"
+MKV="${TY%.*}.mkv"
 
 tytompg -i "${TY}" -o "${MPG}"
 ffmpeg -i "${MPG}" -vcodec libx264 -preset veryfast -x264opts crf=23:videoformat=undef:force-cfr -acodec ac3 -ab 448k -deinterlace "${MKV}"

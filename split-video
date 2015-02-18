@@ -25,6 +25,10 @@ BASE="${VIDEO%.*}"
 EXT="${VIDEO##*.}"
 COUNTER=1
 PREV=0
+
+LENGTH=`ffprobe -i "${VIDEO}" -show_format 2>&1 | grep duration | sed -e 's/duration=//'`
+SEGMENTS="${SEGMENTS} ${LENGTH}"
+
 for SEGMENT in ${SEGMENTS} ; do
     segstart=${PREV}
     segend=${SEGMENT}
@@ -34,18 +38,30 @@ for SEGMENT in ${SEGMENTS} ; do
     segstarts=`echo "scale = 6; ${segstart} - ${segstartm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
     segendm=`echo "scale = 0; ${segend} / 60" | bc`
     segends=`echo "scale = 6; ${segend} - ${segendm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
-    mkvmerge --split parts:${segstartm}:${segstarts}-${segendm}:${segends} -o "${BASE}_${ep}.${EXT}" "${VIDEO}"
+    echo ${ep}: ${segstart} to ${segend} length ${segdur}
+
+    # ffmpeg will start off by several seconds, and won't bother to
+    # start with a keyframe, use mkvmerge to do the split
+    mkvmerge --split parts:${segstartm}:${segstarts}-${segendm}:${segends} -o "${BASE}_${ep}.${EXT}" "${VIDEO}" > /dev/null
+
+    # mkvmerge runs the clip long, trim it more with ffmpeg
+    rm -f "${BASE}_${ep}b.${EXT}"
+    ffmpeg -i "${BASE}_${ep}.${EXT}" -t ${segdur} -codec copy "${BASE}_${ep}b.${EXT}" > /dev/null 2>&1
+    mv "${BASE}_${ep}b.${EXT}" "${BASE}_${ep}.${EXT}"
+
 #    ffmpeg -i "${VIDEO}" -ss ${segstart} -to ${segend} -codec copy "${BASE}_${ep}.${EXT}"
 #    ffmpeg -ss ${segstart} -i "${VIDEO}" -t ${segdur} -codec copy "${BASE}_${ep}.${EXT}"
 #    ffmpeg -i "${VIDEO}" -ss ${segstart} -vframes 1 "${BASE}_${ep}.png"
+    
     PREV=${SEGMENT}
     COUNTER=`expr $COUNTER + 1`
 done
 
-# Split last segment
-segstart=${PREV}
-ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
-segstartm=`echo "scale = 0; ${segstart} / 60" | bc`
-segstarts=`echo "scale = 6; ${segstart} - ${segstartm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
-mkvmerge --split parts:${segstartm}:${segstarts}- -o "${BASE}_${ep}.${EXT}" "${VIDEO}"
-#ffmpeg -ss ${segstart} -i "${VIDEO}" -codec copy "${BASE}_${ep}.${EXT}"
+# # Split last segment
+# segstart=${PREV}
+# ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
+# segstartm=`echo "scale = 0; ${segstart} / 60" | bc`
+# segstarts=`echo "scale = 6; ${segstart} - ${segstartm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
+# echo ${ep}: ${segstart} to end
+# mkvmerge --split parts:${segstartm}:${segstarts}- -o "${BASE}_${ep}.${EXT}" "${VIDEO}" > /dev/null
+# #ffmpeg -ss ${segstart} -i "${VIDEO}" -codec copy "${BASE}_${ep}.${EXT}"

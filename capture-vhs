@@ -1,0 +1,17 @@
+#!/bin/bash
+DEST=$1
+DURATION=$2
+INPUT=2
+
+if [ -z "${DEST}" ] ; then
+    echo Need a filename
+    exit 1
+fi
+if [ -z "${DURATION}" ] ; then
+    echo How long to record for
+    exit 1
+fi
+
+v4lctl --set-input ${INPUT}
+
+ffmpeg -f alsa -ac 2 -i hw:0,0 -f video4linux2 -i /dev/video0 -s 720x480 -aspect 4:3 -vcodec libx264 -preset ultrafast -acodec libfaac -t ${DURATION} ${DEST}

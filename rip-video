@@ -83,7 +83,7 @@ if [ -z "${DEST}" ] ; then
 	fi
 	COUNTER=`expr ${COUNTER} + 1`
     done
-    DEST=${DEST}${COUNTER}.mkv
+    DEST="${DEST}${COUNTER}.mkv"
 fi
 
 HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}" 2>/dev/null

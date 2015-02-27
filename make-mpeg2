@@ -15,21 +15,19 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-DESTINATION=ayce:/buffet/public/video/Home-Movies/.
-
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     case "$1" in
-	--dest|--destination) 
-	    DESTINATION="$2"
-	    shift 2
-	    ;;
-	--duration)
-	    FLAGS="${FLAGS} -duration $2"
-	    shift 2
-	    ;;
 	--decomb)
-	    FLAGS="${FLAGS} --decomb"
+	    FLAGS="${FLAGS} -vf yadif=0:-1:0"
 	    shift
+	    ;;
+	--start)
+	    FLAGS="${FLAGS} -ss $2"
+	    shift 2
+	    ;;
+	--stop)
+	    FLAGS="${FLAGS} -to $2"
+	    shift 2
 	    ;;
 	*)
 	    echo unknown flag "$1"
@@ -38,31 +36,18 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     esac
 done
 
-TAPE=$1
+SOURCE="$1"
+DEST="$2"
 
-if [ -z "${TAPE}" ] ; then
-   echo Please specify tape name
-   exit 1
-fi
-  
-TDIR=~/Videos/"${TAPE}"
-
-if [ -z "${FLAGS}" ] ; then
-    FLAGS=-d
-fi
-
-mkdir -p "${TDIR}"
-cd "${TDIR}"
-if [ ! -e "${TAPE}.mp4" ] ; then
-   if [ ! -e all.dv ] ; then
-       date
-       dvgrab -rewind
-       date
-       dvcont rewind
-       pv dv* > all.dv
-   fi
-   
-   HandBrakeCLI ${FLAGS} -i all.dv -o "${TAPE}.mp4"
+if [ -z "${DEST}" ] ; then
+    DEST="${SOURCE%.*}"
+    while [ -e "${DEST}${COUNTER}.mpg" ] ; do
+	if [ -z "${COUNTER}" ] ; then
+	    COUNTER=1
+	fi
+	COUNTER=`expr ${COUNTER} + 1`
+    done
+    DEST="${DEST}${COUNTER}.mpg"
 fi
 
-rsync -P "${TAPE}.mp4" "${DESTINATION}"
+ffmpeg -threads 4 -i "${SOURCE}" ${FLAGS} -codec:v mpeg2video -qscale:v 8 -codec:a mp2 -b:a 192k "${DEST}"

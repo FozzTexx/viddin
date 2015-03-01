@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+INPUT=2
+WIDTH=720
+HEIGHT=480
+
+while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+    case "$1" in
+	--width)
+	    WIDTH=$2
+	    shift 2
+	    ;;
+	--height)
+	    HEIGHT=$2
+	    shift 2
+	    ;;
+	--input)
+	    INPUT=$2
+	    shift 2
+	    ;;
+	*)
+	    echo unknown flag "$1"
+	    exit 1
+	    ;;
+    esac
+done
+
+
+vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=${WIDTH} :v4l2-height=${HEIGHT} :v4l2-input=${INPUT} :standard=0 :input-slave=alsa://hw:0,0

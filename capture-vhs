@@ -1,7 +1,46 @@
 #!/bin/bash
+#
+# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
 DEST=$1
 DURATION=$2
 INPUT=2
+WIDTH=720
+HEIGHT=480
+
+while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+    case "$1" in
+	--width)
+	    WIDTH=$2
+	    shift 2
+	    ;;
+	--height)
+	    HEIGHT=$2
+	    shift 2
+	    ;;
+	--input)
+	    INPUT=$2
+	    shift 2
+	    ;;
+	*)
+	    echo unknown flag "$1"
+	    exit 1
+	    ;;
+    esac
+done
 
 if [ -z "${DEST}" ] ; then
     echo Need a filename
@@ -16,7 +55,7 @@ BASE="${DEST%.*}"
 # Only save as mp4
 DEST="${BASE}.mp4"
 
-vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=720 :v4l2-height=480 :v4l2-input=2 :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=display,dst={transcode{venc=x264{profile=baseline},vcodec=h264,vb=2000,acodec=mpga,ab=128}:std{access=file,mux=mp4,dst='${DEST}'}}}" --run-time=${DURATION} vlc://quit
+vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=${WIDTH} :v4l2-height=${HEIGHT} :v4l2-input=${INPUT} :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=display,dst={transcode{venc=x264{profile=baseline},vcodec=h264,vb=2000,acodec=mpga,ab=128}:std{access=file,mux=mp4,dst='${DEST}'}}}" --run-time=${DURATION} vlc://quit
 
 # This will dump exact copy of stream from card. 60-70 gigs per hour!
 #vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=720 :v4l2-height=480 :v4l2-input=2 :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=std{access=file,dst='${DEST}'}, dst=display}" --run-time=${DURATION} vlc://quit

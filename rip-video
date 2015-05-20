@@ -16,6 +16,7 @@
 # more details.
 
 FLAGS="--loose-anamorphic -m"
+EXT=mkv
 
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     case "$1" in
@@ -35,16 +36,41 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    CHAPTERS="$2"
 	    shift 2
 	    ;;
+	--quality)
+	    FLAGS="${FLAGS} --quality $2"
+	    shift 2
+	    ;;
+	--crop)
+	    FLAGS="${FLAGS} --crop $2"
+	    shift 2
+	    ;;
+	--extension)
+	    EXT="$2"
+	    shift 2
+	    ;;
+	--cfr)
+	    FR=--cfr
+	    shift
+	    ;;
 	--animation)
-	    FLAGS="${FLAGS} -r 23.976 --vfr --x264-tune animation --decomb --detelecine"
+	    FLAGS="${FLAGS} -r 23.976 --x264-tune animation --decomb --detelecine"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
 	    shift
 	    ;;
 	--pal-animation)
-	    FLAGS="${FLAGS} --vfr --x264-tune animation --decomb"
+	    FLAGS="${FLAGS} --x264-tune animation --decomb"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
 	    shift
 	    ;;
 	--film)
-	    FLAGS="${FLAGS} -r 23.976 --vfr --x264-tune film --decomb --detelecine"
+	    FLAGS="${FLAGS} -r 23.976 --x264-tune film --decomb --detelecine"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
 	    shift
 	    ;;
 	--decomb)
@@ -54,6 +80,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	--subtitles)
 	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
 	    shift
+	    ;;
+	--lang)
+	    FLAGS="${FLAGS} --native-language $2 --native-dub"
+	    shift 2
 	    ;;
 	*)
 	    echo unknown flag "$1"
@@ -75,15 +105,17 @@ if [ -n "${CHAPTERS}" ] ; then
     FLAGS="${FLAGS} --chapters ${CHAPTERS}"
 fi
 
+FLAGS="${FLAGS} ${FR}"
+
 if [ -z "${DEST}" ] ; then
     DEST="${SOURCE%.*}"
-    while [ -e "${DEST}${COUNTER}.mkv" ] ; do
+    while [ -e "${DEST}${COUNTER}.${EXT}" ] ; do
 	if [ -z "${COUNTER}" ] ; then
 	    COUNTER=1
 	fi
 	COUNTER=`expr ${COUNTER} + 1`
     done
-    DEST="${DEST}${COUNTER}.mkv"
+    DEST="${DEST}${COUNTER}.${EXT}"
 fi
 
 HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}" 2>/dev/null

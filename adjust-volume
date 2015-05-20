@@ -1,0 +1,58 @@
+#!/bin/sh
+#
+# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+VOLUME="-10"
+
+while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+    case "$1" in
+	--volume)
+	    VOLUME="$2"
+	    shift 2
+	    ;;
+	*)
+	    unknown flag "$1"
+	    exit 1
+	    ;;
+    esac
+done
+
+SOURCE="$1"
+DEST="$2"
+TMP=/tmp/adjust.$$
+
+if [ -z "${DEST}" ] ; then
+    DEST="${SOURCE%.*}-adj"
+    EXT="${SOURCE##*.}"
+    while [ -e "${DEST}${COUNTER}.${EXT}" ] ; do
+	if [ -z "${COUNTER}" ] ; then
+	    COUNTER=1
+	fi
+	COUNTER=`expr ${COUNTER} + 1`
+    done
+    DEST="${DEST}${COUNTER}.${EXT}"
+fi
+
+echo -n "Scanning ${SOURCE}..."
+ffmpeg -hide_banner -i "${SOURCE}" -filter:a volumedetect -vn -sn -f null /dev/null > ${TMP} 2>&1
+MEAN=`grep mean_volume: ${TMP} | awk '{print $5}'`
+MAX=`grep max_volume: ${TMP} | awk '{print $5}'`
+OFFSET=`echo "scale = 6; ${VOLUME} - ${MAX}" | bc`
+echo " ${MEAN} ${MAX} ${OFFSET}"
+
+ffmpeg -i "${SOURCE}" -af "volume=${OFFSET}dB" -c:v copy "${DEST}"
+
+rm -f ${TMP}

@@ -15,6 +15,8 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
+EXT=mkv
+
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     case "$1" in
 	--dvd)
@@ -34,6 +36,19 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} --chapters $2"
 	    shift 2
 	    ;;
+	--crop)
+	    FLAGS="${FLAGS} --crop $2"
+	    shift 2
+	    ;;
+	--extension)
+	    FLAGS="${FLAGS} --extension $2"
+	    EXT="$2"
+	    shift 2
+	    ;;
+	--cfr)
+	    FLAGS="${FLAGS} --cfr"
+	    shift
+	    ;;
 	--firstep)
 	    EPISODE="$2"
 	    shift 2
@@ -41,6 +56,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	--animation|--film|--decomb|--pal-animation|--subtitles)
 	    FLAGS="${FLAGS} $1"
 	    shift
+	    ;;
+	--lang)
+	    FLAGS="${FLAGS} $1 $2"
+	    shift 2
 	    ;;
 	*)
 	    echo "Unknown flag:" "$1"
@@ -69,9 +88,9 @@ for i in ${TITLES} ; do
     ep=`echo $EPISODE |awk '{printf "%02i\n", $1}'`
     EPISODE=`expr $EPISODE + 1`
     if [ -n "${DVD}" ] ; then
-	rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title ${TITLE} $i ${SEASON}x${ep}.mkv
+	rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title ${TITLE} $i ${SEASON}x${ep}.${EXT}
     else
-	rip-video ${FLAGS} --title ${TITLE} $i ${SEASON}x${ep}.mkv
+	rip-video ${FLAGS} --title ${TITLE} $i ${SEASON}x${ep}.${EXT}
     fi
 done
 

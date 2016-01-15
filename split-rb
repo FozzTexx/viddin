@@ -31,7 +31,9 @@ for chap in cmarkers:
     continue
   
   for black in bmarkers:
-    if chap >= black[0] and chap <= black[1]:
+    bindex = bmarkers.index(black)
+    black2 = bmarkers[bindex+1]
+    if chap >= black[0] and chap <= black2[0]:
       if black[2] >= bumperlen[0] and black[2] <= bumperlen[1]:
         bumper = black[0] - black[2]
         print "# Bumper: ", datetime.timedelta(seconds = bumper)
@@ -43,6 +45,9 @@ for chap in cmarkers:
       print "# Segment: ", datetime.timedelta(seconds = seg)
       print seg
       break
+
+    if black[0] > chap:
+      print "Went too far!"
 
 total = 0
 for black in reversed(bmarkers):

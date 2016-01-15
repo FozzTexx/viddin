@@ -36,6 +36,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} --chapters $2"
 	    shift 2
 	    ;;
+	--split-chapters)
+	    SPLIT=1
+	    shift
+	    ;;
 	--crop)
 	    FLAGS="${FLAGS} --crop $2"
 	    shift 2
@@ -84,14 +88,29 @@ if [ $# = 0 ] ; then
     TITLES=`(lsdvd "${DVD}" 2>/dev/null) | egrep '^Title:' | awk '{printf "%i\n", $2}' | sed -e 's/,//'`
 fi
 
+if [ -n "${SPLIT}" ] ; then
+    for i in ${TITLES} ; do
+	CHAPTERS=`lsdvd -t $i -c | grep Chapter: | awk '{printf "'$i':%i\n", $2}'`
+	titles="${titles} ${CHAPTERS}"
+    done
+    TITLES=${titles}
+fi
+
 for i in ${TITLES} ; do
     ep=`echo $EPISODE |awk '{printf "%02i\n", $1}'`
     EPISODE=`expr $EPISODE + 1`
+    if expr match $i "[0-9][0-9]*:[0-9][0-9]*" > /dev/null ; then
+	i=`echo $i | sed -e 's/:/ --chapters /'`
+    fi
     if [ -n "${DVD}" ] ; then
 	rip-video ${DVDFLAG} "${DVD}" ${FLAGS} --title ${TITLE} $i ${SEASON}x${ep}.${EXT}
     else
 	rip-video ${FLAGS} --title ${TITLE} $i ${SEASON}x${ep}.${EXT}
     fi
+    tput cuu1
+    tput el
+    size=`ls -lh ${SEASON}x${ep}.${EXT} | awk '{print $5}'`
+    echo ${SEASON}x${ep}.${EXT}: $i $size
 done
 
 if [ -z "${DVD}" ] ; then

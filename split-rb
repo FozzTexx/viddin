@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+import sys
+import os
+import datetime
+
+creditlen = [80, 56]
+bumperlen = [10, 20]
+
+if len(sys.argv) < 2:
+  print "Please specify video file to split"
+  sys.exit(1)
+
+ftr = [3600,60,1]
+
+video = os.path.splitext(sys.argv[1])[0]
+with open(video + ".split", "r") as f:
+  bmarkers = []
+  for line in f:
+    points = line.split()
+    bmarkers.append([float(points[1]), float(points[2]), float(points[4])])
+
+with os.popen("mediainfo " + sys.argv[1] + "| grep Chapter") as f:
+  cmarkers = []
+  for line in f:
+    tcode = line.split()[0]
+    seconds = sum([a*b for a,b in zip(ftr, map(float, tcode.split(':')))])
+    cmarkers.append(seconds)
+
+for chap in cmarkers:
+  if chap < creditlen[0]:
+    continue
+  
+  for black in bmarkers:
+    if chap >= black[0] and chap <= black[1]:
+      if black[2] >= bumperlen[0] and black[2] <= bumperlen[1]:
+        bumper = black[0] - black[2]
+        print "# Bumper: ", datetime.timedelta(seconds = bumper)
+        print bumper
+
+      seg = black[0] + (black[1] - black[0]) / 2
+      if seg > chap:
+        seg = chap
+      print "# Segment: ", datetime.timedelta(seconds = seg)
+      print seg
+      break
+
+total = 0
+for black in reversed(bmarkers):
+  total += black[2]
+  if total >= creditlen[1]:
+    print "# Credits: ", datetime.timedelta(seconds = black[0] + (black[1] - black[0]) / 2)
+    print black[0] + (black[1] - black[0]) / 2
+    break

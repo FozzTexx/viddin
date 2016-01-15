@@ -15,7 +15,7 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-DUR=2		# Set the minimum detected black duration (in seconds)
+DUR=0.2		# Set the minimum detected black duration (in seconds)
 PIC=0.98	# Set the threshold for considering a picture as "black" (in percent)
 PXL=0.15	# Set the threshold for considering a pixel "black" (in luminance)
 

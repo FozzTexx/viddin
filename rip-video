@@ -85,6 +85,22 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} --native-language $2 --native-dub"
 	    shift 2
 	    ;;
+	--yprv)
+	    FLAGS="${FLAGS} -e x264 -q 27 -x cabac=1:ref=5:analyse=0x133:me=umh:subme=9:chroma-me=1:deadzone-inter=21:deadzone-intra=11:b-adapt=2:rc-lookahead=60:vbv-maxrate=10000:vbv-bufsize=10000:qpmax=69:bframes=5:b-adapt=2:direct=auto:crf-max=51:weightp=2:merange=24:chroma-qp-offset=-1:sync-lookahead=2:psy-rd=1.00,0.15:trellis=2:min-keyint=23:partitions=all"
+	    shift
+	    ;;
+	--ypra)
+	    FLAGS="${FLAGS} -E fdk_faac -B 96k -6 stereo -R 44.1"
+	    shift
+	    ;;
+	--x265 | --h265)
+	    FLAGS="${FLAGS} -e x265"
+	    shift
+	    ;;
+	--anim265)
+	    FLAGS="${FLAGS} -e x265 -x weightb=1:bframes=11:bframe-bias=90:rc-lookahead=60:me=dia:max-merge=5:rect:ctu=64:b-adapt=2:tu-inter-depth=4:tu-intra-depth=4:ipratio=0.8"
+	    shift
+	    ;;
 	*)
 	    echo unknown flag "$1"
 	    exit 1

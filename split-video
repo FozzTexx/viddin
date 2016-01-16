@@ -38,7 +38,7 @@ for SEGMENT in ${SEGMENTS} ; do
     segstarts=`echo "scale = 6; ${segstart} - ${segstartm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
     segendm=`echo "scale = 0; ${segend} / 60" | bc`
     segends=`echo "scale = 6; ${segend} - ${segendm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
-    echo ${ep}: ${segstart} to ${segend} length ${segdur}
+    echo ${BASE}_${ep}.${EXT}: ${segstart} to ${segend} length ${segdur}
 
     # ffmpeg will start off by several seconds, and won't bother to
     # start with a keyframe, use mkvmerge to do the split

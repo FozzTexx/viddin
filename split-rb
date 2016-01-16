@@ -2,32 +2,89 @@
 import sys
 import os
 import datetime
+import csv
+import re
 
-creditlen = [80, 56]
+creditlen = [78, 55]
 bumperlen = [10, 20]
+ftr = [3600,60,1]
+titles = 0
 
 if len(sys.argv) < 2:
   print "Please specify video file to split"
   sys.exit(1)
 
-ftr = [3600,60,1]
+ep = re.split("x|\\.", sys.argv[1])
+season = int(ep[0])
+episode = int(ep[1])
 
-video = os.path.splitext(sys.argv[1])[0]
+if season == 3:
+  creditlen[1] = 90
+
+if len(sys.argv) >= 3:
+  titles = 1
+  episodes = []
+  f = open(sys.argv[2], 'rU')
+  try:
+    reader = csv.reader(f)
+    for row in reader:
+      epnum = re.split(" +x +", row[0])
+      dvdnum = re.split("( +x +)|\\.", row[1])
+      episodes.append([int(epnum[0]), int(epnum[1]), int(dvdnum[2]), row[2]])
+  finally:
+    f.close()
+
+  for row in episodes:
+    if row[0] == season and row[2] == episode:
+      epindex = episodes.index(row)
+      break
+
+video, ext = os.path.splitext(sys.argv[1])
+
 with open(video + ".split", "r") as f:
   bmarkers = []
   for line in f:
+    if line.strip().startswith("#"):
+      continue
+    last_end = 0.0
     points = line.split()
-    bmarkers.append([float(points[1]), float(points[2]), float(points[4])])
+    if len(bmarkers):
+      last_end = (bmarkers[-1][1] - bmarkers[-1][0]) / 2 + bmarkers[-1][0]
+    seglen = float(points[1]) - last_end
+    bmarkers.append([float(points[1]), float(points[2]), seglen])
 
 with os.popen("mediainfo " + sys.argv[1] + "| grep Chapter") as f:
   cmarkers = []
   for line in f:
     tcode = line.split()[0]
     seconds = sum([a*b for a,b in zip(ftr, map(float, tcode.split(':')))])
+
+    print '# Chapter marker ' + str(seconds)
+
+    # Special fix for episodes that have a chapter marker in the wrong place
+    if season == 3 and episode == 20 and seconds == 658.398:
+      seconds = 670.891
+    if season == 4 and episode == 6 and seconds == 677.499:
+      seconds = 689.650
+    if season == 4 and episode == 8 and seconds == 660.097:
+      seconds = 670.998
     cmarkers.append(seconds)
 
+def printTitle(epindex, epnum, segnum):
+  row = episodes[epindex + epnum]
+  eptitle = re.split(" - ", row[3])
+  print "# Title: " + video + "_" + str(segnum).zfill(3) + ext,
+  print "\"" + eptitle[0] + "\"",
+  print "\"" + str(row[0]) + "x" + str(row[1]).zfill(2) + " " + eptitle[1] + ext + "\"",
+  print
+  
+segnum = 2
+epnum = 0
 for chap in cmarkers:
   if chap < creditlen[0]:
+    if chap > 0.0:
+      printTitle(epindex, epnum, segnum - 1)
+      epnum += 1
     continue
   
   for black in bmarkers:
@@ -38,16 +95,18 @@ for chap in cmarkers:
         bumper = black[0] - black[2]
         print "# Bumper: ", datetime.timedelta(seconds = bumper)
         print bumper
+        segnum += 1
 
       seg = black[0] + (black[1] - black[0]) / 2
       if seg > chap:
         seg = chap
       print "# Segment: ", datetime.timedelta(seconds = seg)
+      if titles:
+        printTitle(epindex, epnum, segnum)
       print seg
+      segnum += 1
+      epnum += 1
       break
-
-    if black[0] > chap:
-      print "Went too far!"
 
 total = 0
 for black in reversed(bmarkers):

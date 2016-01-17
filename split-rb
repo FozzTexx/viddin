@@ -6,7 +6,7 @@ import csv
 import re
 
 creditlen = [78, 55]
-bumperlen = [10, 20]
+bumperlen = [9.5, 20]
 ftr = [3600,60,1]
 titles = 0
 
@@ -18,8 +18,16 @@ ep = re.split("x|\\.", sys.argv[1])
 season = int(ep[0])
 episode = int(ep[1])
 
-if season == 3:
+if season == 3 or season == 4 or (season == 2 and episode >= 44):
   creditlen[1] = 90
+if season == 3 and episode == 17:
+  creditlen[1] = 80
+if season == 4 and episode == 3:
+  creditlen[1] = 77.9
+if season == 4 and episode == 11:
+  creditlen[1] = 83
+if season == 4 and episode == 16:
+  creditlen[1] = 80
 
 if len(sys.argv) >= 3:
   titles = 1
@@ -91,11 +99,13 @@ for chap in cmarkers:
     bindex = bmarkers.index(black)
     black2 = bmarkers[bindex+1]
     if chap >= black[0] and chap <= black2[0]:
-      if black[2] >= bumperlen[0] and black[2] <= bumperlen[1]:
+      if epnum and black[2] >= bumperlen[0] and black[2] <= bumperlen[1]:
         bumper = black[0] - black[2]
         print "# Bumper: ", datetime.timedelta(seconds = bumper)
         print bumper
         segnum += 1
+#      else:
+#        print "# Bumper fail: " + str(black[2])
 
       seg = black[0] + (black[1] - black[0]) / 2
       if seg > chap:

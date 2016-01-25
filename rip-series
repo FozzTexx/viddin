@@ -83,21 +83,34 @@ fi
 
 TITLES="$@"
 
+if [ -n "${SPLIT}" -a -z "${TITLES}" ] ; then
+    echo Chapter splitting requested without specifying titles
+    exit 1
+fi
+
 # If no titles specified, rip all of them
-if [ $# = 0 ] ; then
-    TITLES=`(lsdvd "${DVD}" 2>/dev/null) | egrep '^Title:' | awk '{printf "%i\n", $2}' | sed -e 's/,//'`
+if [ -z "${TITLES}" ] ; then
+    if [ -n "${DVD}" ] ; then
+	TITLES=`(lsdvd "${DVD}" 2>/dev/null) | egrep '^Title:' | awk '{printf "%i\n", $2}' | sed -e 's/,//'`
+    else
+	TITLES=`(lsdvd 2>/dev/null) | egrep '^Title:' | awk '{printf "%i\n", $2}' | sed -e 's/,//'`
+    fi
 fi
 
 if [ -n "${SPLIT}" ] ; then
     for i in ${TITLES} ; do
-	CHAPTERS=`lsdvd -t $i -c | grep Chapter: | awk '{printf "'$i':%i\n", $2}'`
+	if [ -n "${DVD}" ] ; then
+	    CHAPTERS=`(lsdvd -t $i -c "${DVD}" 2>/dev/null) | grep Chapter: | awk '{printf "'$i':%i\n", $2}'`
+	else
+	    CHAPTERS=`(lsdvd -t $i -c 2>/dev/null) | grep Chapter: | awk '{printf "'$i':%i\n", $2}'`
+	fi
 	titles="${titles} ${CHAPTERS}"
     done
     TITLES=${titles}
 fi
 
 for i in ${TITLES} ; do
-    ep=`echo $EPISODE |awk '{printf "%02i\n", $1}'`
+    ep=`echo $EPISODE | awk '{printf "%02i\n", $1}'`
     EPISODE=`expr $EPISODE + 1`
     if expr match $i "[0-9][0-9]*:[0-9][0-9]*" > /dev/null ; then
 	i=`echo $i | sed -e 's/:/ --chapters /'`

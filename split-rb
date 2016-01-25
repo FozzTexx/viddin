@@ -4,17 +4,37 @@ import os
 import datetime
 import csv
 import re
+import argparse
 
 creditlen = [78, 55]
-bumperlen = [9.5, 20]
+bumperlen = [10, 20]
 ftr = [3600,60,1]
 titles = 0
 
-if len(sys.argv) < 2:
-  print "Please specify video file to split"
-  sys.exit(1)
+EPISODE = 0
+DVDEP = 1
+ORIGDATE = 2
+TITLE = 3
 
-ep = re.split("x|\\.", sys.argv[1])
+parser = argparse.ArgumentParser()
+parser.add_argument("filename", help="video file to split")
+parser.add_argument("titles", nargs='?', help="csv file with episode information")
+parser.add_argument("--titlelen", help="length in seconds of opening titles")
+parser.add_argument("--creditlen", help="length in seconds of end credits")
+parser.add_argument("--bumpermin", help="minimum length in seconds of bumpers")
+parser.add_argument("--bumpermax", help="maximum in seconds of bumpers")
+args = parser.parse_args()
+
+if args.titlelen:
+  creditlen[0] = float(args.titlelen)
+if args.creditlen:
+  creditlen[1] = float(args.creditlen)
+if args.bumpermin:
+  bumperlen[0] = float(args.bumpermin)
+if args.bumpermax:
+  bumperlen[1] = float(args.bumpermax)
+
+ep = re.split("x|\\.", args.filename)
 season = int(ep[0])
 episode = int(ep[1])
 
@@ -28,17 +48,27 @@ if season == 4 and episode == 11:
   creditlen[1] = 83
 if season == 4 and episode == 16:
   creditlen[1] = 80
+if season == 2 and episode == 8:
+  bumperlen[0] = 9.8
+if season == 2 and episode == 20:
+  bumperlen[0] = 9.5
+if season == 2 and episode == 39:
+  bumperlen[0] = 9.7
+if season == 2 and episode == 40:
+  bumperlen[0] = 9.8
+if season == 4 and episode == 3:
+  bumperlen[0] = 11
 
-if len(sys.argv) >= 3:
+if args.titles:
   titles = 1
   episodes = []
-  f = open(sys.argv[2], 'rU')
+  f = open(args.titles, 'rU')
   try:
     reader = csv.reader(f)
     for row in reader:
-      epnum = re.split(" +x +", row[0])
-      dvdnum = re.split("( +x +)|\\.", row[1])
-      episodes.append([int(epnum[0]), int(epnum[1]), int(dvdnum[2]), row[2]])
+      epnum = re.split(" +x +", row[EPISODE])
+      dvdnum = re.split("( +x +)|\\.", row[DVDEP])
+      episodes.append([int(epnum[0]), int(epnum[1]), int(dvdnum[2]), row[TITLE]])
   finally:
     f.close()
 
@@ -47,7 +77,7 @@ if len(sys.argv) >= 3:
       epindex = episodes.index(row)
       break
 
-video, ext = os.path.splitext(sys.argv[1])
+video, ext = os.path.splitext(args.filename)
 
 with open(video + ".split", "r") as f:
   bmarkers = []
@@ -61,7 +91,7 @@ with open(video + ".split", "r") as f:
     seglen = float(points[1]) - last_end
     bmarkers.append([float(points[1]), float(points[2]), seglen])
 
-with os.popen("mediainfo " + sys.argv[1] + "| grep Chapter") as f:
+with os.popen("mediainfo " + args.filename + "| grep Chapter") as f:
   cmarkers = []
   for line in f:
     tcode = line.split()[0]
@@ -69,7 +99,7 @@ with os.popen("mediainfo " + sys.argv[1] + "| grep Chapter") as f:
 
     print '# Chapter marker ' + str(seconds)
 
-    # Special fix for episodes that have a chapter marker in the wrong place
+    # Special fix for R&B episodes that have a chapter marker in the wrong place
     if season == 3 and episode == 20 and seconds == 658.398:
       seconds = 670.891
     if season == 4 and episode == 6 and seconds == 677.499:
@@ -78,12 +108,17 @@ with os.popen("mediainfo " + sys.argv[1] + "| grep Chapter") as f:
       seconds = 670.998
     cmarkers.append(seconds)
 
+with os.popen("vidinf " + args.filename + "|grep ID_LENGTH") as f:
+  for line in f:
+    totallen = float(re.sub("ID_LENGTH=", "", line))
+    break
+    
 def printTitle(epindex, epnum, segnum):
   row = episodes[epindex + epnum]
   eptitle = re.split(" - ", row[3])
   print "# Title: " + video + "_" + str(segnum).zfill(3) + ext,
   print "\"" + eptitle[0] + "\"",
-  print "\"" + str(row[0]) + "x" + str(row[1]).zfill(2) + " " + eptitle[1] + ext + "\"",
+  print "\"" + str(row[0]) + "x" + str(row[1]).zfill(3) + " " + eptitle[1] + ext + "\"",
   print
   
 segnum = 2
@@ -91,10 +126,11 @@ epnum = 0
 for chap in cmarkers:
   if chap < creditlen[0]:
     if chap > 0.0:
-      printTitle(epindex, epnum, segnum - 1)
+      if titles:
+        printTitle(epindex, epnum, segnum - 1)
       epnum += 1
     continue
-  
+
   for black in bmarkers:
     bindex = bmarkers.index(black)
     black2 = bmarkers[bindex+1]
@@ -118,10 +154,8 @@ for chap in cmarkers:
       epnum += 1
       break
 
-total = 0
 for black in reversed(bmarkers):
-  total += black[2]
-  if total >= creditlen[1]:
+  if totallen - black[0] >= creditlen[1]:
     print "# Credits: ", datetime.timedelta(seconds = black[0] + (black[1] - black[0]) / 2)
     print black[0] + (black[1] - black[0]) / 2
     break

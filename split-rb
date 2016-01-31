@@ -23,6 +23,7 @@ parser.add_argument("--titlelen", help="length in seconds of opening titles")
 parser.add_argument("--creditlen", help="length in seconds of end credits")
 parser.add_argument("--bumpermin", help="minimum length in seconds of bumpers")
 parser.add_argument("--bumpermax", help="maximum in seconds of bumpers")
+parser.add_argument("--prebumper", action="store_true", help="a bumper can occur before first chapter")
 args = parser.parse_args()
 
 if args.titlelen:
@@ -77,6 +78,8 @@ if args.titles:
       epindex = episodes.index(row)
       break
 
+  # FIXME - sort by DVD order
+    
 video, ext = os.path.splitext(args.filename)
 
 with open(video + ".split", "r") as f:
@@ -118,7 +121,11 @@ def printTitle(epindex, epnum, segnum):
   eptitle = re.split(" - ", row[3])
   print "# Title: " + video + "_" + str(segnum).zfill(3) + ext,
   print "\"" + eptitle[0] + "\"",
-  print "\"" + str(row[0]) + "x" + str(row[1]).zfill(3) + " " + eptitle[1] + ext + "\"",
+  print "\"" + str(row[0]) + "x" + str(row[1]).zfill(3),
+  if len(eptitle) > 1:
+    print eptitle[1] + ext + "\"",
+  else:
+    print eptitle[0] + ext + "\"",
   print
   
 segnum = 2
@@ -135,7 +142,7 @@ for chap in cmarkers:
     bindex = bmarkers.index(black)
     black2 = bmarkers[bindex+1]
     if chap >= black[0] and chap <= black2[0]:
-      if epnum and black[2] >= bumperlen[0] and black[2] <= bumperlen[1]:
+      if (epnum or args.prebumper) and black[2] >= bumperlen[0] and black[2] <= bumperlen[1]:
         bumper = black[0] - black[2]
         print "# Bumper: ", datetime.timedelta(seconds = bumper)
         print bumper

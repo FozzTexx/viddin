@@ -40,7 +40,7 @@ for SEGMENT in ${SEGMENTS} ; do
     segends=`echo "scale = 6; ${segend} - ${segendm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
     echo ${BASE}_${ep}.${EXT}: ${segstart} to ${segend} length ${segdur}
 
-    # ffmpeg will start off by several seconds, and won't bother to
+    # ffmpeg will choose a start several seconds off, and won't bother to
     # start with a keyframe, use mkvmerge to do the split
     mkvmerge --split parts:${segstartm}:${segstarts}-${segendm}:${segends} -o "${BASE}_${ep}.${EXT}" "${VIDEO}" > /dev/null
 

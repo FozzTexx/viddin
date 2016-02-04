@@ -1,4 +1,20 @@
 #!/usr/bin/env python
+#
+# Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
 import sys
 import os
 import datetime
@@ -97,6 +113,7 @@ with open(video + ".split", "r") as f:
 with os.popen("mediainfo " + args.filename + "| grep Chapter") as f:
   cmarkers = []
   for line in f:
+    # FIXME - mediainfo incorrectly puts leading zero on decimal part of seconds
     tcode = line.split()[0]
     seconds = sum([a*b for a,b in zip(ftr, map(float, tcode.split(':')))])
 

@@ -53,7 +53,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    shift
 	    ;;
 	--animation)
-	    FLAGS="${FLAGS} -r 23.976 --x264-tune animation --detelecine"
+	    FLAGS="${FLAGS} -r 23.976 --x264-tune animation --detelecine --decomb"
 	    if [ -n "${FR}" ] ; then
 		FR=--vfr
 	    fi
@@ -67,7 +67,14 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    shift
 	    ;;
 	--film)
-	    FLAGS="${FLAGS} -r 23.976 --x264-tune film --detelecine"
+	    FLAGS="${FLAGS} -r 23.976 --x264-tune film --detelecine --decomb"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
+	    shift
+	    ;;
+	--tv)
+	    FLAGS="${FLAGS} --detelecine --decomb"
 	    if [ -n "${FR}" ] ; then
 		FR=--vfr
 	    fi

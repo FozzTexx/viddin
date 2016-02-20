@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/usr/bin/env python
 #
-# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+# Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
 #
 # This file is part of viddin.
 #
@@ -15,53 +15,134 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-VIDEO="$1"
-SPLITS="$2"
+import argparse
+import os
+import datetime
+import re
+import math
 
-# FIXME - allow specifying start & end points, not just split points
-SEGMENTS=`awk '!/ *#/ {print $1}' < "${SPLITS}"`
+parser = argparse.ArgumentParser()
+parser.add_argument("filename", help="Video to split")
+parser.add_argument("ranges", nargs="+", help="Split at offset(s) or ranges. Use negative number for offset from end. If argument is a filename, load offsets from it.")
+parser.add_argument("--transcode", action="store_true", help="transcode video for perfect split points")
+parser.add_argument("--output", help="name to use when creating splits")
+args = parser.parse_args()
 
-BASE="${VIDEO%.*}"
-EXT="${VIDEO##*.}"
-COUNTER=1
-PREV=0
+def splitVideo(pos, filename, before):
+  print "Splitting"
+  video, ext = os.path.splitext(filename)
+  if before:
+    start = "0:00.00"
+    end = str(datetime.timedelta(seconds = pos))
+    len = pos
+  else:
+    start = str(datetime.timedelta(seconds = pos))
+    cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    process = os.popen(cmd)
+    len = float(process.read())
+    process.close()
+    end = str(datetime.timedelta(seconds = len))
+    len -= pos
 
-LENGTH=`ffprobe -i "${VIDEO}" -show_format 2>&1 | grep duration | sed -e 's/duration=//'`
-SEGMENTS="${SEGMENTS} ${LENGTH}"
+  cmd = "mkvmerge --split parts:%s-%s -o %sb%s %s > /dev/null" % \
+      (start, end, video, ext, filename)
+  print cmd
+  os.system(cmd)
 
-for SEGMENT in ${SEGMENTS} ; do
-    segstart=${PREV}
-    segend=${SEGMENT}
-    segdur=`echo "scale = 6; ${segend} - ${segstart}" | bc`
-    ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
-    segstartm=`echo "scale = 0; ${segstart} / 60" | bc`
-    segstarts=`echo "scale = 6; ${segstart} - ${segstartm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
-    segendm=`echo "scale = 0; ${segend} / 60" | bc`
-    segends=`echo "scale = 6; ${segend} - ${segendm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
-    echo ${BASE}_${ep}.${EXT}: ${segstart} to ${segend} length ${segdur}
-
-    # ffmpeg will choose a start several seconds off, and won't bother to
-    # start with a keyframe, use mkvmerge to do the split
-    mkvmerge --split parts:${segstartm}:${segstarts}-${segendm}:${segends} -o "${BASE}_${ep}.${EXT}" "${VIDEO}" > /dev/null
-
-    # mkvmerge runs the clip long, trim it more with ffmpeg
-    rm -f "${BASE}_${ep}b.${EXT}"
-    ffmpeg -i "${BASE}_${ep}.${EXT}" -t ${segdur} -codec copy "${BASE}_${ep}b.${EXT}" > /dev/null 2>&1
-    mv "${BASE}_${ep}b.${EXT}" "${BASE}_${ep}.${EXT}"
-
-#    ffmpeg -i "${VIDEO}" -ss ${segstart} -to ${segend} -codec copy "${BASE}_${ep}.${EXT}"
-#    ffmpeg -ss ${segstart} -i "${VIDEO}" -t ${segdur} -codec copy "${BASE}_${ep}.${EXT}"
-#    ffmpeg -i "${VIDEO}" -ss ${segstart} -vframes 1 "${BASE}_${ep}.png"
+  if before:
+    splitname = "%s-pre%s" % (video, ext)
+  else:
+    splitname = "%s-post%s" % (video, ext)
     
-    PREV=${SEGMENT}
-    COUNTER=`expr $COUNTER + 1`
-done
+  if os.path.exists(splitname):
+    os.remove(splitname)
+  cmd = "ffmpeg -i %sb%s -t %f -codec copy %s > /dev/null 2>&1" % (video, ext, len, splitname)
+  os.system(cmd)
+  os.remove("%sb%s" % (video, ext))
+  print splitname
 
-# # Split last segment
-# segstart=${PREV}
-# ep=`echo $COUNTER |awk '{printf "%03i\n", $1}'`
-# segstartm=`echo "scale = 0; ${segstart} / 60" | bc`
-# segstarts=`echo "scale = 6; ${segstart} - ${segstartm} * 60" | bc | sed -r 's/^(-?)\\./0.\1/'`
-# echo ${ep}: ${segstart} to end
-# mkvmerge --split parts:${segstartm}:${segstarts}- -o "${BASE}_${ep}.${EXT}" "${VIDEO}" > /dev/null
-# #ffmpeg -ss ${segstart} -i "${VIDEO}" -codec copy "${BASE}_${ep}.${EXT}"
+def decodeTimecode(tc):
+  if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", tc):
+    seconds = float(tc)
+  else:
+    seconds = sum(int(x) * 60 ** i for i,x in enumerate(reversed(tc.split(":"))))
+  return seconds
+
+# FIXME - check if range is actually a file
+segments = []
+if len(args.ranges) == 1 and os.path.isfile(args.ranges[0]):
+  ranges = []
+  with open(args.ranges[0]) as f:
+    for line in f:
+      line = line.strip()
+      if line[0] >= '0' and line[0] <= '9':
+        ranges.append(line)
+  args.ranges = ranges
+
+for offset in args.ranges:
+  if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", offset) \
+        or re.match("^[-+]?[0-9]+(:[0-9]+)+(\.[0-9]+)?$", offset):
+    tc = decodeTimecode(offset)
+    if offset[0] != '+':
+      if len(segments) == 0:
+        segments.append([0, tc])
+      else:
+        if not segments[-1][1]:
+          segments[-1][1] = tc
+    if tc > 0:
+      segments.append([tc, None])
+  elif re.match("^[0-9]+(.[0-9]+)?-[0-9]+(\.[0-9]+)?$", offset) \
+        or re.match("^[0-9]+(:[0-9]+)+(\.[0-9]+)?-[0-9]+(:[0-9]+)+(\.[0-9]+)?$", offset):
+    times = offset.split("-")
+    segments.append([decodeTimecode(times[0]), decodeTimecode(times[1])])
+  else:
+    print "Unrecognized timecode " + offset
+
+def splitVideo(range, filename, output=None):
+  video, ext = os.path.splitext(filename)
+  if not range[1]:
+    cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    process = os.popen(cmd)
+    len = float(process.read())
+    process.close()
+    range[1] = len
+
+  if not output:
+    output = "%sc%s" % (video, ext)
+
+  temp = "split-%i%s" % (os.getpgid(0), ext)
+  if os.path.exists(temp):
+    os.remove(temp)
+  cmd = "mkvmerge --split parts:%s-%s -o %s \"%s\" > /dev/null" % \
+      (datetime.timedelta(seconds = range[0]), datetime.timedelta(seconds = range[1]),
+       temp, filename)
+  print cmd
+  os.system(cmd)
+
+  if os.path.exists(output):
+    os.remove(output)
+  len = range[1] - range[0]
+  cmd = "ffmpeg -i %s -t %f -codec copy \"%s\" > /dev/null 2>&1" % (temp, len, output)
+  print cmd
+  os.system(cmd)
+  os.remove(temp)
+  return output
+
+append = ""
+if len(segments) > 1 or not args.output:
+  digits = int(math.floor(math.log(len(segments), 10)) + 1)
+  append = "_%%0%ii" % digits
+  
+video, ext = os.path.splitext(args.filename)
+if args.output:
+  ovid, oext = os.path.splitext(args.output)
+else:
+  ovid = video
+
+for range in segments:
+  output = ovid + append + ext
+  if len(append):
+    output = output % (segments.index(range) + 1)
+  splitVideo(range, args.filename, output)
+  
+# FIXME - get keyframes/iframes to see how far off splitting will be

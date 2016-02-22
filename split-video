@@ -25,42 +25,24 @@ parser = argparse.ArgumentParser()
 parser.add_argument("filename", help="Video to split")
 parser.add_argument("ranges", nargs="+", help="Split at offset(s) or ranges. Use negative number for offset from end. If argument is a filename, load offsets from it.")
 parser.add_argument("--transcode", action="store_true", help="transcode video for perfect split points")
+parser.add_argument("--iframes", action="store_true", help="compare split positions to iframes from video")
 parser.add_argument("--output", help="name to use when creating splits")
 args = parser.parse_args()
 
-def splitVideo(pos, filename, before):
-  print "Splitting"
-  video, ext = os.path.splitext(filename)
-  if before:
-    start = "0:00.00"
-    end = str(datetime.timedelta(seconds = pos))
-    len = pos
-  else:
-    start = str(datetime.timedelta(seconds = pos))
-    cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
-    process = os.popen(cmd)
-    len = float(process.read())
-    process.close()
-    end = str(datetime.timedelta(seconds = len))
-    len -= pos
+def findIframes(filename, output):
+  if not os.path.exists(output) or os.path.getctime(output) < os.path.getctime(filename):
+    print "Finding I frames " + filename
+    os.system("find-iframes \"%s\" \"%s\" > /dev/null 2>&1" % (filename, output))
 
-  cmd = "mkvmerge --split parts:%s-%s -o %sb%s %s > /dev/null" % \
-      (start, end, video, ext, filename)
-  print cmd
-  os.system(cmd)
-
-  if before:
-    splitname = "%s-pre%s" % (video, ext)
-  else:
-    splitname = "%s-post%s" % (video, ext)
+def findNearest(pos, before):
+  for frame in iframes:
+    if pos < frame:
+      if before:
+        return prev
+      else:
+        return frame
+    prev = frame
     
-  if os.path.exists(splitname):
-    os.remove(splitname)
-  cmd = "ffmpeg -i %sb%s -t %f -codec copy %s > /dev/null 2>&1" % (video, ext, len, splitname)
-  os.system(cmd)
-  os.remove("%sb%s" % (video, ext))
-  print splitname
-
 def decodeTimecode(tc):
   if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", tc):
     seconds = float(tc)
@@ -110,22 +92,35 @@ def splitVideo(range, filename, output=None):
   if not output:
     output = "%sc%s" % (video, ext)
 
-  temp = "split-%i%s" % (os.getpgid(0), ext)
-  if os.path.exists(temp):
-    os.remove(temp)
-  cmd = "mkvmerge --split parts:%s-%s -o %s \"%s\" > /dev/null" % \
-      (datetime.timedelta(seconds = range[0]), datetime.timedelta(seconds = range[1]),
-       temp, filename)
-  print cmd
-  os.system(cmd)
-
   if os.path.exists(output):
     os.remove(output)
-  len = range[1] - range[0]
-  cmd = "ffmpeg -i %s -t %f -codec copy \"%s\" > /dev/null 2>&1" % (temp, len, output)
-  print cmd
-  os.system(cmd)
-  os.remove(temp)
+  if args.transcode:
+    # FIXME - match codec of source
+    cmd = "ffmpeg -i %s -ss %f -to %f -acodec copy \"%s\" > /dev/null 2>&1" % \
+        (filename, range[0], range[1], output)
+    print cmd
+    os.system(cmd)
+  else:
+    start = range[0]
+    end = range[1]
+    if args.iframes:
+      start = findNearest(range[0], True)
+      end = findNearest(range[1], False)
+
+    temp = "split-%i%s" % (os.getpgid(0), ext)
+    if os.path.exists(temp):
+      os.remove(temp)
+    cmd = "mkvmerge --split parts:%s-%s -o %s \"%s\" > /dev/null" % \
+        (datetime.timedelta(seconds = start), datetime.timedelta(seconds = range[1]),
+         temp, filename)
+    print cmd
+    os.system(cmd)
+
+    len = range[1] - start
+    cmd = "ffmpeg -i %s -t %f -codec copy \"%s\" > /dev/null 2>&1" % (temp, len, output)
+    print cmd
+    os.system(cmd)
+    os.remove(temp)
   return output
 
 append = ""
@@ -139,10 +134,26 @@ if args.output:
 else:
   ovid = video
 
+ifile = video + ".iframes"
+#if not args.iframes and os.path.exists(ifile) \
+#      and os.path.getctime(ifile) >= os.path.getctime(args.filename):
+#  args.iframes = True
+if args.iframes:
+  findIframes(args.filename, ifile)
+  iframes = []
+  with open(ifile) as f:
+    for line in f:
+      iframes.append(float(line))
+
+# FIXME - if transcoding and more than one segment do the entire thing
+#         and force frames? If only one segment then skip mkvmerge and
+#         let ffmpeg pull the segment
+      
 for range in segments:
   output = ovid + append + ext
   if len(append):
     output = output % (segments.index(range) + 1)
   splitVideo(range, args.filename, output)
   
-# FIXME - get keyframes/iframes to see how far off splitting will be
+# FIXME - if transcoding force keyframes into the right spot, but
+#         re-read because ffmpeg isn't exact and puts them "close"

@@ -1,0 +1,354 @@
+#!/usr/bin/env python
+#
+# Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+import glob
+import os
+import datetime
+import tvdb_api
+import sys
+from operator import itemgetter
+import re
+import argparse
+import bisect
+import csv
+import math
+
+EP_ID = 0
+EP_SEASON = 1
+EP_NUM = 2
+EP_DVDSEASON = 3
+EP_DVDEPISODE = 4
+EP_TITLE = 5
+EP_ORIGDATE = 6
+
+CSV_EPISODE = 0
+CSV_DVDEP = 1
+CSV_ORIGDATE = 2
+CSV_TITLE = 3
+
+ftr = [3600,60,1]
+
+parser = argparse.ArgumentParser()
+parser.add_argument("series", nargs="?", help="Name of series on thetvdb.com or csv file with episode information")
+parser.add_argument("--titlelen", help="length in seconds of opening titles", default=78)
+parser.add_argument("--creditlen", help="length in seconds of end credits", default=55)
+parser.add_argument("--bumpermin", help="minimum length in seconds of bumpers", default=10)
+parser.add_argument("--bumpermax", help="maximum in seconds of bumpers", default=20)
+parser.add_argument("--prebumper", action="store_true", help="a bumper can occur before first chapter")
+parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
+parser.add_argument("--glob", help="pattern for finding videos", default="[0-9]x[0-9][0-9].mkv")
+parser.add_argument("--split", action="store_true", help="Split videos into segments, using titles if available")
+parser.add_argument("--exceedchapter", action="store_true", help="Allow splitting past chapter marker")
+args = parser.parse_args()
+
+args.titlelen = float(args.titlelen)
+args.creditlen = float(args.creditlen)
+args.bumpermin = float(args.bumpermin)
+args.bumpermax = float(args.bumpermax)
+
+if args.series:
+  episodes = []
+  if os.path.isfile(args.series):
+    f = open(args.series, 'rU')
+    try:
+      reader = csv.reader(f)
+      for row in reader:
+        epnum = re.split(" +x +", row[CSV_EPISODE])
+        dvdnum = re.split(" +x +", row[CSV_DVDEP])
+        epid = epnum[0] + "x" + epnum[1].zfill(2)
+        info = [epid, int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]), \
+                  row[CSV_TITLE], row[CSV_ORIGDATE]]
+        episodes.append(info)
+    finally:
+      f.close()
+
+  else:
+    t = tvdb_api.Tvdb()
+    show = t[args.series]
+    for season in show:
+      for epnum in show[season]:
+        episode = show[season][epnum]
+        epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
+        if episode['dvd_season'] and episode['dvd_episodenumber']:
+          info = [epid, int(episode['seasonnumber']), int(episode['episodenumber']), \
+                    int(episode['dvd_season']), float(episode['dvd_episodenumber']), \
+                    episode['episodename'], episode['firstaired']]
+          episodes.append(info)
+        elif not args.quiet:
+          print "No DVD info for"
+          print episode
+          if args.dvdmissing:
+            info = [epid, int(episode['seasonnumber']), int(episode['episodenumber']), \
+                      int(episode['seasonnumber']), float(episode['episodenumber']), \
+                      episode['episodename'], episode['firstaired']]
+            episodes.append(info)
+  episodes = sorted(episodes, key=itemgetter(EP_DVDSEASON, EP_DVDEPISODE))
+
+def findBlack(filename):
+  video, ext = os.path.splitext(filename)
+  if not os.path.exists("%s.split" % video):
+    print "Finding black " + filename
+    os.system("find-black --duration 0.1 \"%s\" \"%s.split\" > /dev/null" % (filename, video))
+
+def findSilence(filename):
+  video, ext = os.path.splitext(filename)
+  if not os.path.exists("%s.sil" % video):
+    print "Finding silence " + filename
+    os.system("find-silence --duration 0.1 \"%s\" \"%s.sil\" > /dev/null" % (filename, video))
+
+def loadOffsets(offsets, filename):
+  with open(filename) as f:
+    for line in f:
+      info = line.split()
+      begin = float(info[1])
+      end = float(info[2])
+      offsets.append([begin, end])
+
+def loadChapters(chapters, filename):
+  chap = 1
+  segments = []
+  with os.popen("mediainfo \"" + filename + "\" | grep Chapter") as f:
+    for line in f:
+      # FIXME - mediainfo incorrectly puts leading zero on decimal part of seconds
+      tcode = line.split()[0]
+      seconds = sum([a*b for a,b in zip(ftr, map(float, tcode.split(':')))])
+
+      segments.append("# Chapter %i: %s %f" % (chap, datetime.timedelta(seconds = seconds), seconds))
+      chapters.append(seconds)
+      chap += 1
+  return segments
+
+def totalLen(filename):
+  with os.popen("vidinf \"" + filename + "\" | grep ID_LENGTH") as f:
+    for line in f:
+      totallen = float(re.sub("ID_LENGTH=", "", line))
+      break
+  return totallen
+
+def getTitle(episode):
+  eptitle = re.split(" - ", episode[EP_TITLE])
+  return eptitle
+
+def formatTitle(eptitle, episode, video, ext, segnum):
+  title = "# Title: " + video + "_" + str(segnum).zfill(3) + ext
+  title += " \"" + eptitle[0] + "\""
+  title += " \"" + str(episode[EP_SEASON]) + "x" + str(episode[EP_NUM]).zfill(3)
+  if len(eptitle) > 1:
+    title += " " + eptitle[1] + ext + "\""
+  else:
+    title += " " + eptitle[0] + ext + "\""
+  return title
+  
+def bestMatch(offset, black, silence):
+  best = None
+  for row in black:
+    seconds = (row[0] + row[1]) / 2
+    diff = abs(seconds - offset)
+    if not best or diff < best[0]:
+      best = [diff, seconds, row[0], row[1]]
+        
+  bestsil = None
+  for row in silence:
+    seconds = (row[0] + row[1]) / 2
+    diff = abs(seconds - best[1])
+    if ((row[0] >= best[2] and row[0] <= best[3])
+        or (row[1] >= best[2] and row[1] <= best[3])) \
+        and (not bestsil or diff < bestsil[0]):
+      bestsil = [diff, seconds, row[0], row[1]]
+
+  if bestsil:
+    begin = bestsil[2]
+    if begin < best[2]:
+      begin = best[2]
+    end = bestsil[3]
+    if end > best[3]:
+      end = best[3]
+    split = (begin + end) / 2
+    return split
+
+  return best[1]
+
+def formatEpisodeID(season, epnum):
+  num = 0
+  for row in episodes:
+    if row[EP_SEASON] == season:
+      num += 1
+  digits = int(math.floor(math.log(num, 10)) + 1)
+  epid = "%%ix%%0%ii" % digits
+  return epid % (season, epnum)
+
+def findSegments(episode, filename):
+  segments = []
+  splits = []
+  video, ext = os.path.splitext(filename)
+  epindex = episodes.index(episode)
+
+  findBlack(filename)
+  findSilence(filename)
+  bmarkers = []
+  loadOffsets(bmarkers, video + ".split")
+  silence = []
+  loadOffsets(silence, video + ".sil")
+  cmarkers = []
+  segments.extend(loadChapters(cmarkers, filename))
+  totallen = totalLen(filename)
+
+  # FIXME - allow user to manually correct chapters
+
+  # The Mr. Magoo Show
+  # if len(cmarkers) == 5:
+  #   # Some episodes of Magoo are missing the first chapter marker
+  #   bumper = bestMatch(args.titlelen, bmarkers, silence)
+  #   seg = bestMatch(bumper + (args.bumpermin + args.bumpermax) / 2, bmarkers, silence)
+  #   bisect.insort(cmarkers, seg)
+    
+  segnum = 2
+  epnum = 0
+  for chap in cmarkers:
+    if chap < args.titlelen:
+      if chap > 0.0:
+        if args.series:
+          episode = episodes[epindex + epnum]
+          title = getTitle(episode)
+          segments.append(formatTitle(title, episode, video, ext, segnum - 1))
+        epnum += 1
+      continue
+
+    if chap >= totallen - args.creditlen:
+      continue
+
+    seg = bestMatch(chap, bmarkers, silence);
+    if epnum or args.prebumper:
+      bumper = bestMatch(chap - args.bumpermax, bmarkers, silence)
+      if bumper >= chap - args.bumpermax and bumper <= chap - args.bumpermin:
+        segments.append("# Bumper: " + str(datetime.timedelta(seconds = bumper)))
+        segments.append(bumper)
+        segnum += 1
+        splits.append([bumper, None])
+
+    if seg > chap and not args.exceedchapter:
+      print "Warning: best found split %s was after chapter %s" \
+          % (datetime.timedelta(seconds = seg), datetime.timedelta(seconds = chap))
+      seg = chap
+      
+    segments.append("# Segment: " + str(datetime.timedelta(seconds = seg)))
+    epinfo = [seg]
+    if args.series:
+      episode = episodes[epindex + epnum]
+      title = getTitle(episode)
+      segments.append(formatTitle(title, episode, video, ext, segnum))
+      if len(title) > 1:
+        epinfo.append(title[1])
+      else:
+        epinfo.append(title[0])
+    else:
+      epinfo.append(video + "_" + str(segnum).zfill(3) + ext)
+    epinfo.append(formatEpisodeID(episode[EP_SEASON], episode[EP_NUM]))
+    splits.append(epinfo)
+    segments.append(seg)
+
+    segnum += 1
+    epnum += 1
+
+  for black in reversed(bmarkers):
+    if totallen - black[0] >= args.creditlen:
+      pos = (black[0] + black[1]) / 2
+      segments.append("# Credits: " + str(datetime.timedelta(seconds = pos)))
+      segments.append(pos)
+      splits.append([pos, None])
+      break
+
+  if args.split:
+    for row in splits:
+      if not row[1]:
+        continue
+      begin = row[0]
+      end = splits[splits.index(row) + 1][0]
+      title = re.sub("[:/]", "-", re.sub("[.!?]$", "", row[1]))
+      eptitle = "%s %s%s" % (row[2], title, ext)
+      cmd = "split-video --output \"%s\" \"%s\" %f-%f" % (eptitle, filename, begin, end)
+      print cmd
+      os.system(cmd)
+      
+  return segments
+
+def splitVideo(pos, filename, before):
+  print "Splitting"
+  video, ext = os.path.splitext(filename)
+  if before:
+    start = "0:00.00"
+    end = str(datetime.timedelta(seconds = pos))
+    len = pos
+  else:
+    start = str(datetime.timedelta(seconds = pos))
+    cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    process = os.popen(cmd)
+    len = float(process.read())
+    process.close()
+    end = str(datetime.timedelta(seconds = len))
+    len -= pos
+
+  cmd = "mkvmerge --split parts:%s-%s -o %sb%s %s > /dev/null" % (start, end, video, ext, filename)
+  print cmd
+  os.system(cmd)
+
+  if os.path.exists("%sc%s" % (video, ext)):
+    os.remove("%sc%s" % (video, ext))
+  cmd = "ffmpeg -i %sb%s -t %f -codec copy %sc%s > /dev/null 2>&1" % (video, ext, len, video, ext)
+  print cmd
+  os.system(cmd)
+  os.remove("%sb%s" % (video, ext))
+  print filename
+
+def rename(filename, episode):
+  video, ext = os.path.splitext(filename)
+  title = re.sub("[:/]", "-", re.sub("[.!?]$", "", episode[TITLE]))
+  eptitle = "%s %s%s" % (episode[EPID], title, ext)
+  os.rename("%sc%s" % (video, ext), eptitle)
+  print eptitle
+
+# FIXME - make this an option, numbering may not match anything
+# depending on how DVD chapters were split
+def guessEpisode(filename):
+  m = re.search("([0-9]+)x([0-9]+)", filename)
+  if not m:
+    m = re.search("[Ss]([0-9]+)[Ee]([0-9]+)", filename)
+  if m:
+    sn = int(m.group(1))
+    ep = int(m.group(2))
+    for row in episodes:
+      if sn == row[EP_DVDSEASON] and ep == int(row[EP_DVDEPISODE]):
+        return row
+  return None
+    
+videos = [file for file in glob.glob(args.glob)]
+videos.sort()
+
+for filename in videos:
+  print filename
+  video, ext = os.path.splitext(filename)
+  
+  episode = None
+  if args.series:
+    episode = guessEpisode(filename)
+    
+  segs = findSegments(episode, filename)
+  f = open(video + ".segs", "w")
+  for row in segs:
+    f.write(str(row) + "\n")
+  f.close()

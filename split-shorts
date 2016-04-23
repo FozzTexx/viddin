@@ -196,7 +196,8 @@ def findSegments(episode, filename):
   segments = []
   splits = []
   video, ext = os.path.splitext(filename)
-  epindex = episodes.index(episode)
+  if args.series:
+    epindex = episodes.index(episode)
 
   findBlack(filename)
   findSilence(filename)

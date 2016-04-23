@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+#
+# Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+import tvdb_api
+import sys
+from operator import itemgetter
+import argparse
+import glob
+import os
+import re
+import sys
+import math
+
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
+EPID = 0
+DVDSEASON = 1
+DVDEPISODE = 2
+TITLE = 3
+ORIGDATE = 4
+
+# FIXME - add option to keep dvd order when renaming
+parser = argparse.ArgumentParser()
+parser.add_argument("series", help="Name of series on thetvdb.com")
+parser.add_argument("--rename", action="store_true", help="rename files to match dvd order")
+parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+parser.add_argument("--sequential", action="store_true", help="all files are in dvd order but numbering may have gaps")
+parser.add_argument("--dvdorder", action="store_true", help="keep episodes in DVD order")
+parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
+parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
+parser.add_argument("--glob", help="pattern for finding videos", default="[0-9]x[0-9][0-9].mkv")
+args = parser.parse_args()
+
+t = tvdb_api.Tvdb()
+show = t[args.series]
+
+series = []
+
+def formatEpisodeID(season, epnum):
+  num = 0
+  for row in dvdorder:
+    if row[DVDSEASON] == season:
+      num += 1
+  digits = int(math.floor(math.log(num, 10)) + 1)
+  epid = "%%ix%%0%ii" % digits
+  return epid % (season, epnum)
+
+def findVideo(episode):
+  guess = "\\b" + formatEpisodeID(episode[DVDSEASON], int(episode[DVDEPISODE])) + "\\b"
+  indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
+  if not len(indices):
+    guess = "\\b[sS]%02i[eE]%02i\\b" % (episode[DVDSEASON], int(episode[DVDEPISODE]))
+    indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
+  if len(indices):
+    return videos[indices[0]]
+  return None  
+  
+# FIXME - make finding the file as smart as tvrenamer.pl
+def renameVid(episode, filename=None):
+  epid = episode[EPID]
+  if args.dvdorder:
+    epid = formatEpisodeID(episode[DVDSEASON], int(episode[DVDEPISODE]))
+  if not filename:
+    filename = findVideo(episode)
+
+  if filename:
+    video, ext = os.path.splitext(filename)
+    title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", episode[TITLE]))
+    eptitle = "%s %s%s" % (epid, title, ext)
+    if filename != eptitle:
+      if os.path.isfile(eptitle):
+        print "Already exists! " + eptitle
+      else:
+        os.rename(filename, eptitle)
+        print filename + " to " + eptitle
+  return filename
+  
+for season in show:
+  for epnum in show[season]:
+    episode = show[season][epnum]
+    epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
+    epinfo = None
+    if args.airedorder:
+      epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]
+    elif episode['dvd_season'] and episode['dvd_episodenumber']:
+      epinfo = [epid, int(episode['dvd_season']), float(episode['dvd_episodenumber'])]
+    else:
+      if args.dvdmissing:
+        epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]
+      elif not args.quiet:
+        print "No DVD info for"
+        print episode
+    if epinfo:
+      epinfo.extend([episode['episodename'], episode['firstaired'],
+                    episode['productioncode']])
+      series.append(epinfo)
+dvdorder = sorted(series, key=itemgetter(1, 2))
+
+videos = [file for file in glob.glob(args.glob)]
+videos.sort()
+
+if args.sequential:
+  for row in videos:
+    i = videos.index(row)
+    renameVid(dvdorder[i], filename=row)
+else:
+  for row in dvdorder:
+    if args.rename:
+      filename = renameVid(row)
+      if filename:
+        videos.remove(filename)
+    else:
+      for info in row:
+        print info,
+      print
+      

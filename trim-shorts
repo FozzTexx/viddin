@@ -1,0 +1,181 @@
+#!/usr/bin/env python
+import os
+import datetime
+import tvdb_api
+import sys
+from operator import itemgetter
+import re
+import argparse
+import glob
+import math
+
+EPID = 0
+DVDSEASON = 1
+DVDEPISODE = 2
+TITLE = 3
+ORIGDATE = 4
+
+parser = argparse.ArgumentParser()
+parser.add_argument("series", help="Name of series on thetvdb.com")
+parser.add_argument("offsets", nargs="+", help="Trim amount from each short. Negative numbers are offset from end. Pattern repeats through files.")
+parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
+parser.add_argument("--first", default=1, help="Start enumeration at this number")
+parser.add_argument("--minsize", help="Ignore videos smaller than this")
+parser.add_argument("--iframes", action="store_true", help="Split at nearest iframe")
+args = parser.parse_args()
+
+# FIXME - if args.series is file then trim just that one file
+t = tvdb_api.Tvdb()
+show = t[args.series]
+
+def findBlack(filename):
+  video, ext = os.path.splitext(filename)
+  if not os.path.exists("%s.split" % video):
+    print "Finding black"
+    os.system("find-black --duration 0.1 %s %s.split > /dev/null" % (filename, video))
+
+def findSilence(filename):
+  video, ext = os.path.splitext(filename)
+  if not os.path.exists("%s.sil" % video):
+    print "Finding silence"
+    os.system("find-silence --duration 0.1 %s %s.sil > /dev/null" % (filename, video))
+
+def bestMatch(offset, filename):
+  video, ext = os.path.splitext(filename)
+  print "Finding offset"
+  if offset < 0:
+    cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    process = os.popen(cmd)
+    len = float(process.read())
+    process.close()
+    offset = len + offset
+    
+  best = None
+  with open(video + ".split") as f:
+    for line in f:
+      info = line.split()
+      begin = float(info[1])
+      end = float(info[2])
+      seconds = begin + (end - begin) / 2
+      diff = abs(seconds - offset)
+      if not best or diff < best[0]:
+        best = [diff, seconds, begin, end]
+        
+  bestsil = None
+  with open(video + ".sil") as f:
+    for line in f:
+      info = line.split()
+      begin = float(info[1])
+      end = float(info[2])
+      seconds = begin + (end - begin) / 2
+      diff = abs(seconds - best[1])
+      if ((begin >= best[2] and begin <= best[3]) or (end >= best[2] and end <= best[3])) \
+            and (not bestsil or diff < bestsil[0]):
+        bestsil = [diff, seconds, begin, end]
+
+  if bestsil:
+    print "Silence: ", bestsil, best
+    begin = bestsil[2]
+    if begin < best[2]:
+      begin = best[2]
+    end = bestsil[3]
+    if end > best[3]:
+      end = best[3]
+    split = begin + (end - begin) / 2
+    print "Splitting at ", split
+    return split
+
+  print "Black: ", best
+  return best[1]
+
+def episodeTitle(episode):
+  title = re.sub("[:/]", "-", re.sub("[.!?]$", "", episode[TITLE]))
+  eptitle = "%s %s%s" % (episode[EPID], title, ext)
+  return eptitle
+  
+def rename(filename, episode):
+  eptitle = episodeTitle(episode)
+  os.rename(filename, eptitle)
+  print eptitle
+
+series = []
+for season in show:
+  for epnum in show[season]:
+    episode = show[season][epnum]
+    epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
+    if episode['dvd_season'] and episode['dvd_episodenumber']:
+      series.append([epid, int(episode['dvd_season']), float(episode['dvd_episodenumber']), episode['episodename'], episode['firstaired']])
+    else:
+      print "No DVD info for"
+      print episode
+      if args.dvdmissing:
+        series.append([epid, int(episode['seasonnumber']), float(episode['episodenumber']), episode['episodename'], episode['firstaired']])
+dvdorder = sorted(series, key=itemgetter(1, 2))
+
+def findEpisode(epid):
+  print epid
+  if type(epid) is int:
+    return dvdorder[epid]
+  
+  for row in dvdorder:
+    if epid == row[EPID]:
+      return row
+  return None
+
+videos = [file for file in glob.glob("[0-9]x[0-9][0-9].mkv")]
+videos.sort()
+
+minsize = 0
+if args.minsize:
+  val = re.sub("^( *[0-9]+).*", "\\1", args.minsize)
+  minsize = int(val)
+  suffix = args.minsize[-1]
+  try:
+    magnitude = ["B", "K", "M", "G"].index(suffix.upper())
+  except ValueError:
+    magnitude = -1
+  if magnitude >= 0:
+    minsize *= math.pow(1024, magnitude)
+
+# FIXME - do merging of multi chapter segments
+epnum = 0
+for i in xrange(0, len(videos)):
+  oindex = epnum % len(args.offsets)
+  filename = videos[i]
+  if minsize:
+    size = os.path.getsize(filename)
+    if size < minsize:
+      continue
+
+  video, ext = os.path.splitext(filename)
+  epid = video
+  if args.enumerate:
+    epid = epnum + int(args.first) - 1
+  episode = findEpisode(epid)
+  print episode
+
+  olen = int(args.offsets[oindex])
+  if olen:
+
+    findBlack(filename)
+    findSilence(filename)
+    split = bestMatch(olen, filename)
+    offset = "+"
+    if olen < 0:
+      offset = "-"
+    offset += str(split)
+    cmd = "split-video"
+    if args.iframes:
+      cmd += " --iframes"
+    cmd += " \"%s\" %s" % (filename, offset)
+    os.system(cmd)
+    filename = video + "_1" + ext
+    rename(filename, episode)
+  else:
+    eptitle = episodeTitle(episode)
+    if os.path.exists(eptitle):
+      os.remove(eptitle)
+    os.link(filename, eptitle)
+
+  epnum += 1

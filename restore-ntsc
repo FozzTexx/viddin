@@ -18,4 +18,4 @@
 PAL=$1
 NTSC="${PAL%.*}"-NTSC.mkv
 
-ffmpeg -i "${PAL}" -vcodec libx264 -preset veryfast -x264opts crf=20:videoformat=undef:force-cfr -acodec ac3 -ab 448k -filter:v setpts='25025/24000*(PTS-STARTPTS)' -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 -f matroska -r 24000/1001 "${NTSC}"
+ffmpeg -y -i "${PAL}" -vcodec libx264 -preset veryfast -x264opts crf=20:videoformat=undef:force-cfr -acodec ac3 -ab 448k -filter:v setpts='25025/24000*(PTS-STARTPTS)' -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 -f matroska -r 24000/1001 "${NTSC}"

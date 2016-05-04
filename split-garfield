@@ -386,7 +386,7 @@ for filename in videos:
   if segments[-1][SEG_LEN] < args.creditlen or segments[-1][SEG_LEN] - args.creditlen < 10:
     segments[-1][SEG_TYPE] = TYPE_CREDITS
   else:
-    segments.append([vlen, 0.0, TYPE_CREDITS, 0.0])
+    segments.append(segmentRow(vlen, 0.0, segType=TYPE_CREDITS))
 
   if args.debug:
     printSegments(segments)
@@ -488,6 +488,7 @@ for filename in videos:
       if not prevc or prevc[SEG_TYPE] == TYPE_QUICKIE or prevc[SEG_TYPE] == TYPE_TITLE:
         curc[SEG_TYPE] = TYPE_SHORT
         clen = curc[SEG_LEN]
+        print "SHORT", curc
       else:
         curc[SEG_TYPE] = TYPE_PREV
         clen += curc[SEG_LEN]
@@ -500,15 +501,25 @@ for filename in videos:
           continue
 
         underpercent = (slen - clen) / slen * 100
-        if clen > slen or (clen > args.minlength and clen + nextc[SEG_LEN] > slen and \
-                             nextc[SEG_POS] > 0) or \
+        black = curc[SEG_BLACK][1] - curc[SEG_BLACK][0]
+        if (clen > slen and (overpercent > 110 or curc[SEG_POS] > 0 or black > 1.5)) or \
+              (not nextc[SEG_TYPE] and clen > args.minlength and \
+                           clen + nextc[SEG_LEN] > slen and nextc[SEG_POS] > 0) or \
               (nextc[SEG_POS] > 0 and underpercent > 0 and underpercent < 8 and \
                  clen + nextc[SEG_LEN] < slen):
           curc[SEG_TYPE] = TYPE_SHORT
-          clen = curc[SEG_LEN]
           if args.debug:
-            print "END", clen, slen, curc[SEG_POS], nextc[SEG_POS]
+            print "END", clen, slen, curc[SEG_POS], nextc[SEG_POS], underpercent, overpercent, black
+          clen = curc[SEG_LEN]
 
+  for segment in segments:
+    if segment[SEG_CHAP] and \
+          segment[SEG_TYPE] != TYPE_SHORT and segment[SEG_TYPE] != TYPE_QUICKIE:
+      nextc = findNext(segment, segments)
+      if nextc[SEG_TYPE] != TYPE_SHORT:
+        print "NOSHORT", segment, nextc
+        segment[SEG_TYPE] = TYPE_SHORT
+      
   if args.debug:
     print
     printSegments(segments)

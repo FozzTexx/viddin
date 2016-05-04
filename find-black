@@ -37,6 +37,15 @@ LOGFILE=/tmp/split.$$
 VIDEO="$1"
 SPLITS="$2"
 
+if [ -z "${VIDEO}" ] ; then
+    echo Please specify video to scan 1>&2
+    exit 1
+fi
+if [ -z "${SPLITS}" ] ; then
+    echo Please specify file to write bloack locations into 1>&2
+    exit 1
+fi
+
 ffmpeg -i "${VIDEO}" -vf blackdetect=d=${DUR}:pic_th=${PIC}:pix_th=${PXL} -an -f null - 2>&1 | tee ${LOGFILE}
 
 tr '\015' '\012' < ${LOGFILE} | egrep 'black_start:.*black_end:' | sed -e 's/:/ /g' \

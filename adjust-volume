@@ -53,6 +53,6 @@ MAX=`grep max_volume: ${TMP} | awk '{print $5}'`
 OFFSET=`echo "scale = 6; ${VOLUME} - ${MAX}" | bc`
 echo " ${MEAN} ${MAX} ${OFFSET}"
 
-ffmpeg -i "${SOURCE}" -af "volume=${OFFSET}dB" -c:v copy "${DEST}"
+ffmpeg -y -i "${SOURCE}" -af "volume=${OFFSET}dB" -c:v copy "${DEST}"
 
 rm -f ${TMP}

@@ -166,9 +166,11 @@ def bestMatch(offset, black, silence):
   for row in silence:
     seconds = (row[0] + row[1]) / 2
     diff = abs(seconds - best[1])
-    if ((row[0] >= best[2] and row[0] <= best[3])
-        or (row[1] >= best[2] and row[1] <= best[3])) \
-        and (not bestsil or diff < bestsil[0]):
+    if ((row[0] >= best[2] and row[0] <= best[3]) \
+          or (row[1] >= best[2] and row[1] <= best[3]) \
+          or (best[2] >= row[0] and best[2] <= row[1]) \
+          or (best[3] >= row[0] and best[3] <= row[1])) \
+          and (not bestsil or diff < bestsil[0]):
       bestsil = [diff, seconds, row[0], row[1]]
 
   if bestsil:
@@ -185,9 +187,12 @@ def bestMatch(offset, black, silence):
 
 def formatEpisodeID(season, epnum):
   num = 0
-  for row in episodes:
-    if row[EP_SEASON] == season:
-      num += 1
+  if args.series:
+    for row in episodes:
+      if row[EP_SEASON] == season:
+        num += 1
+  if not num:
+    num = 1
   digits = int(math.floor(math.log(num, 10)) + 1)
   epid = "%%ix%%0%ii" % digits
   return epid % (season, epnum)
@@ -288,34 +293,6 @@ def findSegments(episode, filename):
       
   return segments
 
-def splitVideo(pos, filename, before):
-  print "Splitting"
-  video, ext = os.path.splitext(filename)
-  if before:
-    start = "0:00.00"
-    end = str(datetime.timedelta(seconds = pos))
-    len = pos
-  else:
-    start = str(datetime.timedelta(seconds = pos))
-    cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
-    process = os.popen(cmd)
-    len = float(process.read())
-    process.close()
-    end = str(datetime.timedelta(seconds = len))
-    len -= pos
-
-  cmd = "mkvmerge --split parts:%s-%s -o %sb%s %s > /dev/null" % (start, end, video, ext, filename)
-  print cmd
-  os.system(cmd)
-
-  if os.path.exists("%sc%s" % (video, ext)):
-    os.remove("%sc%s" % (video, ext))
-  cmd = "ffmpeg -i %sb%s -t %f -codec copy %sc%s > /dev/null 2>&1" % (video, ext, len, video, ext)
-  print cmd
-  os.system(cmd)
-  os.remove("%sb%s" % (video, ext))
-  print filename
-
 def rename(filename, episode):
   video, ext = os.path.splitext(filename)
   title = re.sub("[:/]", "-", re.sub("[.!?]$", "", episode[TITLE]))
@@ -332,9 +309,11 @@ def guessEpisode(filename):
   if m:
     sn = int(m.group(1))
     ep = int(m.group(2))
-    for row in episodes:
-      if sn == row[EP_DVDSEASON] and ep == int(row[EP_DVDEPISODE]):
-        return row
+    if args.series:
+      for row in episodes:
+        if sn == row[EP_DVDSEASON] and ep == int(row[EP_DVDEPISODE]):
+          return row
+    return ["%ix%02i" % (sn, ep), sn, ep, None, None, None, None]
   return None
     
 videos = [file for file in glob.glob(args.glob)]
@@ -345,8 +324,7 @@ for filename in videos:
   video, ext = os.path.splitext(filename)
   
   episode = None
-  if args.series:
-    episode = guessEpisode(filename)
+  episode = guessEpisode(filename)
     
   segs = findSegments(episode, filename)
   f = open(video + ".segs", "w")

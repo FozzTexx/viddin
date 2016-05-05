@@ -39,8 +39,8 @@ SEG_LEN = 1
 SEG_TYPE = 2
 SEG_BLACK = 3
 SEG_SILENCE = 4
-SEG_FLAGS = 5
-SEG_CHAP = 6
+SEG_CHAP = 5
+SEG_SPLEN = 6
 
 SFLAG_CHAP = 1
 SFLAG_NOSIL = 2
@@ -114,12 +114,13 @@ def bestSilence(best, filename):
 
   return None
 
-def segmentRow(position, length, segType=None, segBlack=None, segSilence=None, segFlags=None, segChap=None):
-  if not segSilence:
-    if not segFlags:
-      segFlags = 0
-    segFlags |= SFLAG_NOSIL
-  return [position, length, segType, segBlack, segSilence, segFlags, segChap]
+def segmentRow(position, length, segType=None, segBlack=None, segSilence=None, segChap=None):
+  splen = 0.0
+  if segBlack:
+    sbegin = segBlack[0] if not segSilence or segBlack[0] > segSilence[0] else segSilence[0]
+    send = segBlack[1] if not segSilence or segBlack[1] > segSilence[1] else segSilence[1]
+    splen = send - sbegin
+  return [position, length, segType, segBlack, segSilence, segChap, splen]
 
 def loadSplits(filename):
   video, ext = os.path.splitext(filename)
@@ -133,7 +134,7 @@ def loadSplits(filename):
       sil = bestSilence([center, begin, end], filename)
       if sil:
         sbegin = begin if begin > sil[0] else sil[0]
-        send = end if end > sil[1] else sil[1]
+        send = end if end < sil[1] else sil[1]
         pos = sbegin + (send - sbegin) / 2
       else:
         pos = -center
@@ -141,18 +142,19 @@ def loadSplits(filename):
 
   splits.append(segmentRow(vlen, 0))
 
+  for chap in chapters:
+    best = None
+    for seg in splits:
+      pos = abs(seg[SEG_POS])
+      if not best or abs(chap - pos) < abs(chap - best[SEG_POS]):
+        best = seg
+    if best and abs(chap - best[SEG_POS]) < 10:
+      best[SEG_CHAP] = chap
+      
   for i in range(len(splits) - 1):
     cc = splits[i][SEG_POS]
     cn = splits[i+1][SEG_POS]
     splits[i][SEG_LEN] = abs(cn) - abs(cc)
-    chap = nearestChapter(abs(cc))
-    if chap and abs(chap - abs(cc)) < 2:
-      sflags = splits[i][SEG_FLAGS]
-      if not sflags:
-        sflags = 0
-      sflags |= SFLAG_CHAP
-      splits[i][SEG_FLAGS] = sflags
-      splits[i][SEG_CHAP] = chap
   
   return splits
 
@@ -178,23 +180,6 @@ def getShortTotal(segment):
       break
     slen += segment[SEG_LEN]
   return slen
-
-def shortTooShort(segment):
-  if segment[SEG_TYPE] == TYPE_SHORT and segment[SEG_LEN] < args.minlength:
-    ci = newc.index(segment)
-    prevs = newc[ci - 1]
-    nexts = newc[ci + 1]
-    if args.debug:
-      print "TOO SHORT", segment, prevs, nexts
-    if prevs[SEG_TYPE] != TYPE_QUICKIE or nexts[SEG_TYPE] == TYPE_CREDITS:
-      prevs[SEG_LEN] += segment[SEG_LEN]
-      prevs[SEG_TYPE] = segment[SEG_TYPE]
-    else:
-      nexts[SEG_POS] = segment[SEG_POS]
-      nexts[SEG_LEN] += segment[SEG_LEN]
-      nexts[SEG_TYPE] = segment[SEG_TYPE]
-    return True
-  return False
 
 def loadChapters(filename):
   chap = 0
@@ -247,8 +232,8 @@ def printSegments(segments):
     stype = segment[SEG_TYPE]
     sblack = segment[SEG_BLACK]
     ssil = segment[SEG_SILENCE]
-    sflags = segment[SEG_FLAGS]
     schap = segment[SEG_CHAP]
+    splen = segment[SEG_SPLEN]
 
     if pos < 0:
       sys.stdout.write("-")
@@ -271,16 +256,8 @@ def printSegments(segments):
     else:
       sys.stdout.write("          ")
 
-    # sys.stdout.write("  ")
-    # if sflags and sflags & SFLAG_CHAP:
-    #   sys.stdout.write("c")
-    # else:
-    #   sys.stdout.write("-")
-    # if sflags and sflags & SFLAG_NOSIL:
-    #   sys.stdout.write("s")
-    # else:
-    #   sys.stdout.write("-")
-
+    sys.stdout.write(" %9.4f" % splen)
+      
     sys.stdout.write("  ")
     sys.stdout.write(str(sblack))
     sys.stdout.write("  ")
@@ -290,6 +267,13 @@ def printSegments(segments):
   sys.stdout.write("\n")
   sys.stdout.flush()
 
+def countShorts(segments):
+  epnum = 0
+  for seg in segments:
+    if seg[SEG_TYPE] == TYPE_SHORT:
+      epnum += 1
+  return epnum
+  
 quickies = []
 if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", args.quickies):
   quickies.append(int(args.quickies))
@@ -376,21 +360,22 @@ for filename in videos:
 
   segments = loadSplits(filename)
 
-  if abs(segments[0][SEG_LEN]) < 3:
+  if args.debug:
+    printSegments(segments)
+  
+  if segments[0][SEG_LEN] < 3:
     del segments[0]
     
-  while abs(segments[-1][SEG_LEN]) < args.creditlen:
-    segments[-2][SEG_LEN] = abs(segments[-2][SEG_LEN]) + abs(segments[-1][SEG_LEN])
+  while segments[-1][SEG_LEN] < args.creditlen and \
+        args.creditlen - (segments[-2][SEG_LEN] + segments[-1][SEG_LEN]) > -10:
+    segments[-2][SEG_LEN] += segments[-1][SEG_LEN]
     del segments[-1]
 
-  if segments[-1][SEG_LEN] < args.creditlen or segments[-1][SEG_LEN] - args.creditlen < 10:
+  if segments[-1][SEG_LEN] < args.creditlen or segments[-1][SEG_LEN] - args.creditlen < 20:
     segments[-1][SEG_TYPE] = TYPE_CREDITS
   else:
     segments.append(segmentRow(vlen, 0.0, segType=TYPE_CREDITS))
 
-  if args.debug:
-    printSegments(segments)
-  
   didtitle = False
   since = 0
   pos = 0
@@ -409,7 +394,7 @@ for filename in videos:
           (segment[SEG_POS] > 0 or \
              ((not prevc or prevc[SEG_TYPE]) and \
                 (segment[SEG_POS] > 0 or prevc[SEG_TYPE] != TYPE_QUICKIE)) or \
-             segment[SEG_BLACK] > 2):
+             segment[SEG_SPLEN] > 2):
       quickie = True
       if len(chapters) and prevc and prevc[SEG_TYPE] == TYPE_QUICKIE:
         achap = nearestChapter(abs(segment[SEG_POS]))
@@ -445,7 +430,7 @@ for filename in videos:
       clen += nextc[SEG_LEN]
       pos += 1
       nextc = segments[pos]
-      while clen > quickies[0] and nextc[SEG_BLACK] < 0.6 and \
+      while clen > quickies[0] and nextc[SEG_SPLEN] < 0.6 and \
             clen + nextc[SEG_LEN] < quickies[1] and nextc[SEG_POS] < 0:
         if args.debug:
           print "DOUBLE JOIN", qpercent, clen, segment, nextc
@@ -457,23 +442,17 @@ for filename in videos:
       since += clen
     pos += 1
 
-  # for seg in segments:
-  #   pos = abs(seg[SEG_POS])
-  #   chap = nearestChapter(pos)
-  #   if chap and abs(pos - chap) < 2 and not seg[SEG_TYPE]:
-  #     seg[SEG_TYPE] = TYPE_SHORT
-    
   if args.debug:
     print
     printSegments(segments)
 
-  slen = 0
+  avglen = 0
   for segment in segments:
     if not segment[SEG_TYPE]:
-      slen += abs(segment[SEG_LEN])
-  slen = slen / numshorts
+      avglen += abs(segment[SEG_LEN])
+  avglen = avglen / numshorts
   if args.debug:
-    print "Average short len:", slen
+    print "Average short len:", avglen
   
   clen = 0
   for curc in segments:
@@ -488,11 +467,12 @@ for filename in videos:
       if not prevc or prevc[SEG_TYPE] == TYPE_QUICKIE or prevc[SEG_TYPE] == TYPE_TITLE:
         curc[SEG_TYPE] = TYPE_SHORT
         clen = curc[SEG_LEN]
-        print "SHORT", curc
+        if args.debug:
+          print "SHORT", curc
       else:
         curc[SEG_TYPE] = TYPE_PREV
         clen += curc[SEG_LEN]
-        overpercent = (clen + abs(curc[SEG_LEN]) - slen) / curc[SEG_LEN] * 100
+        overpercent = (clen + abs(curc[SEG_LEN]) - avglen) / curc[SEG_LEN] * 100
         if overpercent > 50 and not nextc[SEG_SILENCE]:
           curc[SEG_TYPE] = TYPE_SHORT
           clen = curc[SEG_LEN]
@@ -500,24 +480,30 @@ for filename in videos:
             print "OVER", overpercent, curc[SEG_POS], nextc[SEG_POS]
           continue
 
-        underpercent = (slen - clen) / slen * 100
-        black = curc[SEG_BLACK][1] - curc[SEG_BLACK][0]
-        if (clen > slen and (overpercent > 110 or curc[SEG_POS] > 0 or black > 1.5)) or \
-              (not nextc[SEG_TYPE] and clen > args.minlength and \
-                           clen + nextc[SEG_LEN] > slen and nextc[SEG_POS] > 0) or \
-              (nextc[SEG_POS] > 0 and underpercent > 0 and underpercent < 8 and \
-                 clen + nextc[SEG_LEN] < slen):
+        underpercent = (avglen - clen) / avglen * 100
+        test1 = (clen > avglen and (overpercent > 110 or curc[SEG_POS] > 0 or curc[SEG_SPLEN] > 1.5))
+        test2 = (not nextc[SEG_TYPE] and clen > args.minlength and \
+                           clen + nextc[SEG_LEN] > avglen and nextc[SEG_POS] > 0)
+        test3 = (nextc[SEG_POS] > 0 and underpercent > 0 and underpercent < 8 and \
+                 clen + nextc[SEG_LEN] < avglen)
+        if test1 or test2 or test3:
           curc[SEG_TYPE] = TYPE_SHORT
           if args.debug:
-            print "END", clen, slen, curc[SEG_POS], nextc[SEG_POS], underpercent, overpercent, black
+            print "END", curc[SEG_POS], nextc[SEG_POS], curc[SEG_SPLEN]
+            print "Length:", clen, avglen
+            print "Under/Over:", underpercent, overpercent
+            print "Tests:", test1, test2, test3
           clen = curc[SEG_LEN]
 
   for segment in segments:
     if segment[SEG_CHAP] and \
           segment[SEG_TYPE] != TYPE_SHORT and segment[SEG_TYPE] != TYPE_QUICKIE:
-      nextc = findNext(segment, segments)
+      if args.debug:
+        print "NOSHORT", segment
+      nextc = segments[segments.index(segment)]
       if nextc[SEG_TYPE] != TYPE_SHORT:
-        print "NOSHORT", segment, nextc
+        if args.debug:
+          print "MARKED", segment, nextc
         segment[SEG_TYPE] = TYPE_SHORT
       
   if args.debug:
@@ -530,53 +516,89 @@ for filename in videos:
     if segment[SEG_TYPE] == TYPE_SHORT:
       slen = segmentLength(segment, segments)
       if slen < args.minlength:
-        if args.debug:
-          print "TOO SHORT", segment, prevc, nextc
         prevc = findPrevious(segment, segments)
-        print "PREV", prevc
-        if prevc[SEG_TYPE] != TYPE_SHORT:
-          nextc = findNext(segment, segments)
-          print "NEXT", nextc
+        nextc = findNext(segment, segments)
+        print segment, prevc, nextc
+        if args.debug:
+          print "TOO SHORT", segment[SEG_POS], prevc[SEG_POS], prevc[SEG_TYPE],
           if nextc:
-            nextc[SEG_TYPE] = TYPE_PREV
+            print nextc[SEG_POS], nextc[SEG_TYPE]
           else:
+            print "None"
+        if segment[SEG_CHAP] or prevc[SEG_TYPE] != TYPE_SHORT:
+          if nextc:
+            if not nextc[SEG_CHAP]:
+              if args.debug:
+                print "NEXTING"
+              nextc[SEG_TYPE] = TYPE_PREV
+            else:
+              if args.debug:
+                print "IGNORING"
+              i += 1
+          else:
+            if args.debug:
+              print "PREVING"
             prevc[SEG_TYPE] = TYPE_SHORT
             segment[SEG_TYPE] = TYPE_PREV
             i = segments.index(prevc)
           i -= 1
         else:
-          segment[SEG_TYPE] = TYPE_PREV
+          if i and segments[i - 1][SEG_TYPE] == TYPE_PREV:
+            plen = None
+            if prevc:
+              plen = segmentLength(prevc, segments)
+            if not prevc or plen > avglen:
+              if args.debug:
+                print "SHIFTING"
+              segment[SEG_TYPE] = TYPE_PREV
+              segments[i - 1][SEG_TYPE] = TYPE_SHORT
+              i -= 2
+            else:
+              nlen = segmentLength(nextc, segments)
+              if abs((slen + nlen) - avglen) < 20:
+                print "NEXTING"
+                nextc[SEG_TYPE] = TYPE_PREV
+                i -= 1
+              elif prevc and abs(plen - args.minlength) < 10:
+                if args.debug:
+                  print "SPLITTING", plen, slen, nlen
+                segment[SEG_TYPE] = TYPE_PREV
+                if segments[i + 1][SEG_TYPE] == TYPE_PREV:
+                  segments[i + 1][SEG_TYPE] = TYPE_SHORT
+              else:
+                if args.debug:
+                  print "REMOVING"
+                segment[SEG_TYPE] = TYPE_PREV
+          else:
+            if args.debug:
+              print "REMOVING"
+            segment[SEG_TYPE] = TYPE_PREV
     i += 1
 
   if args.debug:
     print
     printSegments(segments)
     
-  # pos = 0
-  # endpos = len(newc)
-  # while pos < endpos:
-  #   if shortTooShort(newc[pos]):
-  #     del newc[pos]
-  #     endpos -= 1
-  #   else:
-  #     pos += 1
-  
   segments.append(segmentRow(vlen, 0.0))
 
-  # for seg in segments:
-  #   pos = abs(seg[SEG_POS])
-  #   chap = nearestChapter(pos)
-  #   if chap:
-  #     if pos > chap and pos - chap < 2:
-  #       print "# Warning: best found split %s was after chapter %s" \
-  #           % (datetime.timedelta(seconds = pos), datetime.timedelta(seconds = chap))
-  #       pos = chap
-  #     elif chap - pos < 8:
-  #       print "# Warning: best found split %s preceeded chapter %s" \
-  #           % (datetime.timedelta(seconds = pos), datetime.timedelta(seconds = chap))
-  #       pos = chap
-  #     seg[SEG_POS] = pos
-    
+  epnum = countShorts(segments)
+  if epnum != numshorts:
+    for seg in segments:
+      if seg[SEG_TYPE] == TYPE_SHORT:
+        slen = segmentLength(seg, segments)
+        if slen < avglen:
+          nextc = findNext(seg, segments)
+          nlen = segmentLength(nextc, segments)
+          if nlen < avglen and not nextc[SEG_CHAP] and nextc[SEG_TYPE] == TYPE_SHORT:
+            if args.debug:
+              print "COMBINING", seg[SEG_POS], nextc[SEG_POS]
+            nextc[SEG_TYPE] = TYPE_PREV
+            
+    epnum = countShorts(segments)
+    if epnum != numshorts:
+      print "ABORTING. WRONG number of shorts:", epnum, numshorts
+      sys.exit(1)
+  
   quickie = 0
   epnum = 0
   for current in segments[:-1]:
@@ -613,6 +635,3 @@ for filename in videos:
       if ctype == TYPE_SHORT or ctype == TYPE_QUICKIE:
         print "# " + title
       print begin
-
-  if epnum != numshorts:
-    print "# WRONG number of shorts:", epnum, numshorts

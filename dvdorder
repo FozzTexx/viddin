@@ -24,6 +24,7 @@ import os
 import re
 import sys
 import math
+import csv
 
 reload(sys)
 sys.setdefaultencoding('utf-8')
@@ -42,6 +43,7 @@ parser.add_argument("--dvdmissing", action="store_true", help="use episode data 
 parser.add_argument("--sequential", action="store_true", help="all files are in dvd order but numbering may have gaps")
 parser.add_argument("--dvdorder", action="store_true", help="keep episodes in DVD order")
 parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
+parser.add_argument("--csv", action="store_true", help="output data as csv")
 parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
 parser.add_argument("--glob", help="pattern for finding videos", default="[0-9]x[0-9][0-9].mkv")
 args = parser.parse_args()
@@ -119,13 +121,22 @@ if args.sequential:
     i = videos.index(row)
     renameVid(dvdorder[i], filename=row)
 else:
-  for row in dvdorder:
-    if args.rename:
-      filename = renameVid(row)
-      if filename:
-        videos.remove(filename)
-    else:
-      for info in row:
-        print info,
-      print
+  if args.csv:
+    csvdata = []
+    for row in dvdorder:
+      info = [row[EPID], "%ix%04.1f" % (row[DVDSEASON], row[DVDEPISODE]), row[ORIGDATE], row[TITLE]]
+      csvdata.append(info)
+
+    a = csv.writer(sys.stdout)
+    a.writerows(csvdata)
+  else:
+    for row in dvdorder:
+      if args.rename:
+        filename = renameVid(row)
+        if filename:
+          videos.remove(filename)
+      else:
+        for info in row:
+          print info,
+        print
       

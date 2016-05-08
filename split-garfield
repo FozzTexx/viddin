@@ -367,6 +367,8 @@ for filename in videos:
     printSegments(segments)
   
   if segments[0][SEG_LEN] < 3:
+    if segments[0][SEG_CHAP] != None:
+      segments[1][SEG_CHAP] = abs(segments[1][SEG_POS])
     del segments[0]
     
   while segments[-1][SEG_LEN] < args.creditlen and \
@@ -394,8 +396,9 @@ for filename in videos:
 
     if clen >= quickies[0] and clen <= quickies[1] and \
           (segment[SEG_POS] > 0 or \
-             ((not prevc or prevc[SEG_TYPE]) and \
-                (segment[SEG_POS] > 0 or prevc[SEG_TYPE] != TYPE_QUICKIE)) or \
+             (not prevc or \
+              (prevc[SEG_TYPE] and segment[SEG_POS] > 0) or \
+              (prevc[SEG_TYPE] and prevc[SEG_TYPE] != TYPE_QUICKIE)) or \
              segment[SEG_SPLEN] > 2):
       quickie = True
       if len(chapters) and prevc and prevc[SEG_TYPE] == TYPE_QUICKIE:
@@ -529,8 +532,8 @@ for filename in videos:
           clen = curc[SEG_LEN]
 
   for segment in segments:
-    if segment[SEG_CHAP] and \
-          segment[SEG_TYPE] != TYPE_SHORT and segment[SEG_TYPE] != TYPE_QUICKIE:
+    if segment[SEG_CHAP] and segment[SEG_TYPE] != TYPE_SHORT and \
+          segment[SEG_TYPE] != TYPE_QUICKIE and segment[SEG_TYPE] != TYPE_TITLE:
       if args.debug:
         print "NOSHORT", segment
       nextc = segments[segments.index(segment)]

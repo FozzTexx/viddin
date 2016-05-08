@@ -227,13 +227,21 @@ def findSegments(episode, filename):
   epnum = 0
   for chap in cmarkers:
     if chap < args.titlelen:
+      skip = True
       if chap > 0.0:
         if args.series:
           episode = episodes[epindex + epnum]
           title = getTitle(episode)
           segments.append(formatTitle(title, episode, video, ext, segnum - 1))
         epnum += 1
-      continue
+      else:
+        ci = cmarkers.index(chap)
+        if ci < len(cmarkers) - 1 and \
+              abs(args.titlelen - cmarkers[ci+1]) > args.bumpermax + 10:
+          chap = bestMatch(args.titlelen, bmarkers, silence)
+          skip = False
+      if skip:
+        continue
 
     if chap >= totallen - args.creditlen:
       continue

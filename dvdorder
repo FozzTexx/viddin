@@ -59,6 +59,8 @@ def formatEpisodeID(season, epnum):
     if row[DVDSEASON] == season:
       num += 1
   digits = int(math.floor(math.log(num, 10)) + 1)
+  if digits < 2:
+    digits = 2
   epid = "%%ix%%0%ii" % digits
   return epid % (season, epnum)
 
@@ -83,6 +85,10 @@ def renameVid(episode, filename=None):
   if filename:
     video, ext = os.path.splitext(filename)
     title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", episode[TITLE]))
+    if args.dvdorder:
+      part = int((episode[DVDEPISODE] * 10) % 10)
+      if part and title.endswith(" (" + str(part) + ")"):
+        title = title[:-4]
     eptitle = "%s %s%s" % (epid, title, ext)
     if filename != eptitle:
       if os.path.isfile(eptitle):
@@ -101,6 +107,8 @@ for season in show:
       epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]
     elif episode['dvd_season'] and episode['dvd_episodenumber']:
       epinfo = [epid, int(episode['dvd_season']), float(episode['dvd_episodenumber'])]
+    elif episode['dvd_episodenumber']:
+      epinfo = [epid, int(episode['seasonnumber']), float(episode['dvd_episodenumber'])]
     else:
       if args.dvdmissing:
         epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]

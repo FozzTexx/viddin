@@ -36,6 +36,7 @@ parser.add_argument("series", help="Name of series on thetvdb.com")
 parser.add_argument("offsets", nargs="+", help="Trim amount from each short. Negative numbers are offset from end. Pattern repeats through files.")
 parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
 parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
+parser.add_argument("--transcode", action="store_true", help="Transcode instead of cut")
 parser.add_argument("--first", default=1, help="Start enumeration at this number")
 parser.add_argument("--minsize", help="Ignore videos smaller than this")
 parser.add_argument("--iframes", action="store_true", help="Split at nearest iframe")
@@ -86,12 +87,13 @@ def bestMatch(offset, filename):
       end = float(info[2])
       seconds = begin + (end - begin) / 2
       diff = abs(seconds - best[1])
-      if ((begin >= best[2] and begin <= best[3]) or (end >= best[2] and end <= best[3])) \
+      if ((begin >= best[2] and begin <= best[3]) or (end >= best[2] and end <= best[3]) or \
+            (best[2] >= begin and best[2] <= end) or (best[3] >= begin and best[3] <= end)) \
             and (not bestsil or diff < bestsil[0]):
         bestsil = [diff, seconds, begin, end]
 
   if bestsil:
-    print "Silence: ", bestsil, best
+    print "Silence: ", bestsil[2], bestsil[3], best[2], best[3]
     begin = bestsil[2]
     if begin < best[2]:
       begin = best[2]
@@ -123,10 +125,11 @@ for season in show:
     if episode['dvd_season'] and episode['dvd_episodenumber']:
       series.append([epid, int(episode['dvd_season']), float(episode['dvd_episodenumber']), episode['episodename'], episode['firstaired']])
     else:
-      print "No DVD info for"
-      print episode
       if args.dvdmissing:
         series.append([epid, int(episode['seasonnumber']), float(episode['episodenumber']), episode['episodename'], episode['firstaired']])
+      else:
+        print "No DVD info for"
+        print episode
 dvdorder = sorted(series, key=itemgetter(1, 2))
 
 def findEpisode(epid):
@@ -164,6 +167,7 @@ for i in xrange(0, len(videos)):
     if size < minsize:
       continue
 
+  print filename
   video, ext = os.path.splitext(filename)
   epid = video
   if args.enumerate:
@@ -173,17 +177,18 @@ for i in xrange(0, len(videos)):
 
   olen = int(args.offsets[oindex])
   if olen:
-
     findBlack(filename)
     findSilence(filename)
     split = bestMatch(olen, filename)
     offset = "+"
     if olen < 0:
-      offset = "-"
+      offset = "0-"
     offset += str(split)
     cmd = "split-video"
     if args.iframes:
       cmd += " --iframes"
+    if args.transcode:
+      cmd += " --transcode"
     cmd += " \"%s\" %s" % (filename, offset)
     os.system(cmd)
     filename = video + "_1" + ext

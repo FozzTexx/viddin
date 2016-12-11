@@ -95,9 +95,9 @@ def splitVideo(range, filename, output=None):
 
   if os.path.exists(output):
     os.remove(output)
-  if args.transcode:
+  if args.transcode and range[0] > 0.0:
     # FIXME - match codec of source
-    cmd = "ffmpeg -i %s -ss %f -to %f -acodec copy \"%s\" > /dev/null 2>&1" % \
+    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -acodec copy \"%s\" > /dev/null 2>&1" % \
         (filename, range[0], range[1], output)
     print cmd
     os.system(cmd)
@@ -108,20 +108,24 @@ def splitVideo(range, filename, output=None):
       start = findNearest(range[0], True)
       end = findNearest(range[1], False)
 
-    temp = "split-%i%s" % (os.getpgid(0), ext)
-    if os.path.exists(temp):
-      os.remove(temp)
-    cmd = "mkvmerge --split parts:%s-%s -o %s \"%s\" > /dev/null" % \
-        (datetime.timedelta(seconds = start), datetime.timedelta(seconds = range[1]),
-         temp, filename)
-    print cmd
-    os.system(cmd)
+    if start > 0.0:
+      temp = "split-%i%s" % (os.getpgid(0), ext)
+      if os.path.exists(temp):
+        os.remove(temp)
+      cmd = "mkvmerge --split parts:%s-%s -o %s \"%s\" > /dev/null" % \
+          (datetime.timedelta(seconds = start), datetime.timedelta(seconds = range[1]),
+           temp, filename)
+      print cmd
+      os.system(cmd)
+    else:
+      temp = filename
 
     len = range[1] - start
-    cmd = "ffmpeg -i %s -t %f -codec copy \"%s\" > /dev/null 2>&1" % (temp, len, output)
+    cmd = "ffmpeg -i \"%s\" -t %f -codec copy \"%s\" > /dev/null 2>&1" % (temp, len, output)
     print cmd
     os.system(cmd)
-    os.remove(temp)
+    if temp != filename:
+      os.remove(temp)
   return output
 
 append = ""

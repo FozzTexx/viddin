@@ -15,7 +15,37 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-PAL=$1
-NTSC="${PAL%.*}"-NTSC.mkv
+while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+    case "$1" in
+	--normalize)
+	    NORMALIZE=1
+	    shift
+	    ;;
+	--volume)
+	    ADJFLAGS="--volume $2"
+	    shift 2
+	    ;;
+	*)
+	    unknown flag "$1"
+	    exit 1
+	    ;;
+    esac
+done
 
-ffmpeg -y -i "${PAL}" -vcodec libx264 -preset veryfast -x264opts crf=20:videoformat=undef:force-cfr -acodec ac3 -ab 448k -filter:v setpts='25025/24000*(PTS-STARTPTS)' -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 -f matroska -r 24000/1001 "${NTSC}"
+SOURCE=$1
+ATEMP="${SOURCE%.*}"-$$.ac3
+AINPUT="${ATEMP}"
+VTEMP="${SOURCE%.*}"-$$.mkv
+OUTPUT="${SOURCE%.*}"-NTSC.mkv
+
+mkvmerge -o "${VTEMP}" --default-duration 0:24000/1001fps -d 0 "${SOURCE}"
+ffmpeg -y -i "${SOURCE}" -vn -acodec ac3 -ab 448k -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 "${ATEMP}"
+
+if [ -n "${NORMALIZE}" ] ; then
+    adjust-volume ${ADJFLAGS} "${ATEMP}"
+    AINPUT="${ATEMP%.*}"-adj.ac3
+fi
+
+mkvmerge -o "${OUTPUT}" -A "${VTEMP}" "${AINPUT}"
+
+rm -rf "${ATEMP}" "${VTEMP}" "${AINPUT}"

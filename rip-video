@@ -15,7 +15,7 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-FLAGS="--loose-anamorphic -m"
+FLAGS="--loose-anamorphic --markers"
 EXT=mkv
 
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
@@ -74,7 +74,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    shift
 	    ;;
 	--tv)
-	    FLAGS="${FLAGS} --detelecine --decomb"
+	    FLAGS="${FLAGS} --decomb"
 	    if [ -n "${FR}" ] ; then
 		FR=--vfr
 	    fi
@@ -91,6 +91,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	--subtitles)
 	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
 	    shift
+	    ;;
+	--subtitle)
+	    FLAGS="${FLAGS} --subtitle $2"
+	    shift 2
 	    ;;
 	--lang)
 	    FLAGS="${FLAGS} --native-language $2 --native-dub"
@@ -110,6 +114,28 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    ;;
 	--anim265)
 	    FLAGS="${FLAGS} -e x265 -x weightb=1:bframes=11:bframe-bias=90:rc-lookahead=60:me=dia:max-merge=5:rect:ctu=64:b-adapt=2:tu-inter-depth=4:tu-intra-depth=4:ipratio=0.8"
+	    shift
+	    ;;
+	--audio)
+	    FLAGS="${FLAGS} --aencoder $2"
+	    shift 2
+	    ;;
+	--mixdown|--downmix)
+	    FLAGS="${FLAGS} --mixdown $2"
+	    shift 2
+	    ;;
+	--width)
+	    FLAGS="${FLAGS} -w $2"
+	    shift 2
+	    ;;
+	--bluray | --blu-ray)
+	    FLAGS="${FLAGS} -e x265 --aencoder ac3 --mixdown 5point1"
+	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
+	    shift
+	    ;;
+	--movie)
+	    FLAGS="${FLAGS} -r 23.976 --x264-tune film --detelecine --decomb"
+	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
 	    shift
 	    ;;
 	*)

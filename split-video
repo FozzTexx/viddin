@@ -20,6 +20,7 @@ import os
 import datetime
 import re
 import math
+import sys
 
 parser = argparse.ArgumentParser()
 parser.add_argument("filename", help="Video to split")
@@ -28,6 +29,7 @@ parser.add_argument("--transcode", action="store_true", help="transcode video fo
 parser.add_argument("--iframes", action="store_true", help="compare split positions to iframes from video")
 parser.add_argument("--output", help="name to use when creating splits")
 parser.add_argument("--outtype", help="force split to be this type")
+parser.add_argument("--quality", help="use this quality level when transcoding. Higher numbers are worse quality, default is 20")
 args = parser.parse_args()
 
 def findIframes(filename, output):
@@ -36,6 +38,7 @@ def findIframes(filename, output):
     os.system("find-iframes \"%s\" \"%s\" > /dev/null 2>&1" % (filename, output))
 
 def findNearest(pos, before):
+  prev = 0
   for frame in iframes:
     if pos < frame:
       if before:
@@ -45,13 +48,16 @@ def findNearest(pos, before):
     prev = frame
     
 def decodeTimecode(tc):
-  if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", tc):
-    seconds = float(tc)
-  else:
-    seconds = sum(int(x) * 60 ** i for i,x in enumerate(reversed(tc.split(":"))))
+  fraction = 0
+  if re.match(".*\.[0-9]+$", tc):
+    parts = re.split("\.", tc)
+    fraction = float("."+parts[1])
+    tc = parts[0]
+
+  seconds = sum(int(x) * 60 ** i for i,x in enumerate(reversed(tc.split(":"))))
+  seconds += fraction
   return seconds
 
-# FIXME - check if range is actually a file
 segments = []
 if len(args.ranges) == 1 and os.path.isfile(args.ranges[0]):
   ranges = []
@@ -78,8 +84,13 @@ for offset in args.ranges:
         or re.match("^[0-9]+(:[0-9]+)+(\.[0-9]+)?-[0-9]+(:[0-9]+)+(\.[0-9]+)?$", offset):
     times = offset.split("-")
     segments.append([decodeTimecode(times[0]), decodeTimecode(times[1])])
+  elif re.match("^[0-9]+(.[0-9]+)?-$", offset) \
+        or re.match("^[0-9]+(:[0-9]+)+(\.[0-9]+)?-?$", offset):
+    times = offset.split("-")
+    segments.append([decodeTimecode(times[0]), None])
   else:
     print "Unrecognized timecode " + offset
+    sys.exit(1)
 
 def splitVideo(range, filename, output=None):
   video, ext = os.path.splitext(filename)
@@ -96,9 +107,11 @@ def splitVideo(range, filename, output=None):
   if os.path.exists(output):
     os.remove(output)
   if args.transcode and range[0] > 0.0:
-    # FIXME - match codec of source
-    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -acodec copy \"%s\" > /dev/null 2>&1" % \
-        (filename, range[0], range[1], output)
+    # FIXME - match codec of source?
+    quality = ""
+    if args.quality:
+      quality = "-crf %s" % (args.quality)
+    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -acodec copy -vcodec libx264 %s \"%s\" > /dev/null 2>&1" % (filename, range[0], range[1], quality, output)
     print cmd
     os.system(cmd)
   else:
@@ -159,7 +172,9 @@ if not outtype:
   outtype = ext
 if outtype[0] != '.':
   outtype = "." + outtype
-  
+if outtype == ".avi":
+  outtype = ".mkv"
+
 for range in segments:
   output = ovid + append + outtype
   if len(append):

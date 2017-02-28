@@ -73,14 +73,15 @@ parser.add_argument("--quiet", action="store_true", help="don't print errors abo
 parser.add_argument("--split", action="store_true", help="Split and rename instead of printing")
 parser.add_argument("--notranscode", action="store_true", help="Split video without transcoding")
 parser.add_argument("--chaptersonly", action="store_true", help="Only look for shorts at chapter markers")
+parser.add_argument("--keepcredits", action="store_true", help="When splitting create files for opening titles and end credits")
 parser.add_argument("--debug", action="store_true", help="Turn on debug output")
 args = parser.parse_args()
 
 def findBlack(filename):
   video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.split" % video):
+  if not os.path.exists("%s.blk" % video):
     print "Finding black"
-    os.system("find-black --duration 0.1 %s %s.split > /dev/null" % (filename, video))
+    os.system("find-black --duration 0.1 %s %s.blk > /dev/null" % (filename, video))
 
 def findSilence(filename):
   video, ext = os.path.splitext(filename)
@@ -126,7 +127,7 @@ def segmentRow(position, length, segType=None, segBlack=None, segSilence=None, s
 def loadSplits(filename):
   video, ext = os.path.splitext(filename)
   splits = [segmentRow(0.0, None)]
-  with open(video + ".split") as f:
+  with open(video + ".blk") as f:
     for line in f:
       info = line.split()
       begin = float(info[1])
@@ -299,7 +300,10 @@ if os.path.isfile(args.series):
     reader = csv.reader(f)
     for row in reader:
       epnum = re.split(" *x *", row[CSV_EPISODE])
-      dvdnum = re.split(" *x *", row[CSV_DVDEP])
+      dvdep = row[CSV_DVDEP]
+      if not re.match(".*x.*", dvdep):
+        dvdep = row[CSV_EPISODE] + "." + dvdep
+      dvdnum = re.split(" *x *", dvdep)
       epid = epnum[0] + "x" + epnum[1].zfill(2)
       info = [epid, int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]), \
                 row[CSV_TITLE], row[CSV_ORIGDATE]]
@@ -467,8 +471,9 @@ for filename in videos:
           nextc[SEG_TYPE] = TYPE_SHORT
         elif seg[SEG_TYPE] == TYPE_QUICKIE:
           nextc = findNext(seg, segments)
-          nextc[SEG_TYPE] = TYPE_SHORT
-        else:
+          if nextc:
+            nextc[SEG_TYPE] = TYPE_SHORT
+        elif seg[SEG_TYPE] != TYPE_CREDITS:
           seg[SEG_TYPE] = TYPE_SHORT
       
   if args.debug:
@@ -536,7 +541,8 @@ for filename in videos:
 
   for segment in segments:
     if segment[SEG_CHAP] and segment[SEG_TYPE] != TYPE_SHORT and \
-          segment[SEG_TYPE] != TYPE_QUICKIE and segment[SEG_TYPE] != TYPE_TITLE:
+          segment[SEG_TYPE] != TYPE_QUICKIE and segment[SEG_TYPE] != TYPE_TITLE \
+          and segment[SEG_TYPE] != TYPE_CREDITS:
       if args.debug:
         print "NOSHORT", segment
       nextc = segments[segments.index(segment)]
@@ -667,7 +673,6 @@ for filename in videos:
     if ctype == TYPE_QUICKIE:
       quickie += 1
       title = "Quickie %i" % quickie
-      ep = episodes[epindex + epnum]
       eptitle = "%s.%i %s%s" % (video, quickie + epnum, title, ext)
       alttitle = None
     elif ctype == TYPE_SHORT:
@@ -676,6 +681,14 @@ for filename in videos:
       eptitle = "%s.%i %s%s" % (video, quickie + epnum + 1, title, ext)
       alttitle = "%s %s%s" % (ep[EP_ID], title, ext)
       epnum += 1
+    elif ctype == TYPE_TITLE:
+      title = "Opening"
+      eptitle = "%s.0 %s%s" % (video, title, ext)
+      alttitle = None
+    elif ctype == TYPE_CREDITS:
+      title = "Credits"
+      eptitle = "%s.%i %s%s" % (video, quickie + epnum + 1, title, ext)
+      alttitle = None
 
     begin = abs(current[SEG_POS])
     end = begin + segmentLength(current, segments)
@@ -683,7 +696,8 @@ for filename in videos:
       begin = current[SEG_CHAP]
     
     if args.split:
-      if ctype == TYPE_QUICKIE or ctype == TYPE_SHORT:
+      if ctype == TYPE_QUICKIE or ctype == TYPE_SHORT or \
+            (args.keepcredits and (ctype == TYPE_TITLE or ctype == TYPE_CREDITS)):
         temp = video + "_tmp" + ext
         cmd = "split-video %s --output \"%s\" \"%s\" %f-%f" % (transcode, temp, filename, begin, end)
         print cmd

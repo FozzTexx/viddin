@@ -66,6 +66,13 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    fi
 	    shift
 	    ;;
+	--mangled-pal)
+	    FLAGS="${FLAGS} --x264-tune animation --decomb bob"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
+	    shift
+	    ;;
 	--film)
 	    FLAGS="${FLAGS} -r 23.976 --x264-tune film --detelecine --decomb"
 	    if [ -n "${FR}" ] ; then
@@ -126,6 +133,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    ;;
 	--width)
 	    FLAGS="${FLAGS} -w $2"
+	    shift 2
+	    ;;
+	--pixel-aspect)
+	    FLAGS="${FLAGS} --pixel-aspect $2"
 	    shift 2
 	    ;;
 	--bluray | --blu-ray)

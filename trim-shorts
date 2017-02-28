@@ -35,6 +35,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("series", help="Name of series on thetvdb.com")
 parser.add_argument("offsets", nargs="+", help="Trim amount from each short. Negative numbers are offset from end. Pattern repeats through files.")
 parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+parser.add_argument("--dvdignore", action="store_true", help="ignore dvd episode data")
 parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
 parser.add_argument("--transcode", action="store_true", help="Transcode instead of cut")
 parser.add_argument("--first", default=1, help="Start enumeration at this number")
@@ -48,15 +49,15 @@ show = t[args.series]
 
 def findBlack(filename):
   video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.split" % video):
+  if not os.path.exists("%s.blk" % video):
     print "Finding black"
-    os.system("find-black --duration 0.1 %s %s.split > /dev/null" % (filename, video))
+    os.system("find-black --duration 0.05 %s %s.blk > /dev/null" % (filename, video))
 
 def findSilence(filename):
   video, ext = os.path.splitext(filename)
   if not os.path.exists("%s.sil" % video):
     print "Finding silence"
-    os.system("find-silence --duration 0.1 %s %s.sil > /dev/null" % (filename, video))
+    os.system("find-silence --duration 0.05 --threshold 40 %s %s.sil > /dev/null" % (filename, video))
 
 def bestMatch(offset, filename):
   video, ext = os.path.splitext(filename)
@@ -69,7 +70,7 @@ def bestMatch(offset, filename):
     offset = len + offset
     
   best = None
-  with open(video + ".split") as f:
+  with open(video + ".blk") as f:
     for line in f:
       info = line.split()
       begin = float(info[1])
@@ -122,10 +123,10 @@ for season in show:
   for epnum in show[season]:
     episode = show[season][epnum]
     epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
-    if episode['dvd_season'] and episode['dvd_episodenumber']:
+    if not args.dvdignore and episode['dvd_season'] and episode['dvd_episodenumber']:
       series.append([epid, int(episode['dvd_season']), float(episode['dvd_episodenumber']), episode['episodename'], episode['firstaired']])
     else:
-      if args.dvdmissing:
+      if args.dvdmissing or args.dvdignore:
         series.append([epid, int(episode['seasonnumber']), float(episode['episodenumber']), episode['episodename'], episode['firstaired']])
       else:
         print "No DVD info for"

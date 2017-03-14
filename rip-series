@@ -57,7 +57,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    EPISODE="$2"
 	    shift 2
 	    ;;
-	--animation|--film|--decomb|--pal-animation|--mangled-pal|--subtitles|--detelecine|--tv)
+	--animation|--film|--decomb|--pal-animation|--lap-animation|--mangled-pal|--subtitles|--detelecine|--tv|--restore-ntsc)
 	    FLAGS="${FLAGS} $1"
 	    shift
 	    ;;

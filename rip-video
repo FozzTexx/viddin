@@ -66,8 +66,16 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    fi
 	    shift
 	    ;;
+	# Similar to pal-animation, but bottom field first
+	--lap-animation)
+	    FLAGS="${FLAGS} --x264-tune animation --deinterlace=mode=1:parity=1"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
+	    shift
+	    ;;
 	--mangled-pal)
-	    FLAGS="${FLAGS} --x264-tune animation --decomb bob"
+	    FLAGS="${FLAGS} --x264-tune animation --decomb=bob"
 	    if [ -n "${FR}" ] ; then
 		FR=--vfr
 	    fi
@@ -149,6 +157,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
 	    shift
 	    ;;
+	--restore-ntsc)
+	    RESTORENTSC=1
+	    shift
+	    ;;
 	*)
 	    echo unknown flag "$1"
 	    exit 1
@@ -183,3 +195,10 @@ if [ -z "${DEST}" ] ; then
 fi
 
 HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}" 2>/dev/null
+
+if [ -n "${RESTORENTSC}" ] ; then
+    restore-ntsc "${DEST}"
+    OUTPUT="${DEST%.*}"-NTSC.mkv
+    echo "${OUTPUT}"
+    mv "${OUTPUT}" "${DEST}"
+fi

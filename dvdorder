@@ -83,8 +83,10 @@ def findEpisode(epid):
     return dvdorder[epid]
 
   dvdnum = re.split(" *x *", epid)
+  dvdseason = int(re.sub("[^0-9]*", "", dvdnum[0]));
+  dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
   for row in dvdorder:
-    if int(dvdnum[0]) == row[DVDSEASON] and int(dvdnum[1]) == row[DVDEPISODE]:
+    if dvdseason == row[DVDSEASON] and dvdepisode == row[DVDEPISODE]:
       return row
   return None
 
@@ -209,7 +211,8 @@ elif args.rename:
     if args.enumerate:
       epid = epnum + first - 1
     episode = findEpisode(epid)
-    filename = renameVid(episode, filename=filename)
+    if episode:
+      filename = renameVid(episode, filename=filename)
     epnum += 1
 else:
   for row in dvdorder:

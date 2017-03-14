@@ -46,7 +46,7 @@ if [ "${INRATE}" = 50.000 ] ; then
 fi
 
 mkvmerge -o "${VTEMP}" --default-duration 0:${OUTRATE}fps -d 0 "${SOURCE}"
-ffmpeg -y -i "${SOURCE}" -vn -acodec ac3 -ab 448k -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 "${ATEMP}"
+ffmpeg -loglevel quiet -y -i "${SOURCE}" -vn -acodec ac3 -ab 448k -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 "${ATEMP}"
 
 if [ -n "${NORMALIZE}" ] ; then
     adjust-volume ${ADJFLAGS} "${ATEMP}"

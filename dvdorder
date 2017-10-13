@@ -86,7 +86,7 @@ def findEpisode(epid):
   dvdseason = int(re.sub("[^0-9]*", "", dvdnum[0]));
   dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
   for row in dvdorder:
-    if dvdseason == row[DVDSEASON] and dvdepisode == row[DVDEPISODE]:
+    if dvdseason == row[DVDSEASON] and dvdepisode == int(row[DVDEPISODE]):
       return row
   return None
 

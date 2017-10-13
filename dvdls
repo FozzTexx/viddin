@@ -1,0 +1,14 @@
+#!/bin/sh
+DVD=/dev/dvd
+if [ -n "$1" ] ; then
+    DVD="$1"
+fi
+
+while true ; do
+    BLKID=$(blkid "$DVD")
+    if [ -n "$BLKID" ] ; then
+       break
+    fi
+done
+
+lsdvd "$DVD" | grep Title | grep -v 0:00:0 | sed -e 's/ 00:/    /g'

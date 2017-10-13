@@ -75,7 +75,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    shift
 	    ;;
 	--mangled-pal)
-	    FLAGS="${FLAGS} --x264-tune animation --decomb=bob"
+	    FLAGS="${FLAGS} --x264-tune animation --deinterlace=mode=1"
 	    if [ -n "${FR}" ] ; then
 		FR=--vfr
 	    fi
@@ -95,6 +95,13 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    fi
 	    shift
 	    ;;
+	--tv-bob)
+	    FLAGS="${FLAGS} --decomb=bob"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
+	    shift
+	    ;;
 	--decomb)
 	    FLAGS="${FLAGS} --decomb"
 	    shift
@@ -102,6 +109,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	--detelecine)
 	    FLAGS="${FLAGS} --detelecine"
 	    shift
+	    ;;
+	--rate)
+	    FLAGS="${FLAGS} -r $2"
+	    shift 2
 	    ;;
 	--subtitles)
 	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
@@ -113,6 +124,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    ;;
 	--lang)
 	    FLAGS="${FLAGS} --native-language $2 --native-dub"
+	    shift 2
+	    ;;
+	--audio-lang)
+	    FLAGS="${FLAGS} --audio-lang-list $2"
 	    shift 2
 	    ;;
 	--yprv)
@@ -194,7 +209,8 @@ if [ -z "${DEST}" ] ; then
     DEST="${DEST}${COUNTER}.${EXT}"
 fi
 
-HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}" 2>/dev/null
+LOG="${DEST%.*}.log"
+HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}" 2>${LOG}
 
 if [ -n "${RESTORENTSC}" ] ; then
     restore-ntsc "${DEST}"

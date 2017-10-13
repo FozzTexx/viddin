@@ -57,7 +57,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    EPISODE="$2"
 	    shift 2
 	    ;;
-	--animation|--film|--decomb|--pal-animation|--lap-animation|--mangled-pal|--subtitles|--detelecine|--tv|--restore-ntsc)
+	--animation|--film|--decomb|--pal-animation|--lap-animation|--mangled-pal|--subtitles|--detelecine|--tv|--tv-bob|--restore-ntsc)
 	    FLAGS="${FLAGS} $1"
 	    shift
 	    ;;
@@ -127,5 +127,10 @@ for i in ${TITLES} ; do
 done
 
 if [ -z "${DVD}" ] ; then
-    eject
+    DVD=/dev/dvd
+fi
+DVD=$(readlink -f "${DVD}")
+DIR=$(echo "${DVD}" | cut -d "/" -f2)
+if [ "${DIR}" = dev ] ; then
+    eject ${DVD}
 fi

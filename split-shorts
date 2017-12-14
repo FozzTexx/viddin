@@ -39,6 +39,7 @@ CSV_EPISODE = 0
 CSV_DVDEP = 1
 CSV_ORIGDATE = 2
 CSV_TITLE = 3
+CSV_SERIES = 4
 
 ftr = [3600,60,1]
 
@@ -68,8 +69,8 @@ if args.series:
     try:
       reader = csv.reader(f)
       for row in reader:
-        epnum = re.split(" +x +", row[CSV_EPISODE])
-        dvdnum = re.split(" +x +", row[CSV_DVDEP])
+        epnum = re.split(" *x *", row[CSV_EPISODE])
+        dvdnum = re.split(" *x *", row[CSV_DVDEP])
         epid = epnum[0] + "x" + epnum[1].zfill(2)
         info = [epid, int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]), \
                   row[CSV_TITLE], row[CSV_ORIGDATE]]

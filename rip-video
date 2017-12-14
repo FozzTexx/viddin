@@ -89,7 +89,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    shift
 	    ;;
 	--tv)
-	    FLAGS="${FLAGS} --decomb"
+	    # Similar to film but don't force 23.976fps. Some TV shows combine both
+	    # film and video frame rates.
+	    FLAGS="${FLAGS} --decomb --detelecine"
+	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
 	    if [ -n "${FR}" ] ; then
 		FR=--vfr
 	    fi
@@ -97,6 +100,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    ;;
 	--tv-bob)
 	    FLAGS="${FLAGS} --decomb=bob"
+	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
 	    if [ -n "${FR}" ] ; then
 		FR=--vfr
 	    fi
@@ -207,6 +211,11 @@ if [ -z "${DEST}" ] ; then
 	COUNTER=`expr ${COUNTER} + 1`
     done
     DEST="${DEST}${COUNTER}.${EXT}"
+fi
+
+if [ -d "${DEST}" ] ; then
+    BASE=$(basename "${SOURCE}")
+    DEST="${DEST%/}/${BASE}"
 fi
 
 LOG="${DEST%.*}.log"

@@ -11,4 +11,4 @@ while true ; do
     fi
 done
 
-lsdvd "$DVD" | grep Title | grep -v 0:00:0 | sed -e 's/ 00:/    /g'
+lsdvd "$DVD" | grep Title | grep -v 0:00: | sed -e 's/ 00:/    /g'

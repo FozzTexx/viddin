@@ -49,6 +49,7 @@ CSV_EPISODE = 0
 CSV_DVDEP = 1
 CSV_ORIGDATE = 2
 CSV_TITLE = 3
+CSV_SERIES = 4
 
 MARGIN = 5
 
@@ -74,6 +75,7 @@ parser.add_argument("--split", action="store_true", help="Split and rename inste
 parser.add_argument("--notranscode", action="store_true", help="Split video without transcoding")
 parser.add_argument("--chaptersonly", action="store_true", help="Only look for shorts at chapter markers")
 parser.add_argument("--keepcredits", action="store_true", help="When splitting create files for opening titles and end credits")
+parser.add_argument("--endonly", action="store_true", help="Quickies only occur at the end of chapter")
 parser.add_argument("--debug", action="store_true", help="Turn on debug output")
 args = parser.parse_args()
 
@@ -392,6 +394,7 @@ for filename in videos:
   endpos = len(segments) - 1
   while pos < endpos:
     segment = segments[pos]
+    quickie = False
     prevc = None
     if pos:
       prevc = segments[pos - 1]
@@ -414,38 +417,46 @@ for filename in videos:
           quickie = False
           if args.debug:
             print "FAR"
-      if quickie:
+      if quickie and (not chaponly or not segment[SEG_CHAP]) \
+            and (not args.endonly or nextc[SEG_CHAP]):
         segment[SEG_TYPE] = TYPE_QUICKIE
         if args.debug:
           print "QUICKIE", segment
         if prevc and prevc[SEG_TYPE] == TYPE_QUICKIE:
           chap = nearestChapter(abs(prevc[SEG_POS]))
-          if chap and abs(chap - prevc[SEG_POS]) < abs(chap - segment[SEG_POS]):
+          if chap and (segment[SEG_CHAP] or
+                       abs(chap - prevc[SEG_POS]) < abs(chap - segment[SEG_POS])):
             segment[SEG_TYPE] = None
+            quickie = False
           else:
             prevc[SEG_TYPE] = None
-    elif abs(clen - args.titlelen) < MARGIN and not didtitle and pos < 3:
-      segment[SEG_TYPE] = TYPE_TITLE
-      didtitle = True
-    elif clen < quickies[0] and segment[SEG_POS] > 0 and \
-          (nextc[SEG_POS] < 0 or nextc[SEG_SPLEN] < 0.5) and \
-          clen + nextc[SEG_LEN] >= quickies[0] and clen + nextc[SEG_LEN] <= quickies[1] and \
-          qpercent > 50 and (not prevc or prevc[SEG_TYPE] != TYPE_QUICKIE):
-      if args.debug:
-        print "JOIN", qpercent, clen, segment, nextc
-      segment[SEG_TYPE] = TYPE_QUICKIE
-      nextc[SEG_TYPE] = TYPE_PREV
-      clen += nextc[SEG_LEN]
-      pos += 1
-      nextc = segments[pos]
-      while clen >= quickies[0] and nextc[SEG_SPLEN] < 0.6 and \
-            clen + nextc[SEG_LEN] < quickies[1] and nextc[SEG_POS] < 0:
+      else:
+        quickie = False
+
+    if not quickie:
+      if abs(clen - args.titlelen) < MARGIN and not didtitle and pos < 3:
+        segment[SEG_TYPE] = TYPE_TITLE
+        didtitle = True
+      elif clen < quickies[0] and segment[SEG_POS] > 0 and \
+            (nextc[SEG_POS] < 0 or nextc[SEG_SPLEN] < 0.5) and \
+            clen + nextc[SEG_LEN] >= quickies[0] and clen + nextc[SEG_LEN] <= quickies[1] and \
+            qpercent > 50 and (not prevc or prevc[SEG_TYPE] != TYPE_QUICKIE):
         if args.debug:
-          print "DOUBLE JOIN", qpercent, clen, segment, nextc
+          print "JOIN", qpercent, clen, segment, nextc
+        segment[SEG_TYPE] = TYPE_QUICKIE
         nextc[SEG_TYPE] = TYPE_PREV
         clen += nextc[SEG_LEN]
         pos += 1
         nextc = segments[pos]
+        while clen >= quickies[0] and nextc[SEG_SPLEN] < 0.6 and \
+              clen + nextc[SEG_LEN] < quickies[1] and nextc[SEG_POS] < 0:
+          if args.debug:
+            print "DOUBLE JOIN", qpercent, clen, segment, nextc
+          nextc[SEG_TYPE] = TYPE_PREV
+          clen += nextc[SEG_LEN]
+          pos += 1
+          nextc = segments[pos]
+
     pos += 1
 
   if not didtitle and segments[0][SEG_LEN] < (args.titlelen + MARGIN) and \
@@ -456,6 +467,8 @@ for filename in videos:
     tpos = 1
     while tlen < args.titlelen and \
           abs(args.titlelen - (tlen + segments[tpos][SEG_LEN])) > MARGIN:
+      if args.debug:
+        print "TITLE JOIN", tlen, args.titlelen
       segments[tpos][SEG_TYPE] = TYPE_PREV
       tlen += segments[tpos][SEG_LEN]
       tpos += 1

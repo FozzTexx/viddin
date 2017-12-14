@@ -82,27 +82,48 @@ def findEpisode(epid):
   if type(epid) is int:
     return dvdorder[epid]
 
+  episode = None
+  epcount = 0
   dvdnum = re.split(" *x *", epid)
   dvdseason = int(re.sub("[^0-9]*", "", dvdnum[0]));
   dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
   for row in dvdorder:
     if dvdseason == row[DVDSEASON] and dvdepisode == int(row[DVDEPISODE]):
-      return row
-  return None
+      if not episode:
+        episode = []
+      episode.append(row)
+      epcount += 1
+  if epcount == 1:
+    episode = episode[0]
+  return episode
 
 # FIXME - make finding the file as smart as tvrenamer.pl
 def renameVid(episode, filename=None):
-  epid = episode[EPID]
+  epinfo = episode
+  if isinstance(episode[0], list):
+    epinfo = episode[0]
+    
+  epid = epinfo[EPID]
   if args.dvdorder:
-    epid = formatEpisodeID(episode[DVDSEASON], int(episode[DVDEPISODE]))
+    epid = formatEpisodeID(epinfo[DVDSEASON], int(epinfo[DVDEPISODE]))
   if not filename:
     filename = findVideo(episode)
 
   if filename:
     video, ext = os.path.splitext(filename)
-    title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", episode[TITLE]))
+
+    if epinfo == episode:
+      title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", epinfo[TITLE]))
+    else:
+      title = ""
+      for ep in episode:
+        if len(title):
+          title += " / "
+        title += ep[TITLE]
+    title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", title))
+    
     if args.dvdorder:
-      part = int((episode[DVDEPISODE] * 10) % 10)
+      part = int((epinfo[DVDEPISODE] * 10) % 10)
       if part and title.endswith(" (" + str(part) + ")"):
         title = title[:-4]
     eptitle = "%s %s%s" % (epid, title, ext)

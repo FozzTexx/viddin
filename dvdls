@@ -4,6 +4,11 @@ if [ -n "$1" ] ; then
     DVD="$1"
 fi
 
+if [ ! -e "$DVD" ] ; then
+    echo "$DVD" not found
+    exit 1
+fi
+
 while true ; do
     BLKID=$(blkid "$DVD")
     if [ -n "$BLKID" ] ; then

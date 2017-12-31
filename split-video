@@ -42,6 +42,7 @@ def findIframes(filename, output):
 
 def findNearest(pos, before):
   prev = 0
+  print pos, before
   for frame in iframes:
     if pos < frame:
       if before:
@@ -134,7 +135,9 @@ def splitVideo(range, filename, output=None, trim=None):
   else:
     if args.iframes:
       start = findNearest(start, True)
-      end = findNearest(end, False)
+      iend = findNearest(end, False)
+      if iend:
+        end = iend
 
     if start > 0.0:
       temp = "split-%i%s" % (os.getpgid(0), ext)

@@ -25,6 +25,7 @@ import argparse
 import glob
 import math
 import csv
+import mimetypes
 
 EPID = 0
 DVDSEASON = 1
@@ -52,27 +53,28 @@ parser.add_argument("--trimend", help="Frames to remove from end")
 parser.add_argument("--debug", action="store_true", help="Turn on debug output")
 args = parser.parse_args()
 
-
 def findBlack(filename):
   video, ext = os.path.splitext(filename)
   if not os.path.exists("%s.blk" % video):
+    cmd = "find-black --duration 0.01 \"%s\" \"%s.blk\" > /dev/null" % (filename, video)
     if args.debug:
-      print "Finding black"
-    os.system("find-black --duration 0.01 %s %s.blk > /dev/null" % (filename, video))
+      print "Finding black", cmd
+    os.system(cmd)
 
 def findSilence(filename):
   video, ext = os.path.splitext(filename)
   if not os.path.exists("%s.sil" % video):
+    cmd = "find-silence --duration 0.02 --threshold 40 \"%s\" \"%s.sil\" > /dev/null" % (filename, video)
     if args.debug:
-      print "Finding silence"
-    os.system("find-silence --duration 0.02 --threshold 40 %s %s.sil > /dev/null" % (filename, video))
+      print "Finding silence", cmd
+    os.system(cmd)
 
 def bestMatch(offset, filename):
   video, ext = os.path.splitext(filename)
   if args.debug:
-    print "Finding offset"
+    print "Finding offset", offset
   if offset < 0:
-    cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
     process = os.popen(cmd)
     len = float(process.read())
     process.close()
@@ -125,23 +127,44 @@ def episodeTitle(episode):
   eptitle = "%s %s%s" % (episode[EPID], title, ext)
   return eptitle
   
+def findEpisode(epid):
+  if args.debug:
+    print epid
+  if type(epid) is int:
+    return dvdorder[epid]
+  
+  for row in dvdorder:
+    if epid == row[EPID]:
+      return row
+  return None
+
+def isint(s):
+  try:
+    int(s)
+    return True
+  except ValueError:
+    return False
+
 series = []
 # FIXME - if args.series is file then trim just that one file
 if os.path.isfile(args.series):
-  f = open(args.series, 'rU')
-  try:
-    reader = csv.reader(f)
-    for row in reader:
-      epnum = re.split(" *x *", row[CSV_EPISODE])
-      dvdep = row[CSV_DVDEP]
-      if not re.match(".*x.*", dvdep):
-        dvdep = row[CSV_EPISODE] + "." + dvdep
-      dvdnum = re.split(" *x *", dvdep)
-      epid = epnum[0] + "x" + epnum[1].zfill(2)
-      info = [epid, int(dvdnum[0]), float(dvdnum[1]), row[CSV_TITLE], row[CSV_ORIGDATE]]
-      series.append(info)
-  finally:
-    f.close()
+  mime = mimetypes.guess_type(args.series)
+  ftype = mime[0].split('/')[0]
+  if ftype != "video":
+    f = open(args.series, 'rU')
+    try:
+      reader = csv.reader(f)
+      for row in reader:
+        epnum = re.split(" *x *", row[CSV_EPISODE])
+        dvdep = row[CSV_DVDEP]
+        if not re.match(".*x.*", dvdep):
+          dvdep = row[CSV_EPISODE] + "." + dvdep
+        dvdnum = re.split(" *x *", dvdep)
+        epid = epnum[0] + "x" + epnum[1].zfill(2)
+        info = [epid, int(dvdnum[0]), float(dvdnum[1]), row[CSV_TITLE], row[CSV_ORIGDATE]]
+        series.append(info)
+    finally:
+      f.close()
 
 else:
   t = tvdb_api.Tvdb()
@@ -161,26 +184,11 @@ else:
           print episode
 dvdorder = sorted(series, key=itemgetter(1, 2))
 
-def findEpisode(epid):
-  if args.debug:
-    print epid
-  if type(epid) is int:
-    return dvdorder[epid]
-  
-  for row in dvdorder:
-    if epid == row[EPID]:
-      return row
-  return None
-
-def isint(s):
-  try:
-    int(s)
-    return True
-  except ValueError:
-    return False
-
-videos = [file for file in glob.glob("[0-9]x[0-9][0-9].mkv")]
-videos.sort()
+if len(series):
+  videos = [file for file in glob.glob("[0-9]x[0-9][0-9].mkv")]
+  videos.sort()
+else:
+  videos = [args.series]
 
 minsize = 0
 if args.minsize:
@@ -220,7 +228,11 @@ for i in xrange(0, len(videos)):
   if args.debug:
     print episode
 
-  eptitle = episodeTitle(episode)
+  if episode:
+    eptitle = episodeTitle(episode)
+  else:
+    eptitle = video + "_1" + ext
+    
   if not args.skipexisting or not os.path.exists(eptitle):
     olen = int(args.offsets[oindex])
     if olen:

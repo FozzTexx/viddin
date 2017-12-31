@@ -40,6 +40,11 @@ LOGFILE=/tmp/split.$$
 VIDEO="$1"
 SPLITS="$2"
 
+if [ ! -f "${VIDEO}" ] ; then
+    echo "${VIDEO}" not found
+    exit 1
+fi
+
 ffmpeg -i "${VIDEO}" -af silencedetect=n=-${THRESHOLD}dB:d=${DUR} -f null - 2>&1 | tee ${LOGFILE}
 
 tr '\015' '\012' < ${LOGFILE} | egrep 'silence_start:|silence_end:' \

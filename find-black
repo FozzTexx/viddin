@@ -53,6 +53,10 @@ if [ -z "${SPLITS}" ] ; then
     echo Please specify file to write bloack locations into 1>&2
     exit 1
 fi
+if [ ! -f "${VIDEO}" ] ; then
+    echo "${VIDEO}" not found
+    exit 1
+fi
 
 ffmpeg -i "${VIDEO}" -vf blackdetect=d=${DUR}:pic_th=${PIC}:pix_th=${PXL} -an -f null - 2>&1 | tee ${LOGFILE}
 

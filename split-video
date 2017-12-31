@@ -30,11 +30,14 @@ parser.add_argument("--iframes", action="store_true", help="compare split positi
 parser.add_argument("--output", help="name to use when creating splits")
 parser.add_argument("--outtype", help="force split to be this type")
 parser.add_argument("--quality", help="use this quality level when transcoding. Higher numbers are worse quality, default is 20")
+parser.add_argument("--trimend", help="Frames to remove from end")
+parser.add_argument("--debug", action="store_true", help="Turn on debug output")
 args = parser.parse_args()
 
 def findIframes(filename, output):
   if not os.path.exists(output) or os.path.getctime(output) < os.path.getctime(filename):
-    print "Finding I frames " + filename
+    if args.debug:
+      print "Finding I frames " + filename
     os.system("find-iframes \"%s\" \"%s\" > /dev/null 2>&1" % (filename, output))
 
 def findNearest(pos, before):
@@ -92,8 +95,9 @@ for offset in args.ranges:
     print "Unrecognized timecode " + offset
     sys.exit(1)
 
-def splitVideo(range, filename, output=None):
+def splitVideo(range, filename, output=None, trim=None):
   video, ext = os.path.splitext(filename)
+
   if not range[1]:
     cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
     process = os.popen(cmd)
@@ -104,36 +108,47 @@ def splitVideo(range, filename, output=None):
   if not output:
     output = "%sc%s" % (video, ext)
 
+  if trim:
+    cmd = "vidinf \"%s\" | grep ID_VIDEO_FPS | sed -e 's/ID_VIDEO_FPS=//'" % filename
+    process = os.popen(cmd)
+    fps = float(process.read())
+    process.close()
+    trim = float(trim) * 1.0 / fps
+    
   if os.path.exists(output):
     os.remove(output)
-  if args.transcode and range[0] > 0.0:
+
+  start = range[0]
+  end = range[1]
+  if trim:
+    end -= trim
+    
+  if args.transcode and start > 0.0:
     # FIXME - match codec of source?
     quality = ""
     if args.quality:
       quality = "-crf %s" % (args.quality)
-    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -acodec copy -vcodec libx264 %s \"%s\" > /dev/null 2>&1" % (filename, range[0], range[1], quality, output)
+    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -acodec copy -vcodec libx264 %s \"%s\" > /dev/null 2>&1" % (filename, start, end, quality, output)
     print cmd
     os.system(cmd)
   else:
-    start = range[0]
-    end = range[1]
     if args.iframes:
-      start = findNearest(range[0], True)
-      end = findNearest(range[1], False)
+      start = findNearest(start, True)
+      end = findNearest(end, False)
 
     if start > 0.0:
       temp = "split-%i%s" % (os.getpgid(0), ext)
       if os.path.exists(temp):
         os.remove(temp)
       cmd = "mkvmerge --split parts:%s-%s -o %s \"%s\" > /dev/null" % \
-          (datetime.timedelta(seconds = start), datetime.timedelta(seconds = range[1]),
+          (datetime.timedelta(seconds = start), datetime.timedelta(seconds = end),
            temp, filename)
       print cmd
       os.system(cmd)
     else:
       temp = filename
 
-    len = range[1] - start
+    len = end - start
     cmd = "ffmpeg -i \"%s\" -t %f -codec copy \"%s\" > /dev/null 2>&1" % (temp, len, output)
     print cmd
     os.system(cmd)
@@ -179,7 +194,7 @@ for range in segments:
   output = ovid + append + outtype
   if len(append):
     output = output % (segments.index(range) + 1)
-  splitVideo(range, args.filename, output)
+  splitVideo(range, args.filename, output, args.trimend)
   
 # FIXME - if transcoding force keyframes into the right spot, but
 #         re-read because ffmpeg isn't exact and puts them "close"

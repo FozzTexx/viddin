@@ -54,7 +54,7 @@ fi
 mkdir -p "${TDIR}"
 cd "${TDIR}"
 if [ ! -e "${TAPE}.mp4" ] ; then
-   if [ ! -e all.dv ] ; then
+   if [ ! -s all.dv ] ; then
        date
        dvgrab -rewind
        date

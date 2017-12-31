@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+#
+# Copyright 2017 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+import os
+import argparse
+import datetime
+
+parser = argparse.ArgumentParser()
+parser.add_argument("file", help="Video file to guess")
+parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
+parser.add_argument("--debug", action="store_true", help="Turn on debug output")
+args = parser.parse_args()
+
+def loadSplits(filename):
+  splits = []
+  with open(filename) as f:
+    for line in f:
+      info = line.split()
+      begin = float(info[1])
+      end = float(info[2])
+      center = begin + (end - begin) / 2
+      splits.append([center, begin, end])
+  return splits
+
+def bestSilence(best):
+  global silence
+  
+  bestsil = None
+  for info in silence:
+    begin = float(info[1])
+    end = float(info[2])
+    center = begin + (end - begin) / 2
+    diff = abs(center - best[0])
+    if ((begin >= best[1] and begin <= best[2]) or (end >= best[1] and end <= best[2]) or \
+          (best[1] >= begin and best[1] <= end) or (best[2] >= begin and best[2] <= end)) \
+          and (not bestsil or diff < bestsil[0]):
+      bestsil = [diff, center, begin, end]
+
+  if bestsil:
+    begin = bestsil[2]
+    if begin < best[1]:
+      begin = best[1]
+    end = bestsil[3]
+    if end > best[2]:
+      end = best[2]
+    return [begin, end]
+
+  return None
+
+def formatChapter(seconds):
+  hours = int(seconds / 3600)
+  minutes = int((seconds / 60) % 60)
+  return "%02i:%02i:%06.3f" % (hours, minutes, seconds - hours * 3600 - minutes * 60)
+
+video, ext = os.path.splitext(args.file)
+
+black = loadSplits(video + ".blk")
+silence = loadSplits(video + ".sil")
+
+splits = []
+for row in black:
+  match = bestSilence(row)
+  if match:
+    splits.append(match)
+
+expected = []
+for offset in args.offsets:
+  expected.append(float(offset))
+
+chapters = [0]
+for row in splits:
+  for offset in expected:
+    diff = abs(offset - row[0])
+    if diff < 10:
+      chapters.append(row[0])
+      expected.remove(offset)
+      break
+
+for i in range(len(chapters)):
+  print "CHAPTER%02i=%s" % (i + 1, formatChapter(chapters[i]))
+  print "CHAPTER%02iNAME=Chapter %i" % (i + 1, i + 1)

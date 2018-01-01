@@ -349,6 +349,10 @@ for filename in videos:
   video, ext = os.path.splitext(filename)
 
   episode = guessEpisode(filename)
+  if not episode:
+    sys.stderr.write("Unable to find episode for " + filename + "\n")
+    continue
+  
   epindex = episodes.index(episode)
 
   cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
@@ -466,7 +470,8 @@ for filename in videos:
     tlen = segmentLength(tseg, segments)
     tpos = 1
     while tlen < args.titlelen and \
-          abs(args.titlelen - (tlen + segments[tpos][SEG_LEN])) > MARGIN:
+          (abs(args.titlelen - (tlen + segments[tpos][SEG_LEN])) < MARGIN or
+           tlen + segments[tpos][SEG_LEN] < args.titlelen):
       if args.debug:
         print "TITLE JOIN", tlen, args.titlelen
       segments[tpos][SEG_TYPE] = TYPE_PREV

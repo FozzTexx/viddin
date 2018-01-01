@@ -128,12 +128,12 @@ def renameVid(episode, filename=None):
         title = title[:-4]
     eptitle = "%s %s%s" % (epid, title, ext)
     if filename != eptitle:
-      if os.path.isfile(eptitle):
-        print "Already exists! " + eptitle
-      else:
+      if not os.path.isfile(eptitle) or args.dryrun:
         if not args.dryrun:
           os.rename(filename, eptitle)
         print filename + " to " + eptitle
+      else:
+        print "Already exists! " + eptitle
   return filename
 
 def isint(s):

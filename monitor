@@ -16,7 +16,7 @@
 # more details.
 
 INPUT=2
-WIDTH=720
+WIDTH=640
 HEIGHT=480
 
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do

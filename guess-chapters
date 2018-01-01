@@ -18,12 +18,28 @@
 import os
 import argparse
 import datetime
+import tempfile
 
 parser = argparse.ArgumentParser()
 parser.add_argument("file", help="Video file to guess")
 parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
+parser.add_argument("--update", action="store_true", help="Update chapters of file instead of printing them")
 parser.add_argument("--debug", action="store_true", help="Turn on debug output")
 args = parser.parse_args()
+
+def findBlack(filename):
+  video, ext = os.path.splitext(filename)
+  if not os.path.exists("%s.blk" % video):
+    print "Finding black"
+    cmd = "find-black --duration 0.1 \"%s\" \"%s.blk\" > /dev/null" % (filename, video)
+    os.system(cmd)
+
+def findSilence(filename):
+  video, ext = os.path.splitext(filename)
+  if not os.path.exists("%s.sil" % video):
+    print "Finding silence"
+    cmd = "find-silence --threshold 40 --duration 0.05 \"%s\" \"%s.sil\" > /dev/null" % (filename, video)
+    os.system(cmd)
 
 def loadSplits(filename):
   splits = []
@@ -68,6 +84,9 @@ def formatChapter(seconds):
 
 video, ext = os.path.splitext(args.file)
 
+findBlack(args.file)
+findSilence(args.file)
+
 black = loadSplits(video + ".blk")
 silence = loadSplits(video + ".sil")
 
@@ -77,19 +96,34 @@ for row in black:
   if match:
     splits.append(match)
 
-expected = []
-for offset in args.offsets:
-  expected.append(float(offset))
+if len(args.offsets):
+  expected = []
+  for offset in args.offsets:
+    expected.append(float(offset))
 
-chapters = [0]
-for row in splits:
-  for offset in expected:
-    diff = abs(offset - row[0])
-    if diff < 10:
-      chapters.append(row[0])
-      expected.remove(offset)
-      break
+  chapters = [0]
+  for row in splits:
+    for offset in expected:
+      diff = abs(offset - row[0])
+      if diff < 10:
+        chapters.append(row[0])
+        expected.remove(offset)
+        break
 
-for i in range(len(chapters)):
-  print "CHAPTER%02i=%s" % (i + 1, formatChapter(chapters[i]))
-  print "CHAPTER%02iNAME=Chapter %i" % (i + 1, i + 1)
+  cfile, cfname = tempfile.mkstemp()
+  
+  for i in range(len(chapters)):
+    os.write(cfile, "CHAPTER%02i=%s\n" % (i + 1, formatChapter(chapters[i])))
+    os.write(cfile, "CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1))
+  os.close(cfile)
+
+  if args.update:
+    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file)
+    os.system(cmd)
+  else:
+    os.system("cat " + cfname)
+  os.remove(cfname)
+
+else:
+  for row in splits:
+    print row

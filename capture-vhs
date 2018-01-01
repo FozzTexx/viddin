@@ -15,11 +15,10 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-DEST=$1
-DURATION=$2
 INPUT=2
-WIDTH=720
+WIDTH=640
 HEIGHT=480
+FPS=29.97
 
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     case "$1" in
@@ -35,12 +34,19 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    INPUT=$2
 	    shift 2
 	    ;;
+	--fps)
+	    FPS=$2
+	    shift 2
+	    ;;
 	*)
 	    echo unknown flag "$1"
 	    exit 1
 	    ;;
     esac
 done
+
+DEST=$1
+DURATION=$2
 
 if [ -z "${DEST}" ] ; then
     echo Need a filename
@@ -51,15 +57,51 @@ if [ -z "${DURATION}" ] ; then
     exit 1
 fi
 
-BASE="${DEST%.*}"
-# Only save as mp4
-DEST="${BASE}.mp4"
+# Accept duration as seconds, mm:ss, or h:mm:ss
+MINSEC=${DURATION}
+DURSECONDS=0
+while expr match ${MINSEC} '[0-9][0-9]*:[0-9][0-9]' > /dev/null ; do
+    minutes=`echo ${MINSEC} | sed -e 's/:.*//'`
+    MINSEC=`echo ${MINSEC} | sed -e 's/[^:]*://'`
+    DURSECONDS=`expr ${DURSECONDS} \* 60 + ${minutes}`
+done
+DURSECONDS=`expr ${DURSECONDS} \* 60 + ${MINSEC}`
+HOURS=`expr ${DURSECONDS} / 3600`
+MINUTES=`expr ${DURSECONDS} % 3600 / 60`
+SECONDS=`expr ${DURSECONDS} % 3600 % 60`
+DURHMS=`echo ${HOURS} ${MINUTES} ${SECONDS} | awk '{printf "%i:%02i:%02i\n", $1, $2, $3}'`
 
-vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=${WIDTH} :v4l2-height=${HEIGHT} :v4l2-input=${INPUT} :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=display,dst={transcode{venc=x264{profile=baseline},vcodec=h264,vb=2000,acodec=mpga,ab=128}:std{access=file,mux=mp4,dst='${DEST}'}}}" --run-time=${DURATION} vlc://quit
+# FIXME - look at extension and allow mpeg2 or mp4
+BASE="${DEST%.*}"
+
+# Start the VCR
+linqir Mitsubishi/0xea20
+
+mkdir ${BASE}
+cd ${BASE}
+dvgrab -d ${DURHMS}
+
+# mpeg2
+#DEST="${BASE}.mpg"
+#vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=${WIDTH} :v4l2-height=${HEIGHT} :v4l2-input=${INPUT} :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=display,dst={transcode{vcodec=mp2v,vb=4096,acodec=mpga,ab=192}:std{access=file,mux=ps,dst='${DEST}'}}}" --run-time=${DURSECONDS} vlc://quit
+
+# mp4
+#DEST="${BASE}.mp4"
+#vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=${WIDTH} :v4l2-height=${HEIGHT} :v4l2-input=${INPUT} :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=display,dst={transcode{venc=x264{profile=baseline},vcodec=h264,vb=2000,fps='${FPS}',vfilter=canvas{width='${WIDTH}',height='${HEIGHT}',aspect=4:3},acodec=mpga,ab=128}:std{access=file,mux=mp4,dst='${DEST}'}}}" --run-time=${DURSECONDS} vlc://quit
 
 # This will dump exact copy of stream from card. 60-70 gigs per hour!
-#vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=720 :v4l2-height=480 :v4l2-input=2 :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=std{access=file,dst='${DEST}'}, dst=display}" --run-time=${DURATION} vlc://quit
+#DEST="${BASE}.avi"
+#vlc v4l2:// :v4l2-dev=/dev/video0 :v4l2-width=${WIDTH} :v4l2-height=${HEIGHT} :v4l2-input=${INPUT} :standard=0 :input-slave=alsa://hw:0,0 --sout="#duplicate{dst=std{access=file,dst='${DEST}'}, dst=display}" --run-time=${DURSECONDS} vlc://quit
 
 #v4lctl setinput ${INPUT}
-#ffmpeg -f alsa -ac 2 -i hw:0,0 -f video4linux2 -i /dev/video0 -s 720x480 -aspect 4:3 -vcodec libx264 -preset ultrafast -acodec libfaac -t ${DURATION} ${DEST}
+#ffmpeg -f alsa -ac 2 -i hw:0,0 -f video4linux2 -i /dev/video0 -s 720x480 -aspect 4:3 -vcodec libx264 -preset ultrafast -acodec libfaac -t ${DURSECONDS} ${DEST}
 
+# Stop the VCR
+linqir Mitsubishi/0xea28
+
+# Merge all the split dv files
+pv dv* > ${BASE}.dv
+rm dv*
+mv ${BASE}.dv ..
+cd ..
+rmdir ${BASE}

@@ -114,6 +114,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} --detelecine"
 	    shift
 	    ;;
+	--detelecine-bff)
+	    FLAGS="${FLAGS} --detelecine=parity=1"
+	    shift
+	    ;;
 	--rate)
 	    FLAGS="${FLAGS} -r $2"
 	    shift 2

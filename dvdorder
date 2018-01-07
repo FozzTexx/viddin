@@ -40,6 +40,12 @@ CSV_DVDEP = 1
 CSV_ORIGDATE = 2
 CSV_TITLE = 3
 
+TVDB_DVDSEASON = "dvd_season"
+TVDB_DVDEPNUM = "dvd_episodenumber"
+if tvdb_api.__version__ >= 2:
+  TVDB_DVDSEASON = "dvdSeason"
+  TVDB_DVDEPNUM = "dvdEpisodeNumber"
+
 # FIXME - add option to keep dvd order when renaming
 parser = argparse.ArgumentParser()
 parser.add_argument("series", help="Name of series on thetvdb.com")
@@ -172,10 +178,10 @@ else:
       epinfo = None
       if args.airedorder:
         epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]
-      elif not args.dvdignore and episode['dvd_season'] and episode['dvd_episodenumber']:
-        epinfo = [epid, int(episode['dvd_season']), float(episode['dvd_episodenumber'])]
-      elif not args.dvdignore and episode['dvd_episodenumber']:
-        epinfo = [epid, int(episode['seasonnumber']), float(episode['dvd_episodenumber'])]
+      elif not args.dvdignore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
+        epinfo = [epid, int(episode[TVDB_DVDSEASON]), float(episode[TVDB_DVDEPNUM])]
+      elif not args.dvdignore and episode[TVDB_DVDEPNUM]:
+        epinfo = [epid, int(episode['seasonnumber']), float(episode[TVDB_DVDEPNUM])]
       else:
         if args.dvdmissing or args.dvdignore:
           epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]

@@ -9,11 +9,14 @@ if [ ! -e "$DVD" ] ; then
     exit 1
 fi
 
-while true ; do
-    BLKID=$(blkid "$DVD")
-    if [ -n "$BLKID" ] ; then
-       break
-    fi
-done
+if [ ! -f "${DVD}" -a ! -d "${DVD}" ] ; then
+    echo Waiting for online
+    while true ; do
+	BLKID=$(blkid "$DVD")
+	if [ -n "$BLKID" ] ; then
+	    break
+	fi
+    done
+fi
 
 lsdvd "$DVD" | grep Title | grep -v 0:00: | sed -e 's/ 00:/    /g'

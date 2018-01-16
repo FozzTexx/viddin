@@ -20,12 +20,14 @@ import argparse
 import datetime
 import tempfile
 import sys
+import re
 
 parser = argparse.ArgumentParser()
 parser.add_argument("file", help="Video file to guess")
 parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
 parser.add_argument("--force", action="store_true", help="Force a chapter at locations even if there's no matching silence")
 parser.add_argument("--update", action="store_true", help="Update chapters of file instead of printing them")
+parser.add_argument("--add", action="store_true", help="Add chapters to existing chapters")
 parser.add_argument("--debug", action="store_true", help="Turn on debug output")
 args = parser.parse_args()
 
@@ -100,6 +102,15 @@ def closestExpected(best):
     return [closest[2], closest[3]]
   return None
     
+def loadChapters(filename):
+  chapters = []
+  with os.popen("ffmpeg -i \"" + filename + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
+    for line in f:
+      fields = line.split()
+      begin = float(re.sub(",", "", fields[3]))
+      chapters.append(begin)
+  return chapters
+
 video, ext = os.path.splitext(args.file)
 
 findBlack(args.file)
@@ -123,7 +134,10 @@ for row in black:
     splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
 if expected:
-  chapters = [0]
+  if args.add:
+    chapters = loadChapters(args.file)
+  else:
+    chapters = [0]
   for offset in expected:
     bdiff = -1
     boffset = None
@@ -136,6 +150,7 @@ if expected:
     if boffset and bdiff < 10:
       chapters.append(boffset)
 
+  chapters.sort()
   cfile, cfname = tempfile.mkstemp()
   
   for i in range(len(chapters)):

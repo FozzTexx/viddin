@@ -37,13 +37,9 @@ ATEMP="${SOURCE%.*}"-$$.ac3
 AINPUT="${ATEMP}"
 VTEMP="${SOURCE%.*}"-$$.mkv
 OUTPUT="${SOURCE%.*}"-NTSC.mkv
-OUTRATE=24000/1001
 
 INRATE=$(mediainfo "--Inform=Video;%FrameRate%" "${SOURCE}")
-
-if [ "${INRATE}" = 50.000 ] ; then
-    OUTRATE=48000/1001
-fi
+OUTRATE=$(python -c "print '%.3f' % (24000.0 / 25025 * $INRATE)")
 
 mkvmerge -o "${VTEMP}" --default-duration 0:${OUTRATE}fps -d 0 "${SOURCE}"
 ffmpeg -loglevel quiet -y -i "${SOURCE}" -vn -acodec ac3 -ab 448k -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 "${ATEMP}"

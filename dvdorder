@@ -42,7 +42,7 @@ CSV_TITLE = 3
 
 TVDB_DVDSEASON = "dvd_season"
 TVDB_DVDEPNUM = "dvd_episodenumber"
-if tvdb_api.__version__ >= 2:
+if float(tvdb_api.__version__) >= 2.0:
   TVDB_DVDSEASON = "dvdSeason"
   TVDB_DVDEPNUM = "dvdEpisodeNumber"
 

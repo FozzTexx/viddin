@@ -88,6 +88,13 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    fi
 	    shift
 	    ;;
+	--pal-film)
+	    FLAGS="${FLAGS} --x264-tune film --detelecine --decomb"
+	    if [ -n "${FR}" ] ; then
+		FR=--vfr
+	    fi
+	    shift
+	    ;;
 	--tv)
 	    # Similar to film but don't force 23.976fps. Some TV shows combine both
 	    # film and video frame rates.

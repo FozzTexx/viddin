@@ -117,26 +117,24 @@ if len(args.offsets):
 splits = []
 for row in black:
   match = bestSilence(row)
-  if not match and args.force and expected:
-    match = closestExpected(row)
   if match:
     splits.append((match[1] - match[0]) / 2 + match[0])
-  elif not expected:
+  else:
     splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
 if expected:
   chapters = [0]
-  for row in splits:
+  for offset in expected:
     bdiff = -1
     boffset = None
-    for offset in expected:
-      diff = abs(offset - row)
-      if not boffset or diff < bdiff:
-        bdiff = diff
-        boffset = offset
+    for row in splits:
+      if row >= 0 or args.force:
+        diff = abs(offset - abs(row))
+        if not boffset or diff < bdiff:
+          bdiff = diff
+          boffset = abs(row)
     if boffset and bdiff < 10:
-      chapters.append(row)
-      expected.remove(boffset)
+      chapters.append(boffset)
 
   cfile, cfname = tempfile.mkstemp()
   
@@ -154,4 +152,5 @@ if expected:
 
 else:
   for row in splits:
-    print row
+    if row >= 0 or args.force:
+      print row

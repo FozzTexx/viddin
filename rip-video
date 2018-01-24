@@ -59,6 +59,7 @@ parser.add_argument("--pixel-aspect", help="output aspect ratio")
 parser.add_argument("--bluray", action="store_true", help="set defaults for ripping Blu-Ray")
 parser.add_argument("--movie", action="store_true", help="set defaults for movies")
 parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
+parser.add_argument("--addsubsonly", action="store_true", help="slow down PAL speed-ups")
 args = parser.parse_args()
 
 def getSubs(path):
@@ -208,7 +209,8 @@ cmd += " -i \"%s\" -o \"%s\"" % (source, dest)
 cmd += " 2>" + log
 
 print cmd
-os.system(cmd)
+if not args.addsubsonly:
+  os.system(cmd)
 # FIXME - check for errors such as incorrect length
 
 if args.restore_ntsc and os.path.exists(dest):
@@ -219,7 +221,7 @@ if args.restore_ntsc and os.path.exists(dest):
   os.system(cmd)
 
 # FIXME - can only do subtitles on mkv source and dest
-if add_subtitles:
+if add_subtitles or args.addsubsonly:
   if os.path.isfile(dest):
     subs = getSubs(dest)
     if len(subs):
@@ -233,28 +235,32 @@ if add_subtitles:
     if len(subs):
       path, ext = os.path.splitext(dest)
       lang = "eng"
+      longest = None
+      longest_len = None
       if args.lang:
         lang = args.lang
       spaths = []
       for sub in subs:
-        if sub['language'] == lang:
-          tnum = int(sub['rv_track_id'])
-          spath = "%s_%i.sub" % (path, tnum)
-          spaths.append(spath)
-          cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
-              (source, tnum, spath)
-          print cmd
-          os.system(cmd)
+        if sub['language'] == lang and (not longest
+                                        or int(sub['tag_number_of_frames']) > longest_len):
+          longest = sub
+          longest_len = int(sub['tag_number_of_frames'])
+          
+      tnum = int(longest['rv_track_id'])
+      spath = "%s_%i.sub" % (path, tnum)
+      spaths.append(spath)
+      cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
+          (source, tnum, spath)
+      print cmd
+      os.system(cmd)
 
       temp = uniqueFile(dest)
       merge_cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
       for p in spaths:
-        merge_cmd += " --language 0:%s \"%s\"" % (lang, p)
+        merge_cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s \"%s\"" % (lang, p)
       print merge_cmd
       os.system(merge_cmd)
 
       for p in spaths:
         os.remove(p)
       os.rename(temp, dest)
-
-      # FIXME - what if there is more than one sub?

@@ -60,6 +60,12 @@ TYPE_SHORT = "Short"
 TYPE_PREV = "Prev"
 TYPE_NEXT = "Next"
 
+TVDB_DVDSEASON = "dvd_season"
+TVDB_DVDEPNUM = "dvd_episodenumber"
+if float(tvdb_api.__version__) >= 2.0:
+  TVDB_DVDSEASON = "dvdSeason"
+  TVDB_DVDEPNUM = "dvdEpisodeNumber"
+
 ftr = [3600,60,1]
 
 parser = argparse.ArgumentParser()
@@ -76,6 +82,7 @@ parser.add_argument("--notranscode", action="store_true", help="Split video with
 parser.add_argument("--chaptersonly", action="store_true", help="Only look for shorts at chapter markers")
 parser.add_argument("--keepcredits", action="store_true", help="When splitting create files for opening titles and end credits")
 parser.add_argument("--endonly", action="store_true", help="Quickies only occur at the end of chapter")
+parser.add_argument("--crosschapters", action="store_true", help="Shorts can cross chapter markers")
 parser.add_argument("--debug", action="store_true", help="Turn on debug output")
 args = parser.parse_args()
 
@@ -320,9 +327,9 @@ else:
     for epnum in show[season]:
       episode = show[season][epnum]
       epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
-      if episode['dvd_season'] and episode['dvd_episodenumber']:
+      if episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
         info = [epid, int(episode['seasonnumber']), int(episode['episodenumber']), \
-                  int(episode['dvd_season']), float(episode['dvd_episodenumber']), \
+                  int(episode[TVDB_DVDSEASON]), float(episode[TVDB_DVDEPNUM]), \
                   episode['episodename'], episode['firstaired']]
         episodes.append(info)
       elif not args.quiet:
@@ -367,6 +374,7 @@ for filename in videos:
   shortindex = epindex
   while shortindex < len(episodes) and \
         int(episodes[shortindex][EP_DVDEPISODE]) == int(episode[EP_DVDEPISODE]):
+    print episodes[shortindex]
     numshorts += 1
     shortindex += 1
     
@@ -438,7 +446,8 @@ for filename in videos:
         quickie = False
 
     if not quickie:
-      if abs(clen - args.titlelen) < MARGIN and not didtitle and pos < 3:
+      if abs(clen - args.titlelen) < MARGIN and not didtitle and pos < 3 \
+         and (not pos or segments[pos - 1][SEG_TYPE]):
         segment[SEG_TYPE] = TYPE_TITLE
         didtitle = True
       elif clen < quickies[0] and segment[SEG_POS] > 0 and \
@@ -526,11 +535,15 @@ for filename in videos:
         curc[SEG_TYPE] = TYPE_PREV
         plen = clen
         clen += curc[SEG_LEN]
+        if args.debug:
+          print "UPMERGE", plen, clen, curc
 
-        if chaponly or plen < args.minlength:
+        if chaponly or (plen and plen < args.minlength):
           continue
         
         overpercent = (clen - avglen) / curc[SEG_LEN] * 100
+        if args.debug:
+          print overpercent
         if overpercent > 50 and not nextc[SEG_SILENCE]:
           if args.debug:
             print "OVER", curc[SEG_POS], nextc[SEG_POS], prevc[SEG_POS], overpercent, plen, clen
@@ -593,7 +606,9 @@ for filename in videos:
             print "None"
         if segment[SEG_CHAP] or not prevc or prevc[SEG_TYPE] != TYPE_SHORT:
           if nextc:
-            if not nextc[SEG_CHAP]:
+            if args.debug:
+              print "WANT DOWN", args.minlength / 2, args.minlength - slen
+            if not nextc[SEG_CHAP] or args.crosschapters:
               if args.debug:
                 print "MERGING DOWN"
               nlen = segmentLength(nextc, segments)
@@ -601,7 +616,7 @@ for filename in videos:
                 segment[SEG_TYPE] = nextc[SEG_TYPE]
               nextc[SEG_TYPE] = TYPE_PREV
               i -= 1
-          elif not segment[SEG_CHAP]:
+          elif not segment[SEG_CHAP] or args.crosschapters:
             if args.debug:
               print "SHIFTING UP"
             prevc[SEG_TYPE] = TYPE_SHORT
@@ -616,8 +631,10 @@ for filename in videos:
               plen = segmentLength(prevc, segments)
             if nextc:
               nlen = segmentLength(nextc, segments)
-            if nlen and plen and nlen < plen and nextc[SEG_TYPE] == TYPE_SHORT and not nextc[SEG_CHAP]:
-              if abs((plen + segment[SEG_LEN]) - (slen - segment[SEG_LEN] + nlen)) < 4:
+            if nlen and plen and nlen < plen and nextc[SEG_TYPE] == TYPE_SHORT \
+               and (not nextc[SEG_CHAP] or args.crosschapters):
+              if abs((plen + segment[SEG_LEN]) - (slen - segment[SEG_LEN] + nlen)) < 4 \
+                 or nextc[SEG_CHAP]:
                 if args.debug:
                   print "SHIFTING UP", slen, plen
                 segment[SEG_TYPE] = TYPE_PREV

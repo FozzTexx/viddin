@@ -44,20 +44,20 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} --crop $2"
 	    shift 2
 	    ;;
+	--rate)
+	    FLAGS="${FLAGS} --rate $2"
+	    shift 2
+	    ;;
 	--extension)
 	    FLAGS="${FLAGS} --extension $2"
 	    EXT="$2"
 	    shift 2
 	    ;;
-	--cfr)
-	    FLAGS="${FLAGS} --cfr"
-	    shift
-	    ;;
 	--firstep)
 	    EPISODE="$2"
 	    shift 2
 	    ;;
-	--animation|--film|--pal-film|--decomb|--pal-animation|--lap-animation|--mangled-pal|--subtitles|--detelecine|--tv|--tv-bob|--restore-ntsc)
+	--animation|--film|--pal-film|--decomb|--pal-animation|--lap-animation|--mangled-pal|--subtitles|--detelecine|--tv|--tv-bob|--restore-ntsc|--cfr)
 	    FLAGS="${FLAGS} $1"
 	    shift
 	    ;;

@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/usr/bin/env python
 #
-# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+# Copyright 2018 by Chris Osborn <fozztexx@fozztexx.com>
 #
 # This file is part of viddin.
 #
@@ -15,226 +15,246 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-FLAGS="--loose-anamorphic --markers"
-EXT=mkv
+import os
+import sys
+import argparse
 
-while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
-    case "$1" in
-	--gain) 
-	    FLAGS="${FLAGS} $1 $2"
-	    shift 2
-	    ;;
-	--dvd)
-	    DVD="$2"
-	    shift 2
-	    ;;
-	--title)
-	    TITLE="$2"
-	    shift 2
-	    ;;
-	--chapters)
-	    CHAPTERS="$2"
-	    shift 2
-	    ;;
-	--quality)
-	    FLAGS="${FLAGS} --quality $2"
-	    shift 2
-	    ;;
-	--crop)
-	    FLAGS="${FLAGS} --crop $2"
-	    shift 2
-	    ;;
-	--extension)
-	    EXT="$2"
-	    shift 2
-	    ;;
-	--cfr)
-	    FR=--cfr
-	    shift
-	    ;;
-	--animation)
-	    FLAGS="${FLAGS} -r 23.976 --x264-tune animation --detelecine --decomb"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	--pal-animation)
-	    FLAGS="${FLAGS} --x264-tune animation --decomb"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	# Similar to pal-animation, but bottom field first
-	--lap-animation)
-	    FLAGS="${FLAGS} --x264-tune animation --deinterlace=mode=1:parity=1"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	--mangled-pal)
-	    FLAGS="${FLAGS} --x264-tune animation --deinterlace=mode=1"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	--film)
-	    FLAGS="${FLAGS} -r 23.976 --x264-tune film --detelecine --decomb"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	--pal-film)
-	    FLAGS="${FLAGS} --x264-tune film --detelecine --decomb"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	--tv)
-	    # Similar to film but don't force 23.976fps. Some TV shows combine both
-	    # film and video frame rates.
-	    FLAGS="${FLAGS} --decomb --detelecine"
-	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	--tv-bob)
-	    FLAGS="${FLAGS} --decomb=bob --detelecine"
-	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
-	    if [ -n "${FR}" ] ; then
-		FR=--vfr
-	    fi
-	    shift
-	    ;;
-	--decomb)
-	    FLAGS="${FLAGS} --decomb"
-	    shift
-	    ;;
-	--detelecine)
-	    FLAGS="${FLAGS} --detelecine"
-	    shift
-	    ;;
-	--detelecine-bff)
-	    FLAGS="${FLAGS} --detelecine=parity=1"
-	    shift
-	    ;;
-	--rate)
-	    FLAGS="${FLAGS} -r $2"
-	    shift 2
-	    ;;
-	--subtitles)
-	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
-	    shift
-	    ;;
-	--subtitle)
-	    FLAGS="${FLAGS} --subtitle $2"
-	    shift 2
-	    ;;
-	--lang)
-	    FLAGS="${FLAGS} --native-language $2 --native-dub"
-	    shift 2
-	    ;;
-	--audio-lang)
-	    FLAGS="${FLAGS} --audio-lang-list $2"
-	    shift 2
-	    ;;
-	--yprv)
-	    FLAGS="${FLAGS} -e x264 -q 27 -x cabac=1:ref=5:analyse=0x133:me=umh:subme=9:chroma-me=1:deadzone-inter=21:deadzone-intra=11:b-adapt=2:rc-lookahead=60:vbv-maxrate=10000:vbv-bufsize=10000:qpmax=69:bframes=5:b-adapt=2:direct=auto:crf-max=51:weightp=2:merange=24:chroma-qp-offset=-1:sync-lookahead=2:psy-rd=1.00,0.15:trellis=2:min-keyint=23:partitions=all"
-	    shift
-	    ;;
-	--ypra)
-	    FLAGS="${FLAGS} -E fdk_faac -B 96k -6 stereo -R 44.1"
-	    shift
-	    ;;
-	--x265 | --h265)
-	    FLAGS="${FLAGS} -e x265"
-	    shift
-	    ;;
-	--anim265)
-	    FLAGS="${FLAGS} -e x265 -x weightb=1:bframes=11:bframe-bias=90:rc-lookahead=60:me=dia:max-merge=5:rect:ctu=64:b-adapt=2:tu-inter-depth=4:tu-intra-depth=4:ipratio=0.8"
-	    shift
-	    ;;
-	--audio)
-	    FLAGS="${FLAGS} --aencoder $2"
-	    shift 2
-	    ;;
-	--mixdown|--downmix)
-	    FLAGS="${FLAGS} --mixdown $2"
-	    shift 2
-	    ;;
-	--width)
-	    FLAGS="${FLAGS} -w $2"
-	    shift 2
-	    ;;
-	--pixel-aspect)
-	    FLAGS="${FLAGS} --pixel-aspect $2"
-	    shift 2
-	    ;;
-	--bluray | --blu-ray)
-	    FLAGS="${FLAGS} -e x265 --aencoder ac3 --mixdown 5point1"
-	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
-	    shift
-	    ;;
-	--movie)
-	    FLAGS="${FLAGS} -r 23.976 --x264-tune film --detelecine --decomb"
-	    FLAGS="${FLAGS} --subtitle scan --subtitle-forced"
-	    shift
-	    ;;
-	--restore-ntsc)
-	    RESTORENTSC=1
-	    shift
-	    ;;
-	*)
-	    echo unknown flag "$1"
-	    exit 1
-	    ;;
-    esac
-done
+encoder = "x264"
+add_subtitles = False
 
-if [ -n "${TITLE}" ] ; then
-    FLAGS="${FLAGS} --title ${TITLE}"
-    SOURCE="${DVD:-/dev/dvd}"
-    DEST="$1"
-else
-    SOURCE="$1"
-    DEST="$2"
-fi
+parser = argparse.ArgumentParser()
+parser.add_argument("source", nargs="?", help="input file")
+parser.add_argument("dest", help="output file")
+parser.add_argument("--gain", help="db to amplify or attenuate audio")
+parser.add_argument("--dvd", help="DVD device, image, or directory")
+parser.add_argument("--title", help="title number to rip")
+parser.add_argument("--chapters", help="chapters in title to rip")
+parser.add_argument("--quality", help="use this quality level when transcoding. Higher numbers are worse quality.")
+parser.add_argument("--crop", help="<top:bottom:left:right> in pixels")
+parser.add_argument("--extension", default="mkv", help="extension to use for output, default is mkv")
+parser.add_argument("--cfr", action="store_true", help="constant frame rate")
+parser.add_argument("--animation", action="store_true", help="NTSC telecined animation")
+parser.add_argument("--pal-animation", action="store_true", help="PAL animation")
+parser.add_argument("--lap-animation", action="store_true", help="PAL animation with bottom field first")
+parser.add_argument("--film", action="store_true", help="NTSC telecined film")
+parser.add_argument("--pal-film", action="store_true", help="PAL film")
+parser.add_argument("--tv", action="store_true", help="TV content, try to detelecine and decomb")
+parser.add_argument("--tv-bob", action="store_true", help="TV content, convert all fields to frames")
+parser.add_argument("--decomb", action="store_true", help="decomb interlaced content")
+parser.add_argument("--detelecine", action="store_true", help="detelecine NTSC content")
+parser.add_argument("--detelecine-bff", action="store_true", help="detelecine NTSC content, bottom field first")
+parser.add_argument("--rate", help="force frame rate")
+parser.add_argument("--subtitles", action="store_true", help="include forced subtitles")
+parser.add_argument("--subtitle", help="indexes of subtitles to copy")
+parser.add_argument("--lang", help="only use subtitles in specified language")
+parser.add_argument("--audio-lang", help="only use audio tracks in specified language")
+parser.add_argument("--yprv", action="store_true", help="YPRV?")
+parser.add_argument("--ypra", action="store_true", help="YPRA?")
+parser.add_argument("--x265", action="store_true", help="encode with x265 codec")
+parser.add_argument("--anim265", action="store_true", help="encode with x265 codec tuned for animation")
+parser.add_argument("--audio", help="use specified audio codec")
+parser.add_argument("--mixdown", help="mix channels into specified format")
+parser.add_argument("--width", help="output width")
+parser.add_argument("--pixel-aspect", help="output aspect ratio")
+parser.add_argument("--bluray", action="store_true", help="set defaults for ripping Blu-Ray")
+parser.add_argument("--movie", action="store_true", help="set defaults for movies")
+parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
+args = parser.parse_args()
 
-if [ -n "${CHAPTERS}" ] ; then
-    FLAGS="${FLAGS} --chapters ${CHAPTERS}"
-fi
+def getSubs(path):
+  cmd = "mkvmerge --identify-verbose \"%s\"" % (path)
+  subs = []
+  with os.popen(cmd) as f:
+    for line in f:
+      fields = line.split()
+      if fields[0] == "Track" and fields[3] == "subtitles":
+        begin = False
+        values = {'rv_track_id': int(fields[2][:-1])}
+        for field in fields:
+          if field[0] == '[':
+            field = field[1:]
+            begin = True
+          elif field[-1] == ']':
+            field = field[:-1]
+          if begin:
+            val = field.split(':')
+            values[val[0]] = val[1]
+        subs.append(values)
+  return subs
 
-FLAGS="${FLAGS} ${FR}"
+def uniqueFile(path):
+  dest, ext = os.path.splitext(path)
+  counter = None
+  upath = dest + "." + args.extension
+  while os.path.exists(upath):
+    if not counter:
+      counter = 1
+    counter += 1
+    upath = dest + str(counter) + "." + args.extension
+  return upath
+  
+flags = []
 
-if [ -z "${DEST}" ] ; then
-    DEST="${SOURCE%.*}"
-    while [ -e "${DEST}${COUNTER}.${EXT}" ] ; do
-	if [ -z "${COUNTER}" ] ; then
-	    COUNTER=1
-	fi
-	COUNTER=`expr ${COUNTER} + 1`
-    done
-    DEST="${DEST}${COUNTER}.${EXT}"
-fi
+if args.animation:
+  flags.extend(["-r", "23.976", "--x264-tune", "animation", "--detelecine", "--decomb"])
 
-if [ -d "${DEST}" ] ; then
-    BASE=$(basename "${SOURCE}")
-    DEST="${DEST%/}/${BASE}"
-fi
+if args.pal_animation:
+  flags.extend(["--x264-tune", "animation", "--decomb"])
 
-LOG="${DEST%.*}.log"
-HandBrakeCLI --encoder x264 ${FLAGS} -i "${SOURCE}" -o "${DEST}" 2>${LOG}
+if args.lap_animation:
+  flags.extend(["--x264-tune", "animation", "--deinterlace=mode=1:parity=1"])
 
-if [ -n "${RESTORENTSC}" ] ; then
-    restore-ntsc "${DEST}"
-    OUTPUT="${DEST%.*}"-NTSC.mkv
-    echo "${OUTPUT}"
-    mv "${OUTPUT}" "${DEST}"
-fi
+if args.film:
+  flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
+  
+if args.pal_film:
+  flags.extend(["--x264-tune", "film", "--detelecine", "--decomb"])
+
+if args.tv:
+  flags.extend(["--detelecine", "--decomb"])
+  
+if args.tv_bob:
+  flags.extend(["--detelecine", "--decomb=bob"])
+  
+if args.decomb:
+  flags.extend(["--decomb"])
+
+if args.detelecine:
+  flags.extend(["--detelecine"])
+
+if args.detelecine_bff:
+  flags.extend(["--detelecine=parity=1"])
+
+if args.rate:
+  flags.extend(["-r", args.rate])
+
+if args.subtitles or args.tv or args.tv_bob or args.bluray or args.movie:
+  flags.extend(["--subtitle", "scan", "--subtitle-forced"])
+  add_subtitles = True
+
+if args.subtitle:
+  flags.extend(["--subtitle", args.subtitle])
+
+if args.lang:
+  flags.extend(["--native-language", args.lang, "--native-dub"])
+
+if args.audio_lang:
+  flags.extend(["--audio-lang-list", args.audio_lang])
+
+if args.yprv:
+  flags.extend(["-e", "x264", "-q", "27", "-x", "cabac=1:ref=5:analyse=0x133:me=umh:subme=9:chroma-me=1:deadzone-inter=21:deadzone-intra=11:b-adapt=2:rc-lookahead=60:vbv-maxrate=10000:vbv-bufsize=10000:qpmax=69:bframes=5:b-adapt=2:direct=auto:crf-max=51:weightp=2:merange=24:chroma-qp-offset=-1:sync-lookahead=2:psy-rd=1.00,0.15:trellis=2:min-keyint=23:partitions=all"])
+
+if args.ypra:
+  flags.extend(["-E", "fdk_faac", "-B", "96k", "-6", "stereo", "-R", "44.1"])
+
+if args.x265:
+  encoder = "x265"
+  
+if args.anim265:
+  flags.extend(["-x", "weightb=1:bframes=11:bframe-bias=90:rc-lookahead=60:me=dia:max-merge=5:rect:ctu=64:b-adapt=2:tu-inter-depth=4:tu-intra-depth=4:ipratio=0.8"])
+  encoder = "x265"
+
+if args.audio:
+  flags.extend(["--aencoder", args.audio])
+
+if args.mixdown:
+  flags.extend(["--mixdown", args.mixdown])
+
+if args.width:
+  flags.extend(["--w", args.width])
+
+if args.pixel_aspect:
+  flags.extend(["--pixel-aspect", args.pixel_aspect])
+
+if args.bluray:
+  flags.extend(["--aencoder", "ac3", "--mixdown", "5point1"])
+  encoder = "x265"
+
+if args.movie:
+  flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
+
+if args.title:
+  flags.extend(["--title", args.title])
+  if args.dvd:
+    source = args.dvd
+  else:
+    source = "/dev/dvd"
+  dest = args.dest
+else:
+  source = args.source
+  dest = args.dest
+
+if args.chapters:
+  flags.extend(["--chapters", args.chapters])
+
+if args.cfr:
+  flags.extend(["--cfr"])
+elif args.animation or args.pal_animation or args.lap_animation or args.film or args.pal_film or args.tv or args.tv_bob:
+  flags.extend(["--vfr"])
+
+if not dest:
+  dest = uniqueFile(source)
+
+if os.path.isdir(dest):
+  base = os.path.basename(source)
+  dest = os.path.join(dest, base)
+
+log, ext = os.path.splitext(dest)
+log += ".log"
+
+cmd = "HandBrakeCLI --encoder " + encoder
+cmd += " " + " ".join(flags)
+cmd += " -i \"%s\" -o \"%s\"" % (source, dest)
+cmd += " 2>" + log
+
+print cmd
+os.system(cmd)
+# FIXME - check for errors such as incorrect length
+
+if args.restore_ntsc and os.path.exists(dest):
+  cmd = "restore-ntsc " + dest
+  path, ext = os.path.splitext(dest)
+  os.rename(path + "-NTSC" + ext, dest)
+  print cmd
+  os.system(cmd)
+
+# FIXME - can only do subtitles on mkv source and dest
+if add_subtitles:
+  if os.path.isfile(dest):
+    subs = getSubs(dest)
+    if len(subs):
+      cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
+          (dest, int(subs[0]['rv_track_id']))
+      print cmd
+      os.system(cmd)
+
+  if os.path.isfile(source):
+    subs = getSubs(source)
+    if len(subs):
+      path, ext = os.path.splitext(dest)
+      lang = "eng"
+      if args.lang:
+        lang = args.lang
+      spaths = []
+      for sub in subs:
+        if sub['language'] == lang:
+          tnum = int(sub['rv_track_id'])
+          spath = "%s_%i.sub" % (path, tnum)
+          spaths.append(spath)
+          cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
+              (source, tnum, spath)
+          print cmd
+          os.system(cmd)
+
+      temp = uniqueFile(dest)
+      merge_cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
+      for p in spaths:
+        merge_cmd += " --language 0:%s \"%s\"" % (lang, p)
+      print merge_cmd
+      os.system(merge_cmd)
+
+      for p in spaths:
+        os.remove(p)
+      os.rename(temp, dest)
+
+      # FIXME - what if there is more than one sub?

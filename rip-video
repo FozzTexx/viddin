@@ -206,7 +206,7 @@ log += ".log"
 cmd = "HandBrakeCLI --encoder " + encoder
 cmd += " " + " ".join(flags)
 cmd += " -i \"%s\" -o \"%s\"" % (source, dest)
-cmd += " 2>" + log
+cmd += " 2>\"" + log + "\""
 
 print cmd
 if not args.addsubsonly:

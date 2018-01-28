@@ -60,6 +60,7 @@ parser.add_argument("--bluray", action="store_true", help="set defaults for ripp
 parser.add_argument("--movie", action="store_true", help="set defaults for movies")
 parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
 parser.add_argument("--addsubsonly", action="store_true", help="slow down PAL speed-ups")
+parser.add_argument("--debug", action="store_true", help="print debug info")
 args = parser.parse_args()
 
 def getSubs(path):
@@ -208,7 +209,8 @@ cmd += " " + " ".join(flags)
 cmd += " -i \"%s\" -o \"%s\"" % (source, dest)
 cmd += " 2>\"" + log + "\""
 
-print cmd
+if args.debug:
+  print cmd
 if not args.addsubsonly:
   os.system(cmd)
 # FIXME - check for errors such as incorrect length
@@ -217,7 +219,8 @@ if args.restore_ntsc and os.path.exists(dest):
   cmd = "restore-ntsc " + dest
   path, ext = os.path.splitext(dest)
   os.rename(path + "-NTSC" + ext, dest)
-  print cmd
+  if args.debug:
+    print cmd
   os.system(cmd)
 
 # FIXME - can only do subtitles on mkv source and dest
@@ -227,7 +230,8 @@ if add_subtitles or args.addsubsonly:
     if len(subs):
       cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
           (dest, int(subs[0]['rv_track_id']))
-      print cmd
+      if args.debug:
+        print cmd
       os.system(cmd)
 
   if os.path.isfile(source):
@@ -251,14 +255,16 @@ if add_subtitles or args.addsubsonly:
       spaths.append(spath)
       cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
           (source, tnum, spath)
-      print cmd
+      if args.debug:
+        print cmd
       os.system(cmd)
 
       temp = uniqueFile(dest)
       merge_cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
       for p in spaths:
         merge_cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s \"%s\"" % (lang, p)
-      print merge_cmd
+      if args.debug:
+        print merge_cmd
       os.system(merge_cmd)
 
       for p in spaths:

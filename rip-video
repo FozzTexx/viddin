@@ -21,6 +21,7 @@ import argparse
 
 encoder = "x264"
 add_subtitles = False
+dvd = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument("source", nargs="?", help="input file")
@@ -114,10 +115,21 @@ if args.pal_film:
 
 if args.tv:
   flags.extend(["--detelecine", "--decomb"])
+  add_subtitles = True
   
 if args.tv_bob:
   flags.extend(["--detelecine", "--decomb=bob"])
+  add_subtitles = True
   
+if args.bluray:
+  flags.extend(["--aencoder", "ac3", "--mixdown", "5point1"])
+  encoder = "x265"
+  add_subtitles = True
+
+if args.movie:
+  flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
+  add_subtitles = True
+
 if args.decomb:
   flags.extend(["--decomb"])
 
@@ -130,8 +142,7 @@ if args.detelecine_bff:
 if args.rate:
   flags.extend(["-r", args.rate])
 
-if args.subtitles or args.tv or args.tv_bob or args.bluray or args.movie:
-  flags.extend(["--subtitle", "scan", "--subtitle-forced"])
+if args.subtitles:
   add_subtitles = True
 
 if args.subtitle:
@@ -168,19 +179,14 @@ if args.width:
 if args.pixel_aspect:
   flags.extend(["--pixel-aspect", args.pixel_aspect])
 
-if args.bluray:
-  flags.extend(["--aencoder", "ac3", "--mixdown", "5point1"])
-  encoder = "x265"
-
-if args.movie:
-  flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
-
 if args.title:
   flags.extend(["--title", args.title])
   if args.dvd:
-    source = args.dvd
+    dvd = args.dvd
+    source = dvd
   else:
-    source = "/dev/dvd"
+    dvd = "/dev/dvd"
+    source = dvd
   dest = args.dest
 else:
   source = args.source
@@ -194,6 +200,9 @@ if args.cfr:
 elif args.animation or args.pal_animation or args.lap_animation or args.film or args.pal_film or args.tv or args.tv_bob:
   flags.extend(["--vfr"])
 
+if add_subtitles:
+  flags.extend(["--subtitle", "scan", "--subtitle-forced"])
+  
 if not dest:
   dest = uniqueFile(source)
 
@@ -221,6 +230,8 @@ if args.restore_ntsc and os.path.exists(dest):
   os.rename(path + "-NTSC" + ext, dest)
   if args.debug:
     print cmd
+  else:
+    cmd += " >/dev/null 2>&1"
   os.system(cmd)
 
 # FIXME - can only do subtitles on mkv source and dest
@@ -232,17 +243,65 @@ if add_subtitles or args.addsubsonly:
           (dest, int(subs[0]['rv_track_id']))
       if args.debug:
         print cmd
+      else:
+        cmd += " >/dev/null 2>&1"
       os.system(cmd)
 
-  if os.path.isfile(source):
+  lang = "eng"
+  if args.lang:
+    lang = args.lang
+      
+  if dvd and args.title:
+    # FIXME - use lsdvd to make sure there are actually subs before using HandBrake
+    path, ext = os.path.splitext(dest)
+    subtemp = path + "-subs.mkv"
+    cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
+        " -i \"%s\" --title %i -o \"%s\"" % (lang, source, int(args.title), subtemp)
+    if args.debug:
+      print cmd
+    else:
+      cmd += " 2>/dev/null"
+    os.system(cmd)
+
+    subs = getSubs(subtemp)
+    best = None
+    for sub in subs:
+      if sub['language'] == lang and sub['codec_id'] == "S_VOBSUB":
+        best = sub
+        break
+
+    if best:
+      tnum = int(best['rv_track_id'])
+      spath = "%s_%i.idx" % (path, tnum)
+      cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
+          (subtemp, tnum, spath)
+      if args.debug:
+        print cmd
+      else:
+        cmd += " >/dev/null 2>&1"
+      os.system(cmd)
+
+      temp = uniqueFile(dest)
+      cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
+      cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s -s 0 \"%s\"" \
+          % (lang, spath)
+      if args.debug:
+        print cmd
+      else:
+        cmd += " >/dev/null 2>&1"
+      os.system(cmd)
+
+      os.remove(spath)
+      path, ext = os.path.splitext(spath)
+      os.remove(path + ".sub")
+      os.rename(temp, dest)
+    os.remove(subtemp)
+  elif os.path.isfile(source):
     subs = getSubs(source)
     if len(subs):
       path, ext = os.path.splitext(dest)
-      lang = "eng"
       longest = None
       longest_len = None
-      if args.lang:
-        lang = args.lang
       spaths = []
       for sub in subs:
         if sub['language'] == lang and (not longest
@@ -257,15 +316,19 @@ if add_subtitles or args.addsubsonly:
           (source, tnum, spath)
       if args.debug:
         print cmd
+      else:
+        cmd += " >/dev/null 2>&1"
       os.system(cmd)
 
       temp = uniqueFile(dest)
-      merge_cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
+      cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
       for p in spaths:
-        merge_cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s \"%s\"" % (lang, p)
+        cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s \"%s\"" % (lang, p)
       if args.debug:
-        print merge_cmd
-      os.system(merge_cmd)
+        print cmd
+      else:
+        cmd += " >/dev/null 2>&1"
+      os.system(cmd)
 
       for p in spaths:
         os.remove(p)

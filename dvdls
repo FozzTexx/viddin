@@ -10,12 +10,12 @@ if [ ! -e "$DVD" ] ; then
 fi
 
 if [ ! -f "${DVD}" -a ! -d "${DVD}" ] ; then
-    echo Waiting for online
-    while true ; do
+    BLKID=$(blkid "$DVD")
+    if [ -z "$BLKID" ] ; then 
+	echo Waiting for online
+    fi
+    while [ -z "$BLKID" ] ; do
 	BLKID=$(blkid "$DVD")
-	if [ -n "$BLKID" ] ; then
-	    break
-	fi
     done
 fi
 

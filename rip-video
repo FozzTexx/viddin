@@ -21,13 +21,11 @@ import argparse
 
 encoder = "x264"
 add_subtitles = False
-dvd = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument("source", nargs="?", help="input file")
 parser.add_argument("dest", help="output file")
 parser.add_argument("--gain", help="db to amplify or attenuate audio")
-parser.add_argument("--dvd", help="DVD device, image, or directory")
 parser.add_argument("--title", help="title number to rip")
 parser.add_argument("--chapters", help="chapters in title to rip")
 parser.add_argument("--quality", help="use this quality level when transcoding. Higher numbers are worse quality.")
@@ -64,25 +62,55 @@ parser.add_argument("--addsubsonly", action="store_true", help="slow down PAL sp
 parser.add_argument("--debug", action="store_true", help="print debug info")
 args = parser.parse_args()
 
-def getSubs(path):
-  cmd = "mkvmerge --identify-verbose \"%s\"" % (path)
+def getSubs(path, title=None):
   subs = []
-  with os.popen(cmd) as f:
-    for line in f:
-      fields = line.split()
-      if fields[0] == "Track" and fields[3] == "subtitles":
-        begin = False
-        values = {'rv_track_id': int(fields[2][:-1])}
-        for field in fields:
-          if field[0] == '[':
-            field = field[1:]
-            begin = True
-          elif field[-1] == ']':
-            field = field[:-1]
-          if begin:
-            val = field.split(':')
-            values[val[0]] = val[1]
-        subs.append(values)
+  if title != None:
+    cmd = "lsdvd -t %i -s %s" % (int(args.title), path)
+    with os.popen(cmd) as f:
+      for line in f:
+        fields = line.split()
+        if fields[0] == "Subtitle:":
+          key = None
+          val = None
+          end = False
+          values = {}
+          for field in fields[2:]:
+            if field[-1] == ':':
+              key = field[:-1]
+            else:
+              if field[-1] == ',':
+                end = True
+                field = field[:-1]
+              if not val:
+                val = field
+              else:
+                if not isinstance(val, list):
+                  val = [val]
+                val.append(field)
+            if end:
+              values[key] = val
+              end = False
+              key = None
+              val = None
+          subs.append(values)
+  else:
+    cmd = "mkvmerge --identify-verbose \"%s\"" % (path)
+    with os.popen(cmd) as f:
+      for line in f:
+        fields = line.split()
+        if fields[0] == "Track" and fields[3] == "subtitles":
+          begin = False
+          values = {'rv_track_id': int(fields[2][:-1])}
+          for field in fields:
+            if field[0] == '[':
+              field = field[1:]
+              begin = True
+            elif field[-1] == ']':
+              field = field[:-1]
+            if begin:
+              val = field.split(':')
+              values[val[0]] = val[1]
+          subs.append(values)
   return subs
 
 def uniqueFile(path):
@@ -181,12 +209,10 @@ if args.pixel_aspect:
 
 if args.title:
   flags.extend(["--title", args.title])
-  if args.dvd:
-    dvd = args.dvd
-    source = dvd
+  if args.source:
+    source = args.source
   else:
-    dvd = "/dev/dvd"
-    source = dvd
+    source = "/dev/dvd"
   dest = args.dest
 else:
   source = args.source
@@ -224,17 +250,27 @@ if not args.addsubsonly:
   os.system(cmd)
 # FIXME - check for errors such as incorrect length
 
+  # Keep getting titles in the mkv that are the name of the disk
+  path, ext = os.path.splitext(dest)
+  if ext == ".mkv":
+    cmd = "mkvpropedit \"%s\" -d title" % (dest)
+    if args.debug:
+      print cmd
+    else:
+      cmd += " >/dev/null 2>&1"
+    os.system(cmd)
+
 if args.restore_ntsc and os.path.exists(dest):
   cmd = "restore-ntsc " + dest
   path, ext = os.path.splitext(dest)
-  os.rename(path + "-NTSC" + ext, dest)
   if args.debug:
     print cmd
   else:
     cmd += " >/dev/null 2>&1"
   os.system(cmd)
+  os.rename(path + "-NTSC" + ext, dest)
 
-# FIXME - can only do subtitles on mkv source and dest
+# FIXME - can only do subtitles on mkv dest and mkv or dvd source
 if add_subtitles or args.addsubsonly:
   if os.path.isfile(dest):
     subs = getSubs(dest)
@@ -251,51 +287,53 @@ if add_subtitles or args.addsubsonly:
   if args.lang:
     lang = args.lang
       
-  if dvd and args.title:
-    # FIXME - use lsdvd to make sure there are actually subs before using HandBrake
-    path, ext = os.path.splitext(dest)
-    subtemp = path + "-subs.mkv"
-    cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
-        " -i \"%s\" --title %i -o \"%s\"" % (lang, source, int(args.title), subtemp)
-    if args.debug:
-      print cmd
-    else:
-      cmd += " 2>/dev/null"
-    os.system(cmd)
-
-    subs = getSubs(subtemp)
-    best = None
-    for sub in subs:
-      if sub['language'] == lang and sub['codec_id'] == "S_VOBSUB":
-        best = sub
-        break
-
-    if best:
-      tnum = int(best['rv_track_id'])
-      spath = "%s_%i.idx" % (path, tnum)
-      cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
-          (subtemp, tnum, spath)
+  if args.title:
+    subs = getSubs(source, int(args.title))
+    # FIXME - convert 3 letter language code to 2 letter and make sure it's listed
+    if len(subs) > 0:
+      path, ext = os.path.splitext(dest)
+      subtemp = path + "-subs.mkv"
+      cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
+          " -i \"%s\" --title %i -o \"%s\"" % (lang, source, int(args.title), subtemp)
       if args.debug:
         print cmd
       else:
-        cmd += " >/dev/null 2>&1"
+        cmd += " 2>/dev/null"
       os.system(cmd)
 
-      temp = uniqueFile(dest)
-      cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
-      cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s -s 0 \"%s\"" \
-          % (lang, spath)
-      if args.debug:
-        print cmd
-      else:
-        cmd += " >/dev/null 2>&1"
-      os.system(cmd)
+      subs = getSubs(subtemp)
+      best = None
+      for sub in subs:
+        if sub['language'] == lang and sub['codec_id'] == "S_VOBSUB":
+          best = sub
+          break
 
-      os.remove(spath)
-      path, ext = os.path.splitext(spath)
-      os.remove(path + ".sub")
-      os.rename(temp, dest)
-    os.remove(subtemp)
+      if best:
+        tnum = int(best['rv_track_id'])
+        spath = "%s_%i.idx" % (path, tnum)
+        cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
+            (subtemp, tnum, spath)
+        if args.debug:
+          print cmd
+        else:
+          cmd += " >/dev/null 2>&1"
+        os.system(cmd)
+
+        temp = uniqueFile(dest)
+        cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
+        cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s -s 0 \"%s\"" \
+            % (lang, spath)
+        if args.debug:
+          print cmd
+        else:
+          cmd += " >/dev/null 2>&1"
+        os.system(cmd)
+
+        os.remove(spath)
+        path, ext = os.path.splitext(spath)
+        os.remove(path + ".sub")
+        os.rename(temp, dest)
+      os.remove(subtemp)
   elif os.path.isfile(source):
     subs = getSubs(source)
     if len(subs):

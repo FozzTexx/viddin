@@ -416,7 +416,7 @@ for filename in videos:
     qpercent = clen / quickies[0] * 100
 
     if clen >= quickies[0] and clen <= quickies[1] and \
-          (segment[SEG_POS] > 0 or \
+          (segment[SEG_POS] > 0 or segment[SEG_CHAP] or \
              (not prevc or \
               (prevc[SEG_TYPE] and segment[SEG_POS] > 0) or \
               (prevc[SEG_TYPE] and prevc[SEG_TYPE] != TYPE_QUICKIE)) or \

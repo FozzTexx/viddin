@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2018 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -18,6 +18,8 @@
 import os
 import sys
 import argparse
+import json
+import xmltodict
 
 encoder = "x264"
 add_subtitles = False
@@ -39,6 +41,7 @@ parser.add_argument("--film", action="store_true", help="NTSC telecined film")
 parser.add_argument("--pal-film", action="store_true", help="PAL film")
 parser.add_argument("--tv", action="store_true", help="TV content, try to detelecine and decomb")
 parser.add_argument("--tv-bob", action="store_true", help="TV content, convert all fields to frames")
+parser.add_argument("--tv-bob-bff", action="store_true", help="TV content, convert all fields to frames")
 parser.add_argument("--decomb", action="store_true", help="decomb interlaced content")
 parser.add_argument("--detelecine", action="store_true", help="detelecine NTSC content")
 parser.add_argument("--detelecine-bff", action="store_true", help="detelecine NTSC content, bottom field first")
@@ -62,6 +65,12 @@ parser.add_argument("--addsubsonly", action="store_true", help="slow down PAL sp
 parser.add_argument("--debug", action="store_true", help="print debug info")
 args = parser.parse_args()
 
+def subWithUid(uid, subs):
+  for track in subs:
+    if 'uid' in track and uid == track['uid']:
+      return track
+  return None
+
 def getSubs(path, title=None):
   subs = []
   if title != None:
@@ -69,7 +78,7 @@ def getSubs(path, title=None):
     with os.popen(cmd) as f:
       for line in f:
         fields = line.split()
-        if fields[0] == "Subtitle:":
+        if len(fields) and fields[0] == "Subtitle:":
           key = None
           val = None
           end = False
@@ -94,24 +103,57 @@ def getSubs(path, title=None):
               val = None
           subs.append(values)
   else:
-    cmd = "mkvmerge --identify-verbose \"%s\"" % (path)
+    cmd = "mkvmerge -i -F json \"%s\"" % (path)
+    process = os.popen(cmd)
+    jstr = process.read()
+    process.close()
+    jinfo = json.loads(jstr)
+
+    for track in jinfo['tracks']:
+      if track['type'] == "subtitles":
+        info = {}
+        info['rv_track_id'] = track['id']
+        info.update(track['properties'])
+        subs.append(info)
+
+    cmd = "mkvextract tags \"%s\"" % (path)
+    process = os.popen(cmd)
+    xstr = process.read()
+    process.close()
+    xinfo = xmltodict.parse(xstr)['Tags']
+    xlist = []
+    for track in xinfo:
+      xi1 = xinfo[track]
+      for xi2 in xi1:
+        xdict = {}
+        if 'Targets' in xi2:
+          xi3 = xi2['Targets']
+          if xi3 and 'TrackUID' in xi3:
+            xdict['TrackUID'] = int(xi3['TrackUID'])
+        if 'Simple' in xi2:
+          xi3 = xi2['Simple']
+          for xi4 in xi3:
+            xdict[xi4['Name']] = xi4['String']
+        xlist.append(xdict)
+
+    for track in xlist:
+      if 'TrackUID' in track:
+        sub = subWithUid(track['TrackUID'], subs)
+        if sub:
+          sub.update(track)
+    
+  return subs
+
+def getForcedSub(path):
+  if os.path.exists(path):
+    cmd = "grep Passthrough \"%s\" | grep subtitle" % (path)
     with os.popen(cmd) as f:
       for line in f:
         fields = line.split()
-        if fields[0] == "Track" and fields[3] == "subtitles":
-          begin = False
-          values = {'rv_track_id': int(fields[2][:-1])}
-          for field in fields:
-            if field[0] == '[':
-              field = field[1:]
-              begin = True
-            elif field[-1] == ']':
-              field = field[:-1]
-            if begin:
-              val = field.split(':')
-              values[val[0]] = val[1]
-          subs.append(values)
-  return subs
+        for idx in range(len(fields) - 4):
+          if fields[idx] == "(track" and fields[idx + 2] == "id":
+            return int(fields[idx + 3][:-1], 0)
+  return None
 
 def uniqueFile(path):
   dest, ext = os.path.splitext(path)
@@ -123,7 +165,7 @@ def uniqueFile(path):
     counter += 1
     upath = dest + str(counter) + "." + args.extension
   return upath
-  
+
 flags = []
 
 if args.animation:
@@ -147,6 +189,10 @@ if args.tv:
   
 if args.tv_bob:
   flags.extend(["--detelecine", "--decomb=bob"])
+  add_subtitles = True
+  
+if args.tv_bob_bff:
+  flags.extend(["--deinterlace=mode=15:parity=1"])
   add_subtitles = True
   
 if args.bluray:
@@ -245,7 +291,7 @@ cmd += " -i \"%s\" -o \"%s\"" % (source, dest)
 cmd += " 2>\"" + log + "\""
 
 if args.debug:
-  print cmd
+  print(cmd)
 if not args.addsubsonly:
   os.system(cmd)
 # FIXME - check for errors such as incorrect length
@@ -255,7 +301,7 @@ if not args.addsubsonly:
   if ext == ".mkv":
     cmd = "mkvpropedit \"%s\" -d title" % (dest)
     if args.debug:
-      print cmd
+      print(cmd)
     else:
       cmd += " >/dev/null 2>&1"
     os.system(cmd)
@@ -264,7 +310,7 @@ if args.restore_ntsc and os.path.exists(dest):
   cmd = "restore-ntsc " + dest
   path, ext = os.path.splitext(dest)
   if args.debug:
-    print cmd
+    print(cmd)
   else:
     cmd += " >/dev/null 2>&1"
   os.system(cmd)
@@ -278,7 +324,7 @@ if add_subtitles or args.addsubsonly:
       cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
           (dest, int(subs[0]['rv_track_id']))
       if args.debug:
-        print cmd
+        print(cmd)
       else:
         cmd += " >/dev/null 2>&1"
       os.system(cmd)
@@ -286,17 +332,16 @@ if add_subtitles or args.addsubsonly:
   lang = "eng"
   if args.lang:
     lang = args.lang
-      
+    
   if args.title:
     subs = getSubs(source, int(args.title))
-    # FIXME - convert 3 letter language code to 2 letter and make sure it's listed
     if len(subs) > 0:
       path, ext = os.path.splitext(dest)
       subtemp = path + "-subs.mkv"
       cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
           " -i \"%s\" --title %i -o \"%s\"" % (lang, source, int(args.title), subtemp)
       if args.debug:
-        print cmd
+        print(cmd)
       else:
         cmd += " 2>/dev/null"
       os.system(cmd)
@@ -314,7 +359,7 @@ if add_subtitles or args.addsubsonly:
         cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
             (subtemp, tnum, spath)
         if args.debug:
-          print cmd
+          print(cmd)
         else:
           cmd += " >/dev/null 2>&1"
         os.system(cmd)
@@ -324,7 +369,7 @@ if add_subtitles or args.addsubsonly:
         cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s -s 0 \"%s\"" \
             % (lang, spath)
         if args.debug:
-          print cmd
+          print(cmd)
         else:
           cmd += " >/dev/null 2>&1"
         os.system(cmd)
@@ -338,36 +383,43 @@ if add_subtitles or args.addsubsonly:
     subs = getSubs(source)
     if len(subs):
       path, ext = os.path.splitext(dest)
+      spaths = []
       longest = None
       longest_len = None
-      spaths = []
       for sub in subs:
         if sub['language'] == lang and (not longest
-                                        or int(sub['tag_number_of_frames']) > longest_len):
+                                        or int(sub['NUMBER_OF_FRAMES']) > longest_len):
           longest = sub
-          longest_len = int(sub['tag_number_of_frames'])
-          
+          longest_len = int(sub['NUMBER_OF_FRAMES'])
+
       tnum = int(longest['rv_track_id'])
       spath = "%s_%i.sub" % (path, tnum)
-      spaths.append(spath)
       cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
           (source, tnum, spath)
       if args.debug:
-        print cmd
+        print(cmd)
       else:
         cmd += " >/dev/null 2>&1"
       os.system(cmd)
+      spath2 = "%s_%i.idx" % (path, tnum)
+      if os.path.exists(spath2):
+        spath = spath2
+      spaths.append(spath)
 
       temp = uniqueFile(dest)
       cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
       for p in spaths:
         cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s \"%s\"" % (lang, p)
       if args.debug:
-        print cmd
+        print(cmd)
       else:
         cmd += " >/dev/null 2>&1"
       os.system(cmd)
 
       for p in spaths:
         os.remove(p)
+        p2, ext = os.path.splitext(p)
+        p2 += ".sub"
+        if os.path.exists(p2):
+          os.remove(p2)
       os.rename(temp, dest)

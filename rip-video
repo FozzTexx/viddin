@@ -112,7 +112,7 @@ def getSubs(path, title=None):
     for track in jinfo['tracks']:
       if track['type'] == "subtitles":
         info = {}
-        info['rv_track_id'] = track['id']
+        info['rv_track_id'] = track['id'] 
         info.update(track['properties'])
         subs.append(info)
 
@@ -322,7 +322,7 @@ if add_subtitles or args.addsubsonly:
     subs = getSubs(dest)
     if len(subs):
       cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
-          (dest, int(subs[0]['rv_track_id']))
+          (dest, int(subs[0]['rv_track_id']) + 1)
       if args.debug:
         print(cmd)
       else:

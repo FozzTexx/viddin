@@ -130,6 +130,9 @@ if args.detelecine_bff:
 if args.rate:
   flags.extend(["-r", args.rate])
 
+if args.crop:
+  flags.extend(["--crop", args.crop])
+
 if args.subtitles or args.tv or args.tv_bob or args.bluray or args.movie:
   flags.extend(["--subtitle", "scan", "--subtitle-forced"])
   add_subtitles = True

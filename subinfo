@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- python -*-
 #
 # Copyright 2018 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -82,21 +83,25 @@ def getSubs(path, title=None):
     process = os.popen(cmd)
     xstr = process.read()
     process.close()
-    xinfo = xmltodict.parse(xstr)['Tags']
     xlist = []
-    for track in xinfo:
-      xi1 = xinfo[track]
-      for xi2 in xi1:
-        xdict = {}
-        if 'Targets' in xi2:
-          xi3 = xi2['Targets']
-          if xi3 and 'TrackUID' in xi3:
-            xdict['TrackUID'] = int(xi3['TrackUID'])
-        if 'Simple' in xi2:
-          xi3 = xi2['Simple']
-          for xi4 in xi3:
-            xdict[xi4['Name']] = xi4['String']
-        xlist.append(xdict)
+    if len(xstr):
+      xinfo = xmltodict.parse(xstr)['Tags']
+      for track in xinfo:
+        xi1 = xinfo[track]
+        for xi2 in xi1:
+          xdict = {}
+          if 'Targets' in xi2:
+            xi3 = xi2['Targets']
+            if xi3 and 'TrackUID' in xi3:
+              xdict['TrackUID'] = int(xi3['TrackUID'])
+          if 'Simple' in xi2:
+            xi3 = xi2['Simple']
+            if type(xi3) == list:
+              for xi4 in xi3:
+                xdict[xi4['Name']] = xi4['String']
+            else:
+              xdict[xi3['Name']] = xi3['String']
+          xlist.append(xdict)
 
     for track in xlist:
       if 'TrackUID' in track:
@@ -115,6 +120,10 @@ if args.title:
     source = "/dev/dvd"
 else:
   source = args.source
+
+if not os.path.exists(source):
+  print("%s does not exist" % (source))
+  sys.exit(1)
   
 subs = getSubs(source, title)
 for sub in subs:

@@ -29,20 +29,23 @@ parser.add_argument("--force", action="store_true", help="Force a chapter at loc
 parser.add_argument("--update", action="store_true", help="Update chapters of file instead of printing them")
 parser.add_argument("--add", action="store_true", help="Add chapters to existing chapters")
 parser.add_argument("--debug", action="store_true", help="Turn on debug output")
+parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
 args = parser.parse_args()
 
 def findBlack(filename):
   video, ext = os.path.splitext(filename)
   if not os.path.exists("%s.blk" % video):
     print "Finding black"
-    cmd = "find-black --duration 0.05 \"%s\" \"%s.blk\" > /dev/null" % (filename, video)
+    cmd = "find-black --duration 0.05 \"%s\" \"%s.blk\" > /dev/null" \
+          % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
     os.system(cmd)
 
 def findSilence(filename):
   video, ext = os.path.splitext(filename)
   if not os.path.exists("%s.sil" % video):
     print "Finding silence"
-    cmd = "find-silence --threshold 40 --duration 0.01 \"%s\" \"%s.sil\" > /dev/null" % (filename, video)
+    cmd = "find-silence --threshold 40 --duration 0.01 \"%s\" \"%s.sil\" > /dev/null" \
+          % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
     os.system(cmd)
 
 def loadSplits(filename):
@@ -147,7 +150,7 @@ if expected:
         if not boffset or diff < bdiff:
           bdiff = diff
           boffset = abs(row)
-    if boffset and bdiff < 10:
+    if boffset and bdiff < args.distance:
       chapters.append(boffset)
 
   chapters.sort()
@@ -159,7 +162,7 @@ if expected:
   os.close(cfile)
 
   if args.update:
-    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file)
+    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
     os.system(cmd)
   else:
     os.system("cat " + cfname)

@@ -29,11 +29,12 @@ import csv
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
-EPID = 0
-DVDSEASON = 1
-DVDEPISODE = 2
-TITLE = 3
-ORIGDATE = 4
+AIREDSEASON = 0
+AIREDEPISODE = 1
+DVDSEASON = 2
+DVDEPISODE = 3
+TITLE = 4
+ORIGDATE = 5
 
 CSV_EPISODE = 0
 CSV_DVDEP = 1
@@ -65,9 +66,14 @@ args = parser.parse_args()
   
 def formatEpisodeID(season, epnum):
   num = 0
-  for row in dvdorder:
+  eporder = dvdorder
+  if args.airedorder:
+    eporder = airedorder
+  for row in eporder:
     if row[DVDSEASON] == season:
       num += 1
+  if num < 1:
+    num = 1
   digits = int(math.floor(math.log(num, 10)) + 1)
   if digits < 2:
     digits = 2
@@ -85,16 +91,23 @@ def findVideo(episode):
   return None  
   
 def findEpisode(epid):
+  eporder = dvdorder
+  SCOL = DVDSEASON
+  ECOL = DVDEPISODE
+  if args.airedorder:
+    SCOL = AIREDSEASON
+    ECOL = AIREDEPISODE
+    eporder = airedorder
   if type(epid) is int:
-    return dvdorder[epid]
+    epid = formatEpisodeID(eporder[epid][SCOL], eporder[epid][ECOL])
 
   episode = None
   epcount = 0
   dvdnum = re.split(" *x *", epid)
   dvdseason = int(re.sub("[^0-9]*", "", dvdnum[0]));
   dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
-  for row in dvdorder:
-    if dvdseason == row[DVDSEASON] and dvdepisode == int(row[DVDEPISODE]):
+  for row in eporder:
+    if dvdseason == row[SCOL] and dvdepisode == int(row[ECOL]):
       if not episode:
         episode = []
       episode.append(row)
@@ -109,9 +122,11 @@ def renameVid(episode, filename=None):
   if isinstance(episode[0], list):
     epinfo = episode[0]
     
-  epid = epinfo[EPID]
   if args.dvdorder:
     epid = formatEpisodeID(epinfo[DVDSEASON], int(epinfo[DVDEPISODE]))
+  else:
+    epid = formatEpisodeID(epinfo[AIREDSEASON], int(epinfo[AIREDEPISODE]))
+    
   if not filename:
     filename = findVideo(episode)
 
@@ -119,7 +134,7 @@ def renameVid(episode, filename=None):
     video, ext = os.path.splitext(filename)
 
     if epinfo == episode:
-      title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", epinfo[TITLE]))
+      title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", epinfo[TITLE].strip()))
     else:
       title = ""
       for ep in episode:
@@ -162,7 +177,8 @@ if os.path.isfile(args.series):
         dvdep = row[CSV_EPISODE] + "." + dvdep
       dvdnum = re.split(" *x *", dvdep)
       epid = epnum[0] + "x" + epnum[1].zfill(2)
-      info = [epid, int(dvdnum[0]), float(dvdnum[1]), row[CSV_TITLE], row[CSV_ORIGDATE]]
+      info = [int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]),
+              row[CSV_TITLE], row[CSV_ORIGDATE]]
       series.append(info)
   finally:
     f.close()
@@ -176,15 +192,16 @@ else:
       episode = show[season][epnum]
       epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
       epinfo = None
-      if args.airedorder:
-        epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]
-      elif not args.dvdignore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
-        epinfo = [epid, int(episode[TVDB_DVDSEASON]), float(episode[TVDB_DVDEPNUM])]
+      if not args.dvdignore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
+        epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
+                  int(episode[TVDB_DVDSEASON]), float(episode[TVDB_DVDEPNUM])]
       elif not args.dvdignore and episode[TVDB_DVDEPNUM]:
-        epinfo = [epid, int(episode['seasonnumber']), float(episode[TVDB_DVDEPNUM])]
+        epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
+                  int(episode['seasonnumber']), float(episode[TVDB_DVDEPNUM])]
       else:
         if args.dvdmissing or args.dvdignore:
-          epinfo = [epid, int(episode['seasonnumber']), float(episode['episodenumber'])]
+          epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
+                    int(episode['seasonnumber']), float(episode['episodenumber'])]
         elif not args.quiet:
           print "No DVD info for"
           print episode
@@ -193,7 +210,8 @@ else:
                       episode['productioncode']])
         series.append(epinfo)
 
-dvdorder = sorted(series, key=itemgetter(1, 2))
+dvdorder = sorted(series, key=itemgetter(DVDSEASON, DVDEPISODE))
+airedorder = sorted(series, key=itemgetter(AIREDSEASON, AIREDEPISODE))
 
 videos = [file for file in glob.glob(args.glob)]
 videos.sort()
@@ -213,7 +231,8 @@ if args.minsize:
 if args.csv:
   csvdata = []
   for row in dvdorder:
-    info = [row[EPID], "%ix%04.1f" % (row[DVDSEASON], row[DVDEPISODE]), row[ORIGDATE], row[TITLE]]
+    info = [formatEpisodeID(row[AIREDSEASON], int(row[AIREDEPISODE])), \
+            "%ix%04.1f" % (row[DVDSEASON], row[DVDEPISODE]), row[ORIGDATE], row[TITLE]]
     csvdata.append(info)
 
   a = csv.writer(sys.stdout)
@@ -225,7 +244,10 @@ elif args.rename:
     first = int(args.first)
   else:
     episode = findEpisode(args.first)
-    first = dvdorder.index(episode) + 1
+    if args.airedorder:
+      first = airedorder.index(episode) + 1
+    else:
+      first = dvdorder.index(episode) + 1
     
   for filename in videos:
     if minsize:

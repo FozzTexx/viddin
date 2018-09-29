@@ -416,7 +416,7 @@ for filename in videos:
     qpercent = clen / quickies[0] * 100
 
     if clen >= quickies[0] and clen <= quickies[1] and \
-          (segment[SEG_POS] > 0 or \
+          (segment[SEG_POS] > 0 or segment[SEG_CHAP] or \
              (not prevc or \
               (prevc[SEG_TYPE] and segment[SEG_POS] > 0) or \
               (prevc[SEG_TYPE] and prevc[SEG_TYPE] != TYPE_QUICKIE)) or \
@@ -490,8 +490,10 @@ for filename in videos:
   # If there are chapter markers then quickies/shorts will be at each one
   if len(chapters):
     for seg in segments:
-      if seg[SEG_CHAP] != None or segments.index(seg) == 0:
+      if (seg[SEG_CHAP] != None and not args.crosschapters) or segments.index(seg) == 0:
         if seg[SEG_TYPE] == TYPE_TITLE:
+          if args.debug:
+            print "UNTITLE"
           nextc = findNext(seg, segments)
           if nextc[SEG_TYPE] == TYPE_QUICKIE:
             nextc = findNext(nextc, segments)
@@ -573,7 +575,7 @@ for filename in videos:
   for segment in segments:
     if segment[SEG_CHAP] and segment[SEG_TYPE] != TYPE_SHORT and \
           segment[SEG_TYPE] != TYPE_QUICKIE and segment[SEG_TYPE] != TYPE_TITLE \
-          and segment[SEG_TYPE] != TYPE_CREDITS:
+          and segment[SEG_TYPE] != TYPE_CREDITS and not args.crosschapters:
       if args.debug:
         print "NOSHORT", segment
       nextc = segments[segments.index(segment)]

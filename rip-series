@@ -56,7 +56,7 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    EPISODE="$2"
 	    shift 2
 	    ;;
-	--animation|--film|--pal-film|--decomb|--pal-animation|--lap-animation|--mangled-pal|--subtitles|--detelecine|--tv|--tv-bob|--restore-ntsc|--cfr)
+	--animation|--film|--pal-film|--decomb|--pal-animation|--lap-animation|--mangled-pal|--subtitles|--detelecine|--tv|--tv-bob|--tv-bob-tff|--tv-bob-bff|--restore-ntsc|--cfr)
 	    FLAGS="${FLAGS} $1"
 	    shift
 	    ;;
@@ -119,10 +119,10 @@ for i in ${TITLES} ; do
     else
 	rip-video ${FLAGS} --title ${TITLE} $i ${SEASON}x${ep}.${EXT}
     fi
-    tput cuu1
-    tput el
-    size=`ls -lh ${SEASON}x${ep}.${EXT} | awk '{print $5}'`
-    echo ${SEASON}x${ep}.${EXT}: $i $size
+    STATUS=$?
+    if [ $STATUS != 0 ] ; then
+	exit 1
+    fi
 done
 
 if [ -z "${DVD}" ] ; then

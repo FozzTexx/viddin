@@ -50,5 +50,6 @@ if [ -n "${NORMALIZE}" ] ; then
 fi
 
 mkvmerge -o "${OUTPUT}" -A "${VTEMP}" "${AINPUT}"
+edit-chapters --fix --multiplier 1.043 "${OUTPUT}"
 
 rm -rf "${ATEMP}" "${VTEMP}" "${AINPUT}"

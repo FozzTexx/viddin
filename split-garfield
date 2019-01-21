@@ -72,9 +72,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("series", help="Name of series on thetvdb.com")
 parser.add_argument("files", nargs="*", help="examine only these files")
 parser.add_argument("--quickies", default="18-56", help="range of quickie length")
-parser.add_argument("--minlength", default=320, help="minimum short length")
-parser.add_argument("--titlelen", help="length in seconds of opening titles", default=60)
-parser.add_argument("--creditlen", help="length in seconds of end credits", default=35)
+parser.add_argument("--minlength", default=320, type=float, help="minimum short length")
+parser.add_argument("--titlelen", help="length in seconds of opening titles", default=60, type=float)
+parser.add_argument("--creditlen", help="length in seconds of end credits", default=35, type=float)
 parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
 parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
 parser.add_argument("--split", action="store_true", help="Split and rename instead of printing")
@@ -298,10 +298,6 @@ elif re.match("^[0-9]+(.[0-9]+)?-[0-9]+(\.[0-9]+)?$", args.quickies):
   quickies.append(int(times[0]))
   quickies.append(int(times[1]))
 
-args.titlelen = float(args.titlelen)
-args.creditlen = float(args.creditlen)
-args.minlength = float(args.minlength)
-  
 episodes = []
 if os.path.isfile(args.series):
   f = open(args.series, 'rU')
@@ -396,7 +392,9 @@ for filename in videos:
     segments[-2][SEG_LEN] += segments[-1][SEG_LEN]
     del segments[-1]
 
-  if segments[-1][SEG_LEN] < args.creditlen or segments[-1][SEG_LEN] - args.creditlen < 20:
+  if (args.creditlen > 0 or segments[-1][SEG_LEN] == 0) and \
+        (segments[-1][SEG_LEN] < args.creditlen \
+           or segments[-1][SEG_LEN] - args.creditlen < 20):
     segments[-1][SEG_TYPE] = TYPE_CREDITS
   else:
     segments.append(segmentRow(vlen, 0.0, segType=TYPE_CREDITS))
@@ -413,9 +411,12 @@ for filename in videos:
     nextc = segments[pos + 1]
 
     clen = segment[SEG_LEN]
-    qpercent = clen / quickies[0] * 100
+    if quickies[0] > 0:
+      qpercent = clen / quickies[0] * 100
+    else:
+      qpercent = 0
 
-    if clen >= quickies[0] and clen <= quickies[1] and \
+    if clen > 0 and clen >= quickies[0] and clen <= quickies[1] and \
           (segment[SEG_POS] > 0 or segment[SEG_CHAP] or \
              (not prevc or \
               (prevc[SEG_TYPE] and segment[SEG_POS] > 0) or \
@@ -446,8 +447,9 @@ for filename in videos:
         quickie = False
 
     if not quickie:
-      if abs(clen - args.titlelen) < MARGIN and not didtitle and pos < 3 \
-         and (not pos or segments[pos - 1][SEG_TYPE]):
+      if args.titlelen > 0 and abs(clen - args.titlelen) < MARGIN \
+            and not didtitle and pos < 3 \
+            and (not pos or segments[pos - 1][SEG_TYPE]):
         segment[SEG_TYPE] = TYPE_TITLE
         didtitle = True
       elif clen < quickies[0] and segment[SEG_POS] > 0 and \
@@ -472,8 +474,8 @@ for filename in videos:
 
     pos += 1
 
-  if not didtitle and segments[0][SEG_LEN] < (args.titlelen + MARGIN) and \
-        (not segments[0][SEG_TYPE] or segments[0][SEG_TYPE] == TYPE_QUICKIE):
+  if args.titlelen > 0 and not didtitle and segments[0][SEG_LEN] < (args.titlelen + MARGIN) \
+        and (not segments[0][SEG_TYPE] or segments[0][SEG_TYPE] == TYPE_QUICKIE):
     tseg = segments[0]
     tseg[SEG_TYPE] = TYPE_TITLE
     tlen = segmentLength(tseg, segments)
@@ -700,7 +702,7 @@ for filename in videos:
             
     epnum = countShorts(segments)
     if epnum != numshorts:
-      print "ABORTING. WRONG number of shorts:", epnum, numshorts
+      print "ABORTING. WRONG number of shorts: found %i, should be %i" % (epnum, numshorts)
       sys.exit(1)
   
   quickie = 0

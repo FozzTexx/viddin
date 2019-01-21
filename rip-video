@@ -72,6 +72,7 @@ parser.add_argument("--bluray", action="store_true", help="set defaults for ripp
 parser.add_argument("--movie", action="store_true", help="set defaults for movies")
 parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
 parser.add_argument("--addsubsonly", action="store_true", help="slow down PAL speed-ups")
+parser.add_argument("--normalize", action="store_true", help="normalize audio")
 parser.add_argument("--debug", action="store_true", help="print debug info")
 args = parser.parse_args()
 
@@ -85,7 +86,11 @@ def getSubs(path, title=None):
   subs = []
   _, ext = os.path.splitext(path)
   if title != None:
-    cmd = "lsdvd -t %i -s %s" % (int(args.title), path)
+    cmd = "lsdvd -t %i -s \"%s\"" % (int(args.title), path)
+    if args.debug:
+      print(cmd)
+    else:
+      cmd += " 2>/dev/null"
     with os.popen(cmd) as f:
       for line in f:
         fields = line.split()
@@ -115,6 +120,8 @@ def getSubs(path, title=None):
           subs.append(values)
   elif ext == ".mkv":
     cmd = "mkvmerge -i -F json \"%s\"" % (path)
+    if args.debug:
+      print(cmd)
     process = os.popen(cmd)
     jstr = process.read()
     process.close()
@@ -128,6 +135,8 @@ def getSubs(path, title=None):
         subs.append(info)
 
     cmd = "mkvextract tags \"%s\"" % (path)
+    if args.debug:
+      print(cmd)
     process = os.popen(cmd)
     xstr = process.read()
     process.close()
@@ -145,8 +154,11 @@ def getSubs(path, title=None):
               xdict['TrackUID'] = int(xi3['TrackUID'])
           if 'Simple' in xi2:
             xi3 = xi2['Simple']
-            for xi4 in xi3:
-              xdict[xi4['Name']] = xi4['String']
+            if isinstance(xi3, list):
+              for xi4 in xi3:
+                xdict[xi4['Name']] = xi4['String']
+            else:
+              xdict[xi3['Name']] = xi3['String']
           xlist.append(xdict)
 
       for track in xlist:
@@ -160,6 +172,8 @@ def getSubs(path, title=None):
 def getForcedSub(path):
   if os.path.exists(path):
     cmd = "grep Passthrough \"%s\" | grep subtitle" % (path)
+    if args.debug:
+      print(cmd)
     with os.popen(cmd) as f:
       for line in f:
         fields = line.split()
@@ -217,6 +231,8 @@ def trackWithUid(uid, tracks):
 
 def getLengthMKV(path):
   cmd = "mkvmerge -i -F json \"%s\"" % (path)
+  if args.debug:
+    print(cmd)
   process = os.popen(cmd)
   jstr = process.read()
   process.close()
@@ -230,6 +246,8 @@ def getLengthMKV(path):
     tracks.append(info)
 
   cmd = "mkvextract tags \"%s\"" % (path)
+  if args.debug:
+    print(cmd)
   process = os.popen(cmd)
   xstr = process.read()
   process.close()
@@ -278,6 +296,10 @@ def getLength(filename, title=None, chapters=None):
   clen = []
   if title:
     cmd = "lsdvd -t %s -c \"%s\"" % (title, filename)
+    if args.debug:
+      print(cmd)
+    else:
+      cmd += " 2>/dev/null"
     with os.popen(cmd) as f:
       lines = f.read().splitlines()
     for line in lines:
@@ -302,6 +324,8 @@ def getLength(filename, title=None, chapters=None):
       tlen = getLengthMKV(filename)
     else:
       cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+      if args.debug:
+        print(cmd)
       process = os.popen(cmd)
       tlen = float(process.read())
       process.close()
@@ -336,6 +360,10 @@ def printSubs(subs, lang):
       print(info)
 
 def outputStatus(dest, source, title, message=None, color=None, addtl=None):
+  if not hasattr(outputStatus, 'didInit'):
+    curses.setupterm()
+    outputStatus.didInit = True
+  
   status = dest + ":"
   if title:
     status += " " + title
@@ -343,6 +371,8 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
     status += " " + colored(message, color, attrs=["bold", "blink"])
   if addtl:
     status += " " + addtl
+  # Clear to EOL at beginning and then at end in case this message wraps two lines
+  status = curses.tigetstr("el").decode() + status + curses.tigetstr("el").decode()
   print(status)
 
 def runCommand(cmd):
@@ -477,7 +507,7 @@ else:
 if args.chapters:
   flags.extend(["--chapters", args.chapters])
 
-if args.cfr:
+if args.cfr or args.restore_ntsc:
   flags.extend(["--cfr"])
 elif args.animation or args.pal_animation or args.lap_animation or args.film or args.pal_film or args.tv or args.tv_bob:
   flags.extend(["--vfr"])
@@ -516,7 +546,16 @@ if not args.addsubsonly:
   if alen < olen:
     outputStatus(dest, source, args.title, "FAILED TO RIP", "red", str(olen) + " " + str(alen))
     sys.exit(1)
-    
+
+  if args.normalize:
+    tmp, ext = os.path.splitext(dest)
+    tmp += "_aa" + ext
+    cmd = "adjust-volume --volume -8 \"%s\" \"%s\" > /dev/null 2>&1" % (dest, tmp)
+    if args.debug:
+      print(cmd)
+    runCommand(cmd)
+    os.rename(tmp, dest)
+
   # Keep getting titles in the mkv that are the name of the disk
   path, ext = os.path.splitext(dest)
   if ext == ".mkv":
@@ -580,8 +619,7 @@ if add_subtitles or args.addsubsonly:
         if best:
           tnum = int(best['rv_track_id'])
           spath = "%s_%i.idx" % (path, tnum)
-          cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
-              (subtemp, tnum, spath)
+          cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (subtemp, tnum, spath)
           if args.debug:
             print(cmd)
           else:
@@ -630,8 +668,7 @@ if add_subtitles or args.addsubsonly:
       if longest:
         tnum = int(longest['rv_track_id'])
         spath = "%s_%i.sub" % (path, tnum)
-        cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % \
-            (source, tnum, spath)
+        cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (source, tnum, spath)
         if args.debug:
           print(cmd)
         else:
@@ -660,8 +697,6 @@ if add_subtitles or args.addsubsonly:
           os.remove(p2)
       os.rename(temp, dest)
 
-curses.setupterm()
-sys.stdout.write(curses.tigetstr("el").decode())
 sys.stdout.flush()
 alen = getLength(dest)
 outputStatus(dest, source, args.title, addtl=str(formatTimecode(alen)))

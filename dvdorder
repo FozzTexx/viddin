@@ -202,6 +202,23 @@ else:
         if args.dvdmissing or args.dvdignore:
           epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
                     int(episode['seasonnumber']), float(episode['episodenumber'])]
+          if len(series) > 0:
+            epnum = series[-1][DVDEPISODE]
+            if len(series) > 1 and series[-1][DVDSEASON] == series[-2][DVDSEASON] \
+                  and int(series[-1][DVDEPISODE]) - int(series[-2][DVDEPISODE]) > 1:
+              epnum = int(series[-2][DVDEPISODE])
+              epnum += 1
+              epnum = float(epnum)
+              series[-1][DVDEPISODE] = epnum
+            if series[-1][ORIGDATE] == episode['firstaired']:
+              epnum = str(epnum)
+              idx = epnum.find('.')
+              part = int(epnum[idx+1:])
+              if part == 0:
+                part = 1
+                series[-1][DVDEPISODE] = float(epnum[:idx+1] + str(part))
+              part += 1
+              epinfo[DVDEPISODE] = float(epnum[:idx+1] + str(part))
         elif not args.quiet:
           print "No DVD info for"
           print episode

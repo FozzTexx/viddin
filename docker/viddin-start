@@ -1,0 +1,62 @@
+#!/bin/bash
+APPDIR=/workspace
+IMAGE=viddin:latest
+INIT=viddin-init
+
+if [ $# = 0 ] ; then
+    echo Please specify what to start
+    exit 1
+fi
+
+# The yocto/windriver scripts will save the working directory
+# but aren't smart enough to resolve all symlinks
+export PWD=`pwd -P`
+
+ARGS=""
+
+DCKARGS="--privileged --cap-add=SYS_ADMIN --cap-add SYS_PTRACE"
+DCKNAME=viddin
+
+DAEMON=0
+MQTT=1
+
+while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+    case "$1" in
+	--shell)
+	    ARGS="${ARGS} $1"
+	    DCKARGS="${DCKARGS} -e DISPLAY -v ${HOME}/.Xauthority:/home/viddin/.Xauthority --net=host"
+	    DCKNAME=
+	    shift
+	    ;;
+	--super-shell)
+	    ARGS="${ARGS} $1"
+	    DCKNAME=
+	    shift
+	    ;;
+	--daemon)
+	    DCKARGS="${DCKARGS} -d"
+	    DAEMON=1
+	    shift
+	    ;;
+    esac
+done
+
+# Use interactive -it flag on terminal
+if [[ $DAEMON = 0 ]] ; then
+    DCKARGS="${DCKARGS} --rm"
+    if [[ -t 1 ]] ; then
+	DCKARGS="${DCKARGS} -it"
+    fi
+fi
+
+# if [ $# = 0 ] ; then
+#     ARGS="${ARGS} --shell"
+# fi
+
+IFACE=$(ip route show default | awk '/default/ {print $5}')
+MACADDR=$(cat /sys/class/net/$IFACE/address)
+DCKARGS="${DCKARGS} -e MACADDR=${MACADDR}"
+
+docker run ${DCKARGS} -v "${PWD}":${APPDIR} ${IMAGE} ${INIT} ${ARGS} "${PWD}" $@
+STATUS=$?
+exit ${STATUS}

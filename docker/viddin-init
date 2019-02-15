@@ -1,0 +1,62 @@
+#!/bin/bash
+WSUSER=${WSUSER:-viddin}
+WORKSPACE=${WORKSPACE:-/workspace}
+
+WSUID=$(stat -c '%u' "${WORKSPACE}")
+WSGID=$(stat -c '%g' "${WORKSPACE}")
+if [ ${WSGID} != ${WSUSER} ] ; then
+    groupmod -g ${WSGID} ${WSUSER}
+fi
+if [ ${WSGID} != ${WSUSER} -o ${WSUID} != ${WSUSER} ] ; then
+    usermod -u ${WSUID} -g ${WSGID} ${WSUSER}
+fi
+
+while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+    case "$1" in
+	--shell)
+	    DO_SHELL=user
+	    shift
+	    ;;
+	--super-shell)
+	    DO_SHELL=super
+	    shift
+	    ;;
+    esac
+done
+		
+# Create a bind mount to the same location of the host dir
+
+HOSTDIR="$1"
+shift
+mkdir -p "${HOSTDIR}"
+mount --bind "${WORKSPACE}" "${HOSTDIR}"
+cd "${WORKSPACE}"
+
+if [ "$DO_SHELL" = 'user' ] ; then
+    cd "${HOSTDIR}"
+    if [ $# -gt 0 ] ; then
+#	echo "Starting shell with command: $@"
+	sudo -u ${WSUSER} -E -H -s $@
+    else
+#	echo "Starting shell"
+	su ${WSUSER}
+    fi
+elif [ "$DO_SHELL" = 'super' ] ; then
+    if [ $# -gt 0 ] ; then
+#	echo "Starting super shell with command: $@"
+	/bin/bash -c "$@"
+    else
+#	echo "Starting super shell"
+	/bin/bash
+    fi
+else
+    if [ $# -gt 0 ] ; then
+	cd "${HOSTDIR}"
+	sudo -u ${WSUSER} -E -H $@
+    else
+	su ${WSUSER}
+    fi
+fi
+STATUS=$?
+#echo "viddin exit status:" $STATUS
+exit $STATUS

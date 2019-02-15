@@ -28,3 +28,4 @@ RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
 # Install viddin scripts
 RUN pip3 install xmltodict termcolor
 RUN apt-get update && apt-get install -y mkvtoolnix
+ADD viddin.tar /usr/local/bin

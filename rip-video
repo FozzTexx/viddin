@@ -403,6 +403,8 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   print(status)
 
 def runCommand(cmd):
+  width = os.get_terminal_size().columns
+  pos = 0
   master, slave = pty.openpty()
   with subprocess.Popen(cmd, shell=True, stdin=slave, stdout=slave, stderr=slave,
                        close_fds=True) as p:
@@ -413,7 +415,11 @@ def runCommand(cmd):
         c = m.read(1)
         if c == '\n':
           c = '\r'
-        sys.stdout.write(c)
+        if c == '\r' or width == 0 or pos < width - 2:
+          sys.stdout.write(c)
+          pos += 1
+          if c == '\r':
+            pos = 0
         sys.stdout.flush()
     except:
       pass
@@ -448,7 +454,7 @@ if args.tv_bff:
   flags.extend(["--detelecine=parity=1", "--decomb=parity=1"])
   add_subtitles = True
   
-if args.tv_bob_tff:
+if args.tv_tff:
   flags.extend(["--detelecine=parity=0", "--decomb=parity=0"])
   add_subtitles = True
   
@@ -573,7 +579,7 @@ if not args.addsubsonly:
     alen = getLength(dest)
   else:
     alen = -1
-  if alen < olen:
+  if alen < olen and abs(alen - olen) > 0.5:
     outputStatus(dest, source, args.title, "FAILED TO RIP", "red",
                  "Expect %s  Got %s" % (formatTimecode(olen), formatTimecode(alen)))
     sys.exit(1)

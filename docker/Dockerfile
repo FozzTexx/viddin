@@ -4,12 +4,6 @@ LABEL maintainer fozztexx@fozztexx.com
 #Install useful things
 RUN apt-get update && apt-get install -y git wget sudo python3 python3-pip python
 
-ENV WSUSER viddin
-RUN useradd -s /bin/bash $WSUSER && eval WSHOME=~$WSUSER && mkdir $WSHOME && chown $WSUSER.$WSUSER $WSHOME
-RUN echo "$WSUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-COPY viddin-init /usr/local/bin/
-
 # Install build tools
 RUN apt-get update && apt-get install -y m4 autoconf cmake libtool-bin pkg-config nasm
 
@@ -26,6 +20,16 @@ COPY install-ffmpeg.sh ffmpeg.bundle /tmp/
 RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
 
 # Install viddin scripts
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update && apt-get install -y lsdvd libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
+RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
 RUN pip3 install xmltodict termcolor
-RUN apt-get update && apt-get install -y mkvtoolnix
 ADD viddin.tar /usr/local/bin
+
+# Setup user
+ENV WSUSER viddin
+RUN useradd -s /bin/bash $WSUSER && eval WSHOME=~$WSUSER && mkdir $WSHOME && chown $WSUSER.$WSUSER $WSHOME && usermod -aG cdrom $WSUSER
+RUN echo "$WSUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Copy init script
+COPY viddin-init /usr/local/bin/

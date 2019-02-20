@@ -2,6 +2,10 @@
 WSUSER=${WSUSER:-viddin}
 WORKSPACE=${WORKSPACE:-/workspace}
 
+# Setup handy symlinks
+ln -s sr0 /dev/dvd
+ln -s sr0 /dev/cdrom
+
 WSUID=$(stat -c '%u' "${WORKSPACE}")
 WSGID=$(stat -c '%g' "${WORKSPACE}")
 if [ ${WSGID} != ${WSUSER} ] ; then

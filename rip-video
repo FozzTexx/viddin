@@ -579,9 +579,11 @@ if not args.addsubsonly:
     alen = getLength(dest)
   else:
     alen = -1
-  if alen < olen and abs(alen - olen) > 0.5:
+  percent = abs(alen - olen) / olen
+  if alen < olen and abs(alen - olen) > 0.5 and percent > 0.001:
     outputStatus(dest, source, args.title, "FAILED TO RIP", "red",
-                 "Expect %s  Got %s" % (formatTimecode(olen), formatTimecode(alen)))
+                 "Expect %s  Got %s  Percent %.5f" %
+                 (formatTimecode(olen), formatTimecode(alen), percent))
     sys.exit(1)
 
   if args.normalize:

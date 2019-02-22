@@ -23,7 +23,7 @@ RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y lsdvd libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
 RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
-RUN pip3 install xmltodict termcolor
+RUN pip3 install xmltodict termcolor tvdb_api
 ADD viddin.tar /usr/local/bin
 
 # Setup user

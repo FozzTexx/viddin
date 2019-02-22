@@ -129,7 +129,7 @@ def splitVideo(range, filename, output=None, trim=None):
     quality = ""
     if args.quality:
       quality = "-crf %s" % (args.quality)
-    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -acodec copy -vcodec libx264 %s \"%s\" > /dev/null 2>&1" % (filename, start, end, quality, output)
+    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\" > /dev/null 2>&1" % (filename, start, end, quality, output)
     print cmd
     os.system(cmd)
   else:
@@ -152,7 +152,7 @@ def splitVideo(range, filename, output=None, trim=None):
       temp = filename
 
     len = end - start
-    cmd = "ffmpeg -i \"%s\" -t %f -codec copy \"%s\" > /dev/null 2>&1" % (temp, len, output)
+    cmd = "ffmpeg -i \"%s\" -t %f -codec copy -map 0 \"%s\" > /dev/null 2>&1" % (temp, len, output)
     print cmd
     os.system(cmd)
     if temp != filename:

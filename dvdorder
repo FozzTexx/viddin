@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -25,9 +25,6 @@ import re
 import sys
 import math
 import csv
-
-reload(sys)
-sys.setdefaultencoding('utf-8')
 
 AIREDSEASON = 0
 AIREDEPISODE = 1
@@ -152,9 +149,9 @@ def renameVid(episode, filename=None):
       if not os.path.isfile(eptitle) or args.dryrun:
         if not args.dryrun:
           os.rename(filename, eptitle)
-        print filename + " to " + eptitle
+        print(filename + " to " + eptitle)
       else:
-        print "Already exists! " + eptitle
+        print("Already exists! " + eptitle)
   return filename
 
 def isint(s):
@@ -220,8 +217,8 @@ else:
               part += 1
               epinfo[DVDEPISODE] = float(epnum[:idx+1] + str(part))
         elif not args.quiet:
-          print "No DVD info for"
-          print episode
+          print("No DVD info for")
+          print(episode)
       if epinfo:
         epinfo.extend([episode['episodename'], episode['firstaired'],
                       episode['productioncode']])
@@ -282,7 +279,7 @@ elif args.rename:
     epnum += 1
 else:
   for row in dvdorder:
-    print dvdorder.index(row) + 1,
+    print(dvdorder.index(row) + 1, end=" ")
     for info in row:
-      print info,
-    print
+      print(info, end=" ")
+    print()

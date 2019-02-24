@@ -70,7 +70,7 @@ def main():
 
   splits = []
   for row in black:
-    match = viddin.bestSilence(row)
+    match = viddin.bestSilence(row, silence)
     if match:
       splits.append((match[1] - match[0]) / 2 + match[0])
     else:

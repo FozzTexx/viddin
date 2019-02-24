@@ -356,9 +356,7 @@ class viddin:
     return splits
 
   @staticmethod
-  def bestSilence(best):
-    global silence
-
+  def bestSilence(best, silence):
     bestsil = None
     for info in silence:
       begin = float(info[1])

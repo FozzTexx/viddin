@@ -126,13 +126,6 @@ def findEpisode(epid):
       return row
   return None
 
-def isint(s):
-  try:
-    int(s)
-    return True
-  except ValueError:
-    return False
-
 def main():
   args = build_argparser().parse_args()
   # FIXME - if args.series is file then trim just that one file
@@ -166,7 +159,7 @@ def main():
     if magnitude >= 0:
       minsize *= math.pow(1024, magnitude)
 
-  if isint(args.first):
+  if viddin.isint(args.first):
     first = int(args.first)
   else:
     episode = findEpisode(args.first)

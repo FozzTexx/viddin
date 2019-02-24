@@ -97,8 +97,9 @@ def main():
     cfile, cfname = tempfile.mkstemp()
 
     for i in range(len(chapters)):
-      os.write(cfile, "CHAPTER%02i=%s\n" % (i + 1, viddin.formatChapter(chapters[i])))
-      os.write(cfile, "CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1))
+      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1, viddin.formatChapter(chapters[i])),
+                            "ASCII"))
+      os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1), "ASCII"))
     os.close(cfile)
 
     if args.update:
@@ -111,7 +112,7 @@ def main():
   else:
     for row in splits:
       if row >= 0 or args.force:
-        print(row)
+        print("%0.3f" % (row))
 
   return
 

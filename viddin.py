@@ -21,9 +21,20 @@ import xmltodict
 import re
 import datetime
 import sys
+import tvdb_api
+import operator
+import math
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
+  @staticmethod
+  def isint(s):
+    try:
+      int(s)
+      return True
+    except ValueError:
+      return False
+
   @staticmethod
   def decodeTimecode(tc):
     fraction = 0
@@ -457,8 +468,115 @@ class viddin:
 
     return tracks
 
+  class EpisodeInfo:
+    def __init__(self, airedSeason, airedEpisode, dvdSeason, dvdEpisode,
+                 title=None, airDate=None):
+      self.airedSeason = airedSeason
+      self.airedEpisode = airedEpisode
+      self.dvdSeason = dvdSeason
+      self.dvdEpisode = dvdEpisode
+      self.title = title
+      self.airDate = airDate
+      return
+
+    def description(self):
+      return "%i %i %i %0.1f %s %s" % (self.airedSeason, self.airedEpisode, self.dvdSeason,
+                                       self.dvdEpisode, self.title, self.airDate)
+
+  class EpisodeList:
+    def __init__(self, episodes, seasonKey, episodeKey):
+      self.episodes = sorted(episodes, key=operator.attrgetter(seasonKey, episodeKey))
+      self.seasonKey = seasonKey
+      self.episodeKey = episodeKey
+      return
+
+    def indexOf(self, episode):
+      return episodes.index(episode)
+    
+    def formatEpisodeID(self, episode):
+      num = 0
+      season = getattr(episode, self.seasonKey)
+      epnum = getattr(episode, self.episodeKey)
+      for row in self.episodes:
+        if getattr(row, self.seasonKey) == season:
+          num += 1
+      if num < 1:
+        num = 1
+      digits = int(math.floor(math.log(num, 10)) + 1)
+      if digits < 2:
+        digits = 2
+      epid = "%%ix%%0%ii" % digits
+      return epid % (season, epnum)
+
+    def findVideo(self, episode):
+      guess = "\\b" + formatEpisodeID(episode.dvdSeason, episode.dvdEpisode) + "\\b"
+      indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
+      if not len(indices):
+        guess = "\\b[sS]%02i[eE]%02i\\b" % (episode.dvdSeason, episode.dvdEpisode)
+        indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
+      if len(indices):
+        return videos[indices[0]]
+      return None
+
+    def findEpisode(self, epid):
+      if type(epid) is int:
+        epid = self.formatEpisodeID(self.episodes[epid])
+
+      episode = None
+      epcount = 0
+      dvdnum = re.split(" *x *", epid)
+      dvdseason = int(re.sub("[^0-9]*", "", dvdnum[0]));
+      dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
+      for row in self.episodes:
+        if dvdseason == getattr(row, self.seasonKey) \
+              and dvdepisode == getattr(row, self.episodeKey):
+          if not episode:
+            episode = []
+          episode.append(row)
+          epcount += 1
+      if epcount == 1:
+        episode = episode[0]
+      return episode
+    
+    def renameVid(self, episode, filename, dvdorderFlag, dryrunFlag):
+      epid = self.formatEpisodeID(episode)
+
+      if not filename:
+        filename = findVideo(episode)
+
+      if filename:
+        video, ext = os.path.splitext(filename)
+
+        if episode == episode:
+          title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", episode.title.strip()))
+        else:
+          title = ""
+          for ep in episode:
+            if len(title):
+              title += " / "
+            title += ep.title
+        title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", title))
+
+        if dvdorderFlag:
+          part = int((episode.dvdEpisode * 10) % 10)
+          if part and title.endswith(" (" + str(part) + ")"):
+            title = title[:-4]
+        eptitle = "%s %s%s" % (epid, title, ext)
+        if filename != eptitle:
+          if not os.path.isfile(eptitle) or args.dryrun:
+            if not dryrunFlag:
+              os.rename(filename, eptitle)
+            print(filename + " to " + eptitle)
+          else:
+            print("Already exists! " + eptitle)
+      return filename
+
   @staticmethod
   def loadEpisodeInfoCSV(filename):
+    CSV_EPISODE = 0
+    CSV_DVDEP = 1
+    CSV_ORIGDATE = 2
+    CSV_TITLE = 3
     series = []
     f = open(filename, 'rU')
     try:
@@ -470,8 +588,9 @@ class viddin:
           dvdep = row[CSV_EPISODE] + "." + dvdep
         dvdnum = re.split(" *x *", dvdep)
         epid = epnum[0] + "x" + epnum[1].zfill(2)
-        info = [int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]),
-                row[CSV_TITLE], row[CSV_ORIGDATE]]
+        info = viddin.EpisodeInfo(int(epnum[0]), int(epnum[1]),
+                                  int(dvdnum[0]), float(dvdnum[1]),
+                           row[CSV_TITLE], row[CSV_ORIGDATE])
         series.append(info)
     finally:
       f.close()
@@ -479,6 +598,12 @@ class viddin:
 
   @staticmethod
   def loadEpisodeInfoTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quietFlag=False):
+    TVDB_DVDSEASON = "dvd_season"
+    TVDB_DVDEPNUM = "dvd_episodenumber"
+    if float(tvdb_api.__version__) >= 2.0:
+      TVDB_DVDSEASON = "dvdSeason"
+      TVDB_DVDEPNUM = "dvdEpisodeNumber"
+
     series = []
     t = tvdb_api.Tvdb()
     show = t[seriesName]
@@ -489,38 +614,45 @@ class viddin:
         epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
         epinfo = None
         if not dvdIgnore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
-          epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
-                    int(episode[TVDB_DVDSEASON]), float(episode[TVDB_DVDEPNUM])]
+          epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
+                                      int(episode['episodenumber']),
+                                      int(episode[TVDB_DVDSEASON]),
+                                      float(episode[TVDB_DVDEPNUM]))
         elif not dvdIgnore and episode[TVDB_DVDEPNUM]:
-          epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
-                    int(episode['seasonnumber']), float(episode[TVDB_DVDEPNUM])]
+          epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
+                                      int(episode['episodenumber']),
+                                      int(episode['seasonnumber']),
+                                      float(episode[TVDB_DVDEPNUM]))
         else:
           if dvdMissing or dvdIgnore:
-            epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
-                      int(episode['seasonnumber']), float(episode['episodenumber'])]
+            epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
+                                        int(episode['episodenumber']),
+                                        int(episode['seasonnumber']),
+                                        float(episode['episodenumber']))
             if len(series) > 0:
-              epnum = series[-1][DVDEPISODE]
-              if len(series) > 1 and series[-1][DVDSEASON] == series[-2][DVDSEASON] \
-                    and int(series[-1][DVDEPISODE]) - int(series[-2][DVDEPISODE]) > 1:
-                epnum = int(series[-2][DVDEPISODE])
+              epnum = series[-1].dvdEpisode
+              if len(series) > 1 and series[-1].dvdSeason == series[-2].dvdSeason \
+                    and int(series[-1].dvdEpisode) - int(series[-2].dvdEpisode) > 1:
+                epnum = int(series[-2].dvdEpisode)
                 epnum += 1
                 epnum = float(epnum)
-                series[-1][DVDEPISODE] = epnum
-              if series[-1][ORIGDATE] == episode['firstaired']:
+                series[-1].dvdEpisode = epnum
+              if series[-1].airDate == episode['firstaired']:
                 epnum = str(epnum)
                 idx = epnum.find('.')
                 part = int(epnum[idx+1:])
                 if part == 0:
                   part = 1
-                  series[-1][DVDEPISODE] = float(epnum[:idx+1] + str(part))
+                  series[-1].dvdEpisode = float(epnum[:idx+1] + str(part))
                 part += 1
-                epinfo[DVDEPISODE] = float(epnum[:idx+1] + str(part))
+                epinfo.dvdEpisode = float(epnum[:idx+1] + str(part))
           elif not quietFlag:
             print("No DVD info for")
             print(episode)
         if epinfo:
-          epinfo.extend([episode['episodename'], episode['firstaired'],
-                        episode['productioncode']])
+          epinfo.title = episode['episodename']
+          epinfo.airDate = episode['firstaired']
+          epinfo.productionCode = episode['productioncode']
           series.append(epinfo)
 
     return series

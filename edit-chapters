@@ -74,7 +74,8 @@ def main():
   if doEdit:
     cfile, cfname = tempfile.mkstemp()
     for i in range(len(chapters)):
-      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1, formatChapter(chapters[i])), 'UTF-8'))
+      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1,
+                                                  viddin.formatChapter(chapters[i])), 'UTF-8'))
       os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1), 'UTF-8'))
     os.close(cfile)
 
@@ -86,7 +87,7 @@ def main():
     if len(chapters) == 0:
       print("No chapter markers")
     for i in range(len(chapters)):
-      print("Chapter %i\t%s" % (i + 1, formatChapter(chapters[i])))
+      print("Chapter %i\t%s" % (i + 1, viddin.formatChapter(chapters[i])))
 
   return
 

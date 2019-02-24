@@ -28,41 +28,9 @@ parser.add_argument("file", help="Video file to examine")
 parser.add_argument("--fix", action="store_true", help="Fix first chapeter marker to start at exactly 0")
 parser.add_argument("--multiplier", type=float, help="Multiplier to shift chapter markers")
 parser.add_argument("--chapters", help="File containing list of chapters to replace existing markers")
+parser.add_argument("--add", nargs="+", help="Positions to add as chapters")
+parser.add_argument("--delete", nargs="+", help="Chapters to delete")
 args = parser.parse_args()
-
-def formatChapter(seconds):
-  hours = int(seconds / 3600)
-  minutes = int((seconds / 60) % 60)
-  return "%02i:%02i:%06.3f" % (hours, minutes, seconds - hours * 3600 - minutes * 60)
-
-def loadChapters(filename):
-  chapters = []
-  with os.popen("ffmpeg -i \"" + filename + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
-    for line in f:
-      fields = line.split()
-      begin = float(re.sub(",", "", fields[3]))
-      chapters.append(begin)
-  return chapters
-
-def decodeTimecode(tc):
-  fraction = 0
-  if re.match(".*\.[0-9]+$", tc):
-    parts = re.split("\.", tc)
-    fraction = float("."+parts[1])
-    tc = parts[0]
-
-  seconds = sum(int(x) * 60 ** i for i,x in enumerate(reversed(tc.split(":"))))
-  seconds += fraction
-  return seconds
-
-def loadChapterFile(filename):
-  chapters = []
-  with open(filename) as f:
-    for line in f:
-      fields = line.split("\t")
-      begin = decodeTimecode(fields[1])
-      chapters.append(begin)
-  return chapters
 
 video, ext = os.path.splitext(args.file)
 if args.chapters:
@@ -70,17 +38,33 @@ if args.chapters:
 else:
   chapters = loadChapters(args.file)
 
-if args.multiplier:
-  for idx in range(len(chapters)):
-    chapters[idx] *= args.multiplier
-
-if args.fix:
+doEdit = False
+if args.fix or len(chapters) == 0:
   chapters.sort()
-  if chapters[0] < 2:
+  if len(chapters) > 0 and chapters[0] < 2:
     chapters[0] = 0
   else:
     chapters.insert(0, 0)
+  doEdit = True
 
+if not args.add is None:
+  for pos in args.add:
+    chapters.append(decodeTimecode(pos))
+  chapters.sort()
+  doEdit = True
+  
+if args.multiplier:
+  for idx in range(len(chapters)):
+    chapters[idx] *= args.multiplier
+  doEdit = True
+
+for idx in range(len(chapters) - 2, -1, -1):
+  chap = chapters[idx]
+  nchap = chapters[idx+1]
+  if abs(chap - nchap) < 1:
+    chapters[idx:idx+1] = []
+  
+if doEdit:
   cfile, cfname = tempfile.mkstemp()
   for i in range(len(chapters)):
     os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1, formatChapter(chapters[i])), 'UTF-8'))
@@ -92,5 +76,7 @@ if args.fix:
   os.remove(cfname)
   
 else:
+  if len(chapters) == 0:
+    print("No chapter markers")
   for i in range(len(chapters)):
     print("Chapter %i\t%s" % (i + 1, formatChapter(chapters[i])))

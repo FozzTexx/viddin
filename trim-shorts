@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -38,41 +38,29 @@ CSV_DVDEP = 1
 CSV_ORIGDATE = 2
 CSV_TITLE = 3
 
-parser = argparse.ArgumentParser()
-parser.add_argument("series", help="Name of series on thetvdb.com")
-parser.add_argument("offsets", nargs="+", help="Trim amount from each short. Negative numbers are offset from end. Pattern repeats through files.")
-parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
-parser.add_argument("--dvdignore", action="store_true", help="ignore dvd episode data")
-parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
-parser.add_argument("--transcode", action="store_true", help="Transcode instead of cut")
-parser.add_argument("--first", default=1, help="Start enumeration at this number")
-parser.add_argument("--minsize", help="Ignore videos smaller than this")
-parser.add_argument("--iframes", action="store_true", help="Split at nearest iframe")
-parser.add_argument("--skipexisting", action="store_true", help="Don't redo existing trims")
-parser.add_argument("--trimend", help="Frames to remove from end")
-parser.add_argument("--debug", action="store_true", help="Turn on debug output")
-args = parser.parse_args()
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
 
-def findBlack(filename):
-  video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.blk" % video):
-    cmd = "find-black --duration 0.01 \"%s\" \"%s.blk\" > /dev/null" % (filename, video)
-    if args.debug:
-      print "Finding black", cmd
-    os.system(cmd)
-
-def findSilence(filename):
-  video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.sil" % video):
-    cmd = "find-silence --duration 0.02 --threshold 40 \"%s\" \"%s.sil\" > /dev/null" % (filename, video)
-    if args.debug:
-      print "Finding silence", cmd
-    os.system(cmd)
+def build_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("series", help="Name of series on thetvdb.com")
+  parser.add_argument("offsets", nargs="+", help="Trim amount from each short. Negative numbers are offset from end. Pattern repeats through files.")
+  parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+  parser.add_argument("--dvdignore", action="store_true", help="ignore dvd episode data")
+  parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
+  parser.add_argument("--transcode", action="store_true", help="Transcode instead of cut")
+  parser.add_argument("--first", default=1, help="Start enumeration at this number")
+  parser.add_argument("--minsize", help="Ignore videos smaller than this")
+  parser.add_argument("--iframes", action="store_true", help="Split at nearest iframe")
+  parser.add_argument("--skipexisting", action="store_true", help="Don't redo existing trims")
+  parser.add_argument("--trimend", help="Frames to remove from end")
+  parser.add_argument("--debug", action="store_true", help="Turn on debug output")
+  return parser
 
 def bestMatch(offset, filename):
   video, ext = os.path.splitext(filename)
   if args.debug:
-    print "Finding offset", offset
+    print("Finding offset", offset)
   if offset < 0:
     cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
     process = os.popen(cmd)
@@ -106,7 +94,7 @@ def bestMatch(offset, filename):
 
   if bestsil:
     if args.debug:
-      print "Silence: ", bestsil[2], bestsil[3], best[2], best[3]
+      print("Silence: ", bestsil[2], bestsil[3], best[2], best[3])
     begin = bestsil[2]
     if begin < best[2]:
       begin = best[2]
@@ -115,11 +103,11 @@ def bestMatch(offset, filename):
       end = best[3]
     split = begin + (end - begin) / 2
     if args.debug:
-      print "Splitting at ", split
+      print("Splitting at ", split)
     return split
 
   if args.debug:
-    print "Black: ", best
+    print("Black: ", best)
   return best[1]
 
 def episodeTitle(episode):
@@ -129,7 +117,7 @@ def episodeTitle(episode):
   
 def findEpisode(epid):
   if args.debug:
-    print epid
+    print(epid)
   if type(epid) is int:
     return dvdorder[epid]
   
@@ -145,122 +133,103 @@ def isint(s):
   except ValueError:
     return False
 
-series = []
-# FIXME - if args.series is file then trim just that one file
-if os.path.isfile(args.series):
-  mime = mimetypes.guess_type(args.series)
-  ftype = mime[0].split('/')[0]
-  if ftype != "video":
-    f = open(args.series, 'rU')
+def main():
+  args = build_argparser().parse_args()
+  # FIXME - if args.series is file then trim just that one file
+
+  if os.path.isfile(args.series):
+    mime = mimetypes.guess_type(args.series)
+    ftype = mime[0].split('/')[0]
+    if ftype != "video":
+      series = viddin.loadEpisodeInfoCSV(args.series)
+  else:
+    series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=args.dvdignore,
+                                        dvdMissing=args.dvdmissing)
+
+  dvdorder = sorted(series, key=itemgetter(1, 2))
+
+  if len(series):
+    videos = [file for file in glob.glob("[0-9]x[0-9][0-9].mkv")]
+    videos.sort()
+  else:
+    videos = [args.series]
+
+  minsize = 0
+  if args.minsize:
+    val = re.sub("^( *[0-9]+).*", "\\1", args.minsize)
+    minsize = int(val)
+    suffix = args.minsize[-1]
     try:
-      reader = csv.reader(f)
-      for row in reader:
-        epnum = re.split(" *x *", row[CSV_EPISODE])
-        dvdep = row[CSV_DVDEP]
-        if not re.match(".*x.*", dvdep):
-          dvdep = row[CSV_EPISODE] + "." + dvdep
-        dvdnum = re.split(" *x *", dvdep)
-        epid = epnum[0] + "x" + epnum[1].zfill(2)
-        info = [epid, int(dvdnum[0]), float(dvdnum[1]), row[CSV_TITLE], row[CSV_ORIGDATE]]
-        series.append(info)
-    finally:
-      f.close()
+      magnitude = ["B", "K", "M", "G"].index(suffix.upper())
+    except ValueError:
+      magnitude = -1
+    if magnitude >= 0:
+      minsize *= math.pow(1024, magnitude)
 
-else:
-  t = tvdb_api.Tvdb()
-  show = t[args.series]
-
-  for season in show:
-    for epnum in show[season]:
-      episode = show[season][epnum]
-      epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
-      if not args.dvdignore and episode['dvd_season'] and episode['dvd_episodenumber']:
-        series.append([epid, int(episode['dvd_season']), float(episode['dvd_episodenumber']), episode['episodename'], episode['firstaired']])
-      else:
-        if args.dvdmissing or args.dvdignore:
-          series.append([epid, int(episode['seasonnumber']), float(episode['episodenumber']), episode['episodename'], episode['firstaired']])
-        else:
-          print "No DVD info for"
-          print episode
-dvdorder = sorted(series, key=itemgetter(1, 2))
-
-if len(series):
-  videos = [file for file in glob.glob("[0-9]x[0-9][0-9].mkv")]
-  videos.sort()
-else:
-  videos = [args.series]
-
-minsize = 0
-if args.minsize:
-  val = re.sub("^( *[0-9]+).*", "\\1", args.minsize)
-  minsize = int(val)
-  suffix = args.minsize[-1]
-  try:
-    magnitude = ["B", "K", "M", "G"].index(suffix.upper())
-  except ValueError:
-    magnitude = -1
-  if magnitude >= 0:
-    minsize *= math.pow(1024, magnitude)
-
-if isint(args.first):
-  first = int(args.first)
-else:
-  episode = findEpisode(args.first)
-  first = dvdorder.index(episode) + 1
-    
-# FIXME - do merging of multi chapter segments
-epnum = 0
-for i in xrange(0, len(videos)):
-  oindex = epnum % len(args.offsets)
-  filename = videos[i]
-  if minsize:
-    size = os.path.getsize(filename)
-    if size < minsize:
-      continue
-
-  if args.debug:
-    print filename
-  video, ext = os.path.splitext(filename)
-  epid = video
-  if args.enumerate:
-    epid = epnum + first - 1
-  episode = findEpisode(epid)
-  if args.debug:
-    print episode
-
-  if episode:
-    eptitle = episodeTitle(episode)
+  if isint(args.first):
+    first = int(args.first)
   else:
-    eptitle = video + "_1" + ext
-    
-  if not args.skipexisting or not os.path.exists(eptitle):
-    olen = int(args.offsets[oindex])
-    if olen:
-      findBlack(filename)
-      findSilence(filename)
-      split = bestMatch(olen, filename)
-      offset = "+"
-      if olen < 0:
-        offset = "0-"
-      offset += str(split)
-      cmd = "split-video"
-      if args.iframes:
-        cmd += " --iframes"
-      if args.transcode:
-        cmd += " --transcode"
-      if args.trimend:
-        cmd += " --trimend " + args.trimend
-      cmd += " \"%s\" %s" % (filename, offset)
-      os.system(cmd)
-      filename = video + "_1" + ext
-      os.rename(filename, eptitle)
-    else:
-      if os.path.exists(eptitle):
-        os.remove(eptitle)
-      os.link(filename, eptitle)
-    print eptitle
-  else:
+    episode = findEpisode(args.first)
+    first = dvdorder.index(episode) + 1
+
+  # FIXME - do merging of multi chapter segments
+  epnum = 0
+  for i in xrange(0, len(videos)):
+    oindex = epnum % len(args.offsets)
+    filename = videos[i]
+    if minsize:
+      size = os.path.getsize(filename)
+      if size < minsize:
+        continue
+
     if args.debug:
-      print "Skipped " + eptitle
+      print(filename)
+    video, ext = os.path.splitext(filename)
+    epid = video
+    if args.enumerate:
+      epid = epnum + first - 1
+    episode = findEpisode(epid)
+    if args.debug:
+      print(episode)
 
-  epnum += 1
+    if episode:
+      eptitle = episodeTitle(episode)
+    else:
+      eptitle = video + "_1" + ext
+
+    if not args.skipexisting or not os.path.exists(eptitle):
+      olen = int(args.offsets[oindex])
+      if olen:
+        viddin.findBlack(filename)
+        viddin.findSilence(filename)
+        split = bestMatch(olen, filename)
+        offset = "+"
+        if olen < 0:
+          offset = "0-"
+        offset += str(split)
+        cmd = "split-video"
+        if args.iframes:
+          cmd += " --iframes"
+        if args.transcode:
+          cmd += " --transcode"
+        if args.trimend:
+          cmd += " --trimend " + args.trimend
+        cmd += " \"%s\" %s" % (filename, offset)
+        os.system(cmd)
+        filename = video + "_1" + ext
+        os.rename(filename, eptitle)
+      else:
+        if os.path.exists(eptitle):
+          os.remove(eptitle)
+        os.link(filename, eptitle)
+      print(eptitle)
+    else:
+      if args.debug:
+        print("Skipped " + eptitle)
+
+    epnum += 1
+
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

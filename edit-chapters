@@ -23,60 +23,72 @@ import tempfile
 import sys
 import re
 
-parser = argparse.ArgumentParser()
-parser.add_argument("file", help="Video file to examine")
-parser.add_argument("--fix", action="store_true", help="Fix first chapeter marker to start at exactly 0")
-parser.add_argument("--multiplier", type=float, help="Multiplier to shift chapter markers")
-parser.add_argument("--chapters", help="File containing list of chapters to replace existing markers")
-parser.add_argument("--add", nargs="+", help="Positions to add as chapters")
-parser.add_argument("--delete", nargs="+", help="Chapters to delete")
-args = parser.parse_args()
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
 
-video, ext = os.path.splitext(args.file)
-if args.chapters:
-  chapters = loadChapterFile(args.chapters)
-else:
-  chapters = loadChapters(args.file)
+def build_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("file", help="Video file to examine")
+  parser.add_argument("--fix", action="store_true", help="Fix first chapeter marker to start at exactly 0")
+  parser.add_argument("--multiplier", type=float, help="Multiplier to shift chapter markers")
+  parser.add_argument("--chapters", help="File containing list of chapters to replace existing markers")
+  parser.add_argument("--add", nargs="+", help="Positions to add as chapters")
+  parser.add_argument("--delete", nargs="+", help="Chapters to delete")
+  return parser
 
-doEdit = False
-if args.fix or len(chapters) == 0:
-  chapters.sort()
-  if len(chapters) > 0 and chapters[0] < 2:
-    chapters[0] = 0
+def main():
+  args = build_argparser().parse_args()
+
+  video, ext = os.path.splitext(args.file)
+  if args.chapters:
+    chapters = viddin.loadChapterFile(args.chapters)
   else:
-    chapters.insert(0, 0)
-  doEdit = True
+    chapters = viddin.loadChapters(args.file)
 
-if not args.add is None:
-  for pos in args.add:
-    chapters.append(decodeTimecode(pos))
-  chapters.sort()
-  doEdit = True
-  
-if args.multiplier:
-  for idx in range(len(chapters)):
-    chapters[idx] *= args.multiplier
-  doEdit = True
+  doEdit = False
+  if args.fix or len(chapters) == 0:
+    chapters.sort()
+    if len(chapters) > 0 and chapters[0] < 2:
+      chapters[0] = 0
+    else:
+      chapters.insert(0, 0)
+    doEdit = True
 
-for idx in range(len(chapters) - 2, -1, -1):
-  chap = chapters[idx]
-  nchap = chapters[idx+1]
-  if abs(chap - nchap) < 1:
-    chapters[idx:idx+1] = []
-  
-if doEdit:
-  cfile, cfname = tempfile.mkstemp()
-  for i in range(len(chapters)):
-    os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1, formatChapter(chapters[i])), 'UTF-8'))
-    os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1), 'UTF-8'))
-  os.close(cfile)
+  if not args.add is None:
+    for pos in args.add:
+      chapters.append(decodeTimecode(pos))
+    chapters.sort()
+    doEdit = True
 
-  cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
-  os.system(cmd)
-  os.remove(cfname)
-  
-else:
-  if len(chapters) == 0:
-    print("No chapter markers")
-  for i in range(len(chapters)):
-    print("Chapter %i\t%s" % (i + 1, formatChapter(chapters[i])))
+  if args.multiplier:
+    for idx in range(len(chapters)):
+      chapters[idx] *= args.multiplier
+    doEdit = True
+
+  for idx in range(len(chapters) - 2, -1, -1):
+    chap = chapters[idx]
+    nchap = chapters[idx+1]
+    if abs(chap - nchap) < 1:
+      chapters[idx:idx+1] = []
+
+  if doEdit:
+    cfile, cfname = tempfile.mkstemp()
+    for i in range(len(chapters)):
+      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1, formatChapter(chapters[i])), 'UTF-8'))
+      os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1), 'UTF-8'))
+    os.close(cfile)
+
+    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
+    os.system(cmd)
+    os.remove(cfname)
+
+  else:
+    if len(chapters) == 0:
+      print("No chapter markers")
+    for i in range(len(chapters)):
+      print("Chapter %i\t%s" % (i + 1, formatChapter(chapters[i])))
+
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

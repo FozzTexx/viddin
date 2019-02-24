@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- python -*-
 #
 # Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -26,6 +27,9 @@ import sys
 import math
 import csv
 
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
+
 AIREDSEASON = 0
 AIREDEPISODE = 1
 DVDSEASON = 2
@@ -44,22 +48,22 @@ if float(tvdb_api.__version__) >= 2.0:
   TVDB_DVDSEASON = "dvdSeason"
   TVDB_DVDEPNUM = "dvdEpisodeNumber"
 
-# FIXME - add option to keep dvd order when renaming
-parser = argparse.ArgumentParser()
-parser.add_argument("series", help="Name of series on thetvdb.com")
-parser.add_argument("--rename", action="store_true", help="rename files to match dvd order")
-parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
-parser.add_argument("--dvdignore", action="store_true", help="ignore dvd episode data")
-parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
-parser.add_argument("--first", default=1, help="Start enumeration at this number")
-parser.add_argument("--minsize", help="Ignore videos smaller than this")
-parser.add_argument("--dvdorder", action="store_true", help="keep episodes in DVD order")
-parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
-parser.add_argument("--csv", action="store_true", help="output data as csv")
-parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
-parser.add_argument("--glob", help="pattern for finding videos", default="[0-9]x[0-9][0-9].mkv")
-parser.add_argument("--dryrun", action="store_true", help="Don't actually rename files")
-args = parser.parse_args()
+def build_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("series", help="Name of series on thetvdb.com")
+  parser.add_argument("--rename", action="store_true", help="rename files to match dvd order")
+  parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+  parser.add_argument("--dvdignore", action="store_true", help="ignore dvd episode data")
+  parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
+  parser.add_argument("--first", default=1, help="Start enumeration at this number")
+  parser.add_argument("--minsize", help="Ignore videos smaller than this")
+  parser.add_argument("--dvdorder", action="store_true", help="keep episodes in DVD order")
+  parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
+  parser.add_argument("--csv", action="store_true", help="output data as csv")
+  parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
+  parser.add_argument("--glob", help="pattern for finding videos", default="[0-9]x[0-9][0-9].mkv")
+  parser.add_argument("--dryrun", action="store_true", help="Don't actually rename files")
+  return parser
   
 def formatEpisodeID(season, epnum):
   num = 0
@@ -161,125 +165,76 @@ def isint(s):
   except ValueError:
     return False
           
-series = []
+def main():
+  args = build_argparser().parse_args()
 
-if os.path.isfile(args.series):
-  f = open(args.series, 'rU')
-  try:
-    reader = csv.reader(f)
-    for row in reader:
-      epnum = re.split(" *x *", row[CSV_EPISODE])
-      dvdep = row[CSV_DVDEP]
-      if not re.match(".*x.*", dvdep):
-        dvdep = row[CSV_EPISODE] + "." + dvdep
-      dvdnum = re.split(" *x *", dvdep)
-      epid = epnum[0] + "x" + epnum[1].zfill(2)
-      info = [int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]),
-              row[CSV_TITLE], row[CSV_ORIGDATE]]
-      series.append(info)
-  finally:
-    f.close()
-
-else:
-  t = tvdb_api.Tvdb()
-  show = t[args.series]
-
-  for season in show:
-    for epnum in show[season]:
-      episode = show[season][epnum]
-      epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
-      epinfo = None
-      if not args.dvdignore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
-        epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
-                  int(episode[TVDB_DVDSEASON]), float(episode[TVDB_DVDEPNUM])]
-      elif not args.dvdignore and episode[TVDB_DVDEPNUM]:
-        epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
-                  int(episode['seasonnumber']), float(episode[TVDB_DVDEPNUM])]
-      else:
-        if args.dvdmissing or args.dvdignore:
-          epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
-                    int(episode['seasonnumber']), float(episode['episodenumber'])]
-          if len(series) > 0:
-            epnum = series[-1][DVDEPISODE]
-            if len(series) > 1 and series[-1][DVDSEASON] == series[-2][DVDSEASON] \
-                  and int(series[-1][DVDEPISODE]) - int(series[-2][DVDEPISODE]) > 1:
-              epnum = int(series[-2][DVDEPISODE])
-              epnum += 1
-              epnum = float(epnum)
-              series[-1][DVDEPISODE] = epnum
-            if series[-1][ORIGDATE] == episode['firstaired']:
-              epnum = str(epnum)
-              idx = epnum.find('.')
-              part = int(epnum[idx+1:])
-              if part == 0:
-                part = 1
-                series[-1][DVDEPISODE] = float(epnum[:idx+1] + str(part))
-              part += 1
-              epinfo[DVDEPISODE] = float(epnum[:idx+1] + str(part))
-        elif not args.quiet:
-          print("No DVD info for")
-          print(episode)
-      if epinfo:
-        epinfo.extend([episode['episodename'], episode['firstaired'],
-                      episode['productioncode']])
-        series.append(epinfo)
-
-dvdorder = sorted(series, key=itemgetter(DVDSEASON, DVDEPISODE))
-airedorder = sorted(series, key=itemgetter(AIREDSEASON, AIREDEPISODE))
-
-videos = [file for file in glob.glob(args.glob)]
-videos.sort()
-
-minsize = 0
-if args.minsize:
-  val = re.sub("^( *[0-9]+).*", "\\1", args.minsize)
-  minsize = int(val)
-  suffix = args.minsize[-1]
-  try:
-    magnitude = ["B", "K", "M", "G"].index(suffix.upper())
-  except ValueError:
-    magnitude = -1
-  if magnitude >= 0:
-    minsize *= math.pow(1024, magnitude)
-
-if args.csv:
-  csvdata = []
-  for row in dvdorder:
-    info = [formatEpisodeID(row[AIREDSEASON], int(row[AIREDEPISODE])), \
-            "%ix%04.1f" % (row[DVDSEASON], row[DVDEPISODE]), row[ORIGDATE], row[TITLE]]
-    csvdata.append(info)
-
-  a = csv.writer(sys.stdout)
-  a.writerows(csvdata)
-elif args.rename:
-  epnum = 0
-
-  if isint(args.first):
-    first = int(args.first)
+  if os.path.isfile(args.series):
+    series = viddin.loadEpisodeInfoCSV(args.series)
   else:
-    episode = findEpisode(args.first)
-    if args.airedorder:
-      first = airedorder.index(episode) + 1
-    else:
-      first = dvdorder.index(episode) + 1
+    series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=args.dvdignore,
+                                        dvdMissing=args.dvdmissing, quietFlag=args.quiet)
     
-  for filename in videos:
-    if minsize:
-      size = os.path.getsize(filename)
-      if size < minsize:
-        continue
-      
-    video, ext = os.path.splitext(filename)
-    epid = video
-    if args.enumerate:
-      epid = epnum + first - 1
-    episode = findEpisode(epid)
-    if episode:
-      filename = renameVid(episode, filename=filename)
-    epnum += 1
-else:
-  for row in dvdorder:
-    print(dvdorder.index(row) + 1, end=" ")
-    for info in row:
-      print(info, end=" ")
-    print()
+  dvdorder = sorted(series, key=itemgetter(DVDSEASON, DVDEPISODE))
+  airedorder = sorted(series, key=itemgetter(AIREDSEASON, AIREDEPISODE))
+
+  videos = [file for file in glob.glob(args.glob)]
+  videos.sort()
+
+  minsize = 0
+  if args.minsize:
+    val = re.sub("^( *[0-9]+).*", "\\1", args.minsize)
+    minsize = int(val)
+    suffix = args.minsize[-1]
+    try:
+      magnitude = ["B", "K", "M", "G"].index(suffix.upper())
+    except ValueError:
+      magnitude = -1
+    if magnitude >= 0:
+      minsize *= math.pow(1024, magnitude)
+
+  if args.csv:
+    csvdata = []
+    for row in dvdorder:
+      info = [formatEpisodeID(row[AIREDSEASON], int(row[AIREDEPISODE])), \
+              "%ix%04.1f" % (row[DVDSEASON], row[DVDEPISODE]), row[ORIGDATE], row[TITLE]]
+      csvdata.append(info)
+
+    a = csv.writer(sys.stdout)
+    a.writerows(csvdata)
+  elif args.rename:
+    epnum = 0
+
+    if isint(args.first):
+      first = int(args.first)
+    else:
+      episode = findEpisode(args.first)
+      if args.airedorder:
+        first = airedorder.index(episode) + 1
+      else:
+        first = dvdorder.index(episode) + 1
+
+    for filename in videos:
+      if minsize:
+        size = os.path.getsize(filename)
+        if size < minsize:
+          continue
+
+      video, ext = os.path.splitext(filename)
+      epid = video
+      if args.enumerate:
+        epid = epnum + first - 1
+      episode = findEpisode(epid)
+      if episode:
+        filename = renameVid(episode, filename=filename)
+      epnum += 1
+  else:
+    for row in dvdorder:
+      print(dvdorder.index(row) + 1, end=" ")
+      for info in row:
+        print(info, end=" ")
+      print()
+
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

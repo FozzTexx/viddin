@@ -20,6 +20,7 @@ import json
 import xmltodict
 import re
 import datetime
+import sys
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
@@ -80,12 +81,13 @@ class viddin:
         return track
     return None
 
+  # FIXME - call get tracks and filter out the subs
   @staticmethod
-  def getSubs(path, title=None):
+  def getSubs(path, title=None, debugFlag=False):
     subs = []
     _, ext = os.path.splitext(path)
-    if title != None:
-      cmd = "lsdvd -t %i -s \"%s\"" % (int(args.title), path)
+    if title is not None:
+      cmd = "lsdvd -t %i -s \"%s\"" % (int(title), path)
       if debugFlag:
         print(cmd)
       else:
@@ -171,7 +173,10 @@ class viddin:
   @staticmethod
   def findLength(info):
     idx = info.index("Length:")
-    return viddin.decodeTimecode(info[idx+1])
+    str = info[idx+1]
+    if str[-1] == ',':
+      str = str[:-2]
+    return viddin.decodeTimecode(str)
 
   @staticmethod
   def trackWithUid(uid, tracks):
@@ -316,6 +321,208 @@ class viddin:
             if c == '\r':
               pos = 0
           sys.stdout.flush()
-      except:
+      except OSError:
         pass
+    return
 
+  @staticmethod
+  def findBlack(filename):
+    video, ext = os.path.splitext(filename)
+    if not os.path.exists("%s.blk" % video):
+      print "Finding black"
+      cmd = "find-black --duration 0.05 \"%s\" \"%s.blk\" > /dev/null" \
+            % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
+      os.system(cmd)
+
+  @staticmethod
+  def findSilence(filename):
+    video, ext = os.path.splitext(filename)
+    if not os.path.exists("%s.sil" % video):
+      print "Finding silence"
+      cmd = "find-silence --threshold 40 --duration 0.01 \"%s\" \"%s.sil\" > /dev/null" \
+            % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
+      os.system(cmd)
+
+  @staticmethod
+  def loadSplits(filename):
+    splits = []
+    with open(filename) as f:
+      for line in f:
+        info = line.split()
+        begin = float(info[1])
+        end = float(info[2])
+        center = begin + (end - begin) / 2
+        splits.append([center, begin, end])
+    return splits
+
+  @staticmethod
+  def bestSilence(best):
+    global silence
+
+    bestsil = None
+    for info in silence:
+      begin = float(info[1])
+      end = float(info[2])
+      center = begin + (end - begin) / 2
+      diff = abs(center - best[0])
+      if ((begin >= best[1] and begin <= best[2]) or (end >= best[1] and end <= best[2]) or \
+            (best[1] >= begin and best[1] <= end) or (best[2] >= begin and best[2] <= end)) \
+            and (not bestsil or diff < bestsil[0]):
+        bestsil = [diff, center, begin, end]
+
+    if bestsil:
+      begin = bestsil[2]
+      if begin < best[1]:
+        begin = best[1]
+      end = bestsil[3]
+      if end > best[2]:
+        end = best[2]
+      return [begin, end]
+
+    return None
+
+  @staticmethod
+  def getTracks(path, title=None):
+    tracks = []
+    if title != None:
+      cmd = "lsdvd -t %i -s %s" % (int(title), path)
+      with os.popen(cmd) as f:
+        for line in f:
+          fields = line.split()
+          if len(fields):
+            key = None
+            val = None
+            end = False
+            values = {}
+            for field in fields[2:]:
+              if field[-1] == ':':
+                key = field[:-1]
+              else:
+                if field[-1] == ',':
+                  end = True
+                  field = field[:-1]
+                if not val:
+                  val = field
+                else:
+                  if not isinstance(val, list):
+                    val = [val]
+                  val.append(field)
+              if end:
+                values[key] = val
+                end = False
+                key = None
+                val = None
+            tracks.append(values)
+    else:
+      cmd = "mkvmerge -i -F json \"%s\"" % (path)
+      process = os.popen(cmd)
+      jstr = process.read()
+      process.close()
+      jinfo = json.loads(jstr)
+
+      for track in jinfo['tracks']:
+        info = {'type': track['type']}
+        info['rv_track_id'] = track['id']
+        info.update(track['properties'])
+        tracks.append(info)
+
+      cmd = "mkvextract tags \"%s\"" % (path)
+      process = os.popen(cmd)
+      xstr = process.read()
+      process.close()
+      xstr = xstr.strip()
+      if len(xstr):
+        xinfo = xmltodict.parse(xstr)['Tags']
+        xlist = []
+        for track in xinfo:
+          xi1 = xinfo[track]
+          for xi2 in xi1:
+            xdict = {}
+            if 'Targets' in xi2:
+              xi3 = xi2['Targets']
+              if xi3 and 'TrackUID' in xi3:
+                xdict['TrackUID'] = int(xi3['TrackUID'])
+            if 'Simple' in xi2:
+              xi3 = xi2['Simple']
+              if type(xi3) == list:
+                for xi4 in xi3:
+                  xdict[xi4['Name']] = xi4['String']
+              else:
+                xdict[xi3['Name']] = xi3['String']
+            xlist.append(xdict)
+
+        for track in xlist:
+          if 'TrackUID' in track:
+            tt = trackWithUid(track['TrackUID'], tracks)
+            if tt:
+              tt.update(track)
+
+    return tracks
+
+  @staticmethod
+  def loadEpisodeInfoCSV(filename):
+    series = []
+    f = open(filename, 'rU')
+    try:
+      reader = csv.reader(f)
+      for row in reader:
+        epnum = re.split(" *x *", row[CSV_EPISODE])
+        dvdep = row[CSV_DVDEP]
+        if not re.match(".*x.*", dvdep):
+          dvdep = row[CSV_EPISODE] + "." + dvdep
+        dvdnum = re.split(" *x *", dvdep)
+        epid = epnum[0] + "x" + epnum[1].zfill(2)
+        info = [int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]),
+                row[CSV_TITLE], row[CSV_ORIGDATE]]
+        series.append(info)
+    finally:
+      f.close()
+    return series
+
+  @staticmethod
+  def loadEpisodeInfoTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quietFlag=False):
+    series = []
+    t = tvdb_api.Tvdb()
+    show = t[seriesName]
+
+    for season in show:
+      for epnum in show[season]:
+        episode = show[season][epnum]
+        epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
+        epinfo = None
+        if not dvdIgnore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
+          epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
+                    int(episode[TVDB_DVDSEASON]), float(episode[TVDB_DVDEPNUM])]
+        elif not dvdIgnore and episode[TVDB_DVDEPNUM]:
+          epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
+                    int(episode['seasonnumber']), float(episode[TVDB_DVDEPNUM])]
+        else:
+          if dvdMissing or dvdIgnore:
+            epinfo = [int(episode['seasonnumber']), int(episode['episodenumber']),
+                      int(episode['seasonnumber']), float(episode['episodenumber'])]
+            if len(series) > 0:
+              epnum = series[-1][DVDEPISODE]
+              if len(series) > 1 and series[-1][DVDSEASON] == series[-2][DVDSEASON] \
+                    and int(series[-1][DVDEPISODE]) - int(series[-2][DVDEPISODE]) > 1:
+                epnum = int(series[-2][DVDEPISODE])
+                epnum += 1
+                epnum = float(epnum)
+                series[-1][DVDEPISODE] = epnum
+              if series[-1][ORIGDATE] == episode['firstaired']:
+                epnum = str(epnum)
+                idx = epnum.find('.')
+                part = int(epnum[idx+1:])
+                if part == 0:
+                  part = 1
+                  series[-1][DVDEPISODE] = float(epnum[:idx+1] + str(part))
+                part += 1
+                epinfo[DVDEPISODE] = float(epnum[:idx+1] + str(part))
+          elif not quietFlag:
+            print("No DVD info for")
+            print(episode)
+        if epinfo:
+          epinfo.extend([episode['episodename'], episode['firstaired'],
+                        episode['productioncode']])
+          series.append(epinfo)
+
+    return series

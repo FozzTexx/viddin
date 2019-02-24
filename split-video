@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -22,27 +22,31 @@ import re
 import math
 import sys
 
-parser = argparse.ArgumentParser()
-parser.add_argument("filename", help="Video to split")
-parser.add_argument("ranges", nargs="+", help="Split at offset(s) or ranges. Use negative number for offset from end. If argument is a filename, load offsets from it.")
-parser.add_argument("--transcode", action="store_true", help="transcode video for perfect split points")
-parser.add_argument("--iframes", action="store_true", help="compare split positions to iframes from video")
-parser.add_argument("--output", help="name to use when creating splits")
-parser.add_argument("--outtype", help="force split to be this type")
-parser.add_argument("--quality", help="use this quality level when transcoding. Higher numbers are worse quality, default is 20")
-parser.add_argument("--trimend", help="Frames to remove from end")
-parser.add_argument("--debug", action="store_true", help="Turn on debug output")
-args = parser.parse_args()
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
+
+def build_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("filename", help="Video to split")
+  parser.add_argument("ranges", nargs="+", help="Split at offset(s) or ranges. Use negative number for offset from end. If argument is a filename, load offsets from it.")
+  parser.add_argument("--transcode", action="store_true", help="transcode video for perfect split points")
+  parser.add_argument("--iframes", action="store_true", help="compare split positions to iframes from video")
+  parser.add_argument("--output", help="name to use when creating splits")
+  parser.add_argument("--outtype", help="force split to be this type")
+  parser.add_argument("--quality", help="use this quality level when transcoding. Higher numbers are worse quality, default is 20")
+  parser.add_argument("--trimend", help="Frames to remove from end")
+  parser.add_argument("--debug", action="store_true", help="Turn on debug output")
+  return parser
 
 def findIframes(filename, output):
   if not os.path.exists(output) or os.path.getctime(output) < os.path.getctime(filename):
     if args.debug:
-      print "Finding I frames " + filename
+      print("Finding I frames " + filename)
     os.system("find-iframes \"%s\" \"%s\" > /dev/null 2>&1" % (filename, output))
 
 def findNearest(pos, before):
   prev = 0
-  print pos, before
+  print(pos, before)
   for frame in iframes:
     if pos < frame:
       if before:
@@ -51,51 +55,6 @@ def findNearest(pos, before):
         return frame
     prev = frame
     
-def decodeTimecode(tc):
-  fraction = 0
-  if re.match(".*\.[0-9]+$", tc):
-    parts = re.split("\.", tc)
-    fraction = float("."+parts[1])
-    tc = parts[0]
-
-  seconds = sum(int(x) * 60 ** i for i,x in enumerate(reversed(tc.split(":"))))
-  seconds += fraction
-  return seconds
-
-segments = []
-if len(args.ranges) == 1 and os.path.isfile(args.ranges[0]):
-  ranges = []
-  with open(args.ranges[0]) as f:
-    for line in f:
-      line = line.strip()
-      if line[0] >= '0' and line[0] <= '9':
-        ranges.append(line)
-  args.ranges = ranges
-
-for offset in args.ranges:
-  if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", offset) \
-        or re.match("^[-+]?[0-9]+(:[0-9]+)+(\.[0-9]+)?$", offset):
-    tc = decodeTimecode(offset)
-    if offset[0] != '+':
-      if len(segments) == 0:
-        segments.append([0, tc])
-      else:
-        if not segments[-1][1]:
-          segments[-1][1] = tc
-    if tc > 0:
-      segments.append([tc, None])
-  elif re.match("^[0-9]+(.[0-9]+)?-[0-9]+(\.[0-9]+)?$", offset) \
-        or re.match("^[0-9]+(:[0-9]+)+(\.[0-9]+)?-[0-9]+(:[0-9]+)+(\.[0-9]+)?$", offset):
-    times = offset.split("-")
-    segments.append([decodeTimecode(times[0]), decodeTimecode(times[1])])
-  elif re.match("^[0-9]+(.[0-9]+)?-$", offset) \
-        or re.match("^[0-9]+(:[0-9]+)+(\.[0-9]+)?-?$", offset):
-    times = offset.split("-")
-    segments.append([decodeTimecode(times[0]), None])
-  else:
-    print "Unrecognized timecode " + offset
-    sys.exit(1)
-
 def splitVideo(range, filename, output=None, trim=None):
   video, ext = os.path.splitext(filename)
 
@@ -115,7 +74,7 @@ def splitVideo(range, filename, output=None, trim=None):
     fps = float(process.read())
     process.close()
     trim = float(trim) * 1.0 / fps
-    
+
   if os.path.exists(output):
     os.remove(output)
 
@@ -123,14 +82,14 @@ def splitVideo(range, filename, output=None, trim=None):
   end = range[1]
   if trim:
     end -= trim
-    
+
   if args.transcode and start > 0.0:
     # FIXME - match codec of source?
     quality = ""
     if args.quality:
       quality = "-crf %s" % (args.quality)
     cmd = "ffmpeg -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\" > /dev/null 2>&1" % (filename, start, end, quality, output)
-    print cmd
+    print(cmd)
     os.system(cmd)
   else:
     if args.iframes:
@@ -146,58 +105,99 @@ def splitVideo(range, filename, output=None, trim=None):
       cmd = "mkvmerge --split parts:%s-%s -o %s \"%s\" > /dev/null" % \
           (datetime.timedelta(seconds = start), datetime.timedelta(seconds = end),
            temp, filename)
-      print cmd
+      print(cmd)
       os.system(cmd)
     else:
       temp = filename
 
     len = end - start
     cmd = "ffmpeg -i \"%s\" -t %f -codec copy -map 0 \"%s\" > /dev/null 2>&1" % (temp, len, output)
-    print cmd
+    print(cmd)
     os.system(cmd)
     if temp != filename:
       os.remove(temp)
   return output
 
-append = ""
-if len(segments) > 1 or not args.output:
-  digits = int(math.floor(math.log(len(segments), 10)) + 1)
-  append = "_%%0%ii" % digits
-  
-video, ext = os.path.splitext(args.filename)
-if args.output:
-  ovid, oext = os.path.splitext(args.output)
-else:
-  ovid = video
+def main():
+  args = build_argparser().parse_args()
+  segments = []
+  if len(args.ranges) == 1 and os.path.isfile(args.ranges[0]):
+    ranges = []
+    with open(args.ranges[0]) as f:
+      for line in f:
+        line = line.strip()
+        if line[0] >= '0' and line[0] <= '9':
+          ranges.append(line)
+    args.ranges = ranges
 
-ifile = video + ".iframes"
-#if not args.iframes and os.path.exists(ifile) \
-#      and os.path.getctime(ifile) >= os.path.getctime(args.filename):
-#  args.iframes = True
-if args.iframes:
-  findIframes(args.filename, ifile)
-  iframes = []
-  with open(ifile) as f:
-    for line in f:
-      iframes.append(float(line))
+  for offset in args.ranges:
+    if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", offset) \
+          or re.match("^[-+]?[0-9]+(:[0-9]+)+(\.[0-9]+)?$", offset):
+      tc = viddin.decodeTimecode(offset)
+      if offset[0] != '+':
+        if len(segments) == 0:
+          segments.append([0, tc])
+        else:
+          if not segments[-1][1]:
+            segments[-1][1] = tc
+      if tc > 0:
+        segments.append([tc, None])
+    elif re.match("^[0-9]+(.[0-9]+)?-[0-9]+(\.[0-9]+)?$", offset) \
+          or re.match("^[0-9]+(:[0-9]+)+(\.[0-9]+)?-[0-9]+(:[0-9]+)+(\.[0-9]+)?$", offset):
+      times = offset.split("-")
+      segments.append([viddin.decodeTimecode(times[0]), viddin.decodeTimecode(times[1])])
+    elif re.match("^[0-9]+(.[0-9]+)?-$", offset) \
+          or re.match("^[0-9]+(:[0-9]+)+(\.[0-9]+)?-?$", offset):
+      times = offset.split("-")
+      segments.append([viddin.decodeTimecode(times[0]), None])
+    else:
+      print("Unrecognized timecode " + offset)
+      sys.exit(1)
 
-# FIXME - if transcoding and more than one segment do the entire thing
-#         and force frames? If only one segment then skip mkvmerge and
-#         let ffmpeg pull the segment
+  append = ""
+  if len(segments) > 1 or not args.output:
+    digits = int(math.floor(math.log(len(segments), 10)) + 1)
+    append = "_%%0%ii" % digits
 
-outtype = args.outtype
-if not outtype:
-  outtype = ext
-if outtype[0] != '.':
-  outtype = "." + outtype
-if outtype == ".avi":
-  outtype = ".mkv"
+  video, ext = os.path.splitext(args.filename)
+  if args.output:
+    ovid, oext = os.path.splitext(args.output)
+  else:
+    ovid = video
 
-for range in segments:
-  output = ovid + append + outtype
-  if len(append):
-    output = output % (segments.index(range) + 1)
-  splitVideo(range, args.filename, output, args.trimend)
-  
-# FIXME - if transcoding force keyframes into the right spot, but
-#         re-read because ffmpeg isn't exact and puts them "close"
+  ifile = video + ".iframes"
+  #if not args.iframes and os.path.exists(ifile) \
+  #      and os.path.getctime(ifile) >= os.path.getctime(args.filename):
+  #  args.iframes = True
+  if args.iframes:
+    findIframes(args.filename, ifile)
+    iframes = []
+    with open(ifile) as f:
+      for line in f:
+        iframes.append(float(line))
+
+  # FIXME - if transcoding and more than one segment do the entire thing
+  #         and force frames? If only one segment then skip mkvmerge and
+  #         let ffmpeg pull the segment
+
+  outtype = args.outtype
+  if not outtype:
+    outtype = ext
+  if outtype[0] != '.':
+    outtype = "." + outtype
+  if outtype == ".avi":
+    outtype = ".mkv"
+
+  for range in segments:
+    output = ovid + append + outtype
+    if len(append):
+      output = output % (segments.index(range) + 1)
+    splitVideo(range, args.filename, output, args.trimend)
+
+  # FIXME - if transcoding force keyframes into the right spot, but
+  #         re-read because ffmpeg isn't exact and puts them "close"
+
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

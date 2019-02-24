@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2017 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -22,72 +22,19 @@ import tempfile
 import sys
 import re
 
-parser = argparse.ArgumentParser()
-parser.add_argument("file", help="Video file to guess")
-parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
-parser.add_argument("--force", action="store_true", help="Force a chapter at locations even if there's no matching silence")
-parser.add_argument("-u", "--update", action="store_true", help="Update chapters of file instead of printing them")
-parser.add_argument("-a", "--add", action="store_true", help="Add chapters to existing chapters")
-parser.add_argument("--debug", action="store_true", help="Turn on debug output")
-parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
-args = parser.parse_args()
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
 
-def findBlack(filename):
-  video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.blk" % video):
-    print "Finding black"
-    cmd = "find-black --duration 0.05 \"%s\" \"%s.blk\" > /dev/null" \
-          % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
-    os.system(cmd)
-
-def findSilence(filename):
-  video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.sil" % video):
-    print "Finding silence"
-    cmd = "find-silence --threshold 40 --duration 0.01 \"%s\" \"%s.sil\" > /dev/null" \
-          % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
-    os.system(cmd)
-
-def loadSplits(filename):
-  splits = []
-  with open(filename) as f:
-    for line in f:
-      info = line.split()
-      begin = float(info[1])
-      end = float(info[2])
-      center = begin + (end - begin) / 2
-      splits.append([center, begin, end])
-  return splits
-
-def bestSilence(best):
-  global silence
-  
-  bestsil = None
-  for info in silence:
-    begin = float(info[1])
-    end = float(info[2])
-    center = begin + (end - begin) / 2
-    diff = abs(center - best[0])
-    if ((begin >= best[1] and begin <= best[2]) or (end >= best[1] and end <= best[2]) or \
-          (best[1] >= begin and best[1] <= end) or (best[2] >= begin and best[2] <= end)) \
-          and (not bestsil or diff < bestsil[0]):
-      bestsil = [diff, center, begin, end]
-
-  if bestsil:
-    begin = bestsil[2]
-    if begin < best[1]:
-      begin = best[1]
-    end = bestsil[3]
-    if end > best[2]:
-      end = best[2]
-    return [begin, end]
-
-  return None
-
-def formatChapter(seconds):
-  hours = int(seconds / 3600)
-  minutes = int((seconds / 60) % 60)
-  return "%02i:%02i:%06.3f" % (hours, minutes, seconds - hours * 3600 - minutes * 60)
+def build_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("file", help="Video file to guess")
+  parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
+  parser.add_argument("--force", action="store_true", help="Force a chapter at locations even if there's no matching silence")
+  parser.add_argument("-u", "--update", action="store_true", help="Update chapters of file instead of printing them")
+  parser.add_argument("-a", "--add", action="store_true", help="Add chapters to existing chapters")
+  parser.add_argument("--debug", action="store_true", help="Turn on debug output")
+  parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
+  return parser
 
 def closestExpected(best):
   global expected
@@ -105,70 +52,68 @@ def closestExpected(best):
     return [closest[2], closest[3]]
   return None
     
-def loadChapters(filename):
-  chapters = []
-  with os.popen("ffmpeg -i \"" + filename + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
-    for line in f:
-      fields = line.split()
-      begin = float(re.sub(",", "", fields[3]))
-      chapters.append(begin)
-  return chapters
+def main():
+  args = build_argparser().parse_args()
+  video, ext = os.path.splitext(args.file)
 
-video, ext = os.path.splitext(args.file)
+  viddin.findBlack(args.file)
+  viddin.findSilence(args.file)
 
-findBlack(args.file)
-findSilence(args.file)
+  black = viddin.loadSplits(video + ".blk")
+  silence = viddin.loadSplits(video + ".sil")
 
-black = loadSplits(video + ".blk")
-silence = loadSplits(video + ".sil")
+  expected = None
+  if len(args.offsets):
+    expected = []
+    for offset in args.offsets:
+      expected.append(float(offset))
 
-expected = None
-if len(args.offsets):
-  expected = []
-  for offset in args.offsets:
-    expected.append(float(offset))
+  splits = []
+  for row in black:
+    match = viddin.bestSilence(row)
+    if match:
+      splits.append((match[1] - match[0]) / 2 + match[0])
+    else:
+      splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
-splits = []
-for row in black:
-  match = bestSilence(row)
-  if match:
-    splits.append((match[1] - match[0]) / 2 + match[0])
+  if expected:
+    if args.add:
+      chapters = viddin.loadChapters(args.file)
+    else:
+      chapters = [0]
+    for offset in expected:
+      bdiff = -1
+      boffset = None
+      for row in splits:
+        if row >= 0 or args.force:
+          diff = abs(offset - abs(row))
+          if not boffset or diff < bdiff:
+            bdiff = diff
+            boffset = abs(row)
+      if boffset and bdiff < args.distance:
+        chapters.append(boffset)
+
+    chapters.sort()
+    cfile, cfname = tempfile.mkstemp()
+
+    for i in range(len(chapters)):
+      os.write(cfile, "CHAPTER%02i=%s\n" % (i + 1, viddin.formatChapter(chapters[i])))
+      os.write(cfile, "CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1))
+    os.close(cfile)
+
+    if args.update:
+      cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
+      os.system(cmd)
+    else:
+      os.system("cat " + cfname)
+    os.remove(cfname)
+
   else:
-    splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
-
-if expected:
-  if args.add:
-    chapters = loadChapters(args.file)
-  else:
-    chapters = [0]
-  for offset in expected:
-    bdiff = -1
-    boffset = None
     for row in splits:
       if row >= 0 or args.force:
-        diff = abs(offset - abs(row))
-        if not boffset or diff < bdiff:
-          bdiff = diff
-          boffset = abs(row)
-    if boffset and bdiff < args.distance:
-      chapters.append(boffset)
+        print(row)
 
-  chapters.sort()
-  cfile, cfname = tempfile.mkstemp()
-  
-  for i in range(len(chapters)):
-    os.write(cfile, "CHAPTER%02i=%s\n" % (i + 1, formatChapter(chapters[i])))
-    os.write(cfile, "CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1))
-  os.close(cfile)
+  return
 
-  if args.update:
-    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
-    os.system(cmd)
-  else:
-    os.system("cat " + cfname)
-  os.remove(cfname)
-
-else:
-  for row in splits:
-    if row >= 0 or args.force:
-      print row
+if __name__ == '__main__':
+  exit(main() or 0)

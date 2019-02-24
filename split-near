@@ -19,26 +19,18 @@ import argparse
 import os
 import datetime
 
-parser = argparse.ArgumentParser()
-parser.add_argument("filename", help="Video to split")
-parser.add_argument("offset", help="Split at black scene closest to offset. Use negative number for offset from end.")
-args = parser.parse_args()
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
 
-def findBlack(filename):
-  video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.split" % video):
-    print "Finding black"
-    os.system("find-black --duration 0.1 %s %s.split > /dev/null" % (filename, video))
-
-def findSilence(filename):
-  video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.sil" % video):
-    print "Finding silence"
-    os.system("find-silence --duration 0.1 %s %s.sil > /dev/null" % (filename, video))
+def build_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("filename", help="Video to split")
+  parser.add_argument("offset", help="Split at black scene closest to offset. Use negative number for offset from end.")
+  return parser
 
 def bestMatch(offset, filename):
   video, ext = os.path.splitext(filename)
-  print "Finding offset"
+  print("Finding offset")
   if offset < 0:
     cmd = "vidinf %s | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
     process = os.popen(cmd)
@@ -70,7 +62,7 @@ def bestMatch(offset, filename):
         bestsil = [diff, seconds, begin, end]
 
   if bestsil:
-    print "Silence: ", bestsil, best
+    print("Silence: ", bestsil, best)
     begin = bestsil[2]
     if begin < best[2]:
       begin = best[2]
@@ -78,14 +70,14 @@ def bestMatch(offset, filename):
     if end > best[3]:
       end = best[3]
     split = begin + (end - begin) / 2
-    print "Splitting at ", split
+    print("Splitting at ", split)
     return split
 
-  print "Black: ", best
+  print("Black: ", best)
   return best[1]
 
 def splitVideo(pos, filename, before):
-  print "Splitting"
+  print("Splitting")
   video, ext = os.path.splitext(filename)
   if before:
     start = "0:00.00"
@@ -101,7 +93,7 @@ def splitVideo(pos, filename, before):
     len -= pos
 
   cmd = "mkvmerge --split parts:%s-%s -o %sb%s %s > /dev/null" % (start, end, video, ext, filename)
-  print cmd
+  print(cmd)
   os.system(cmd)
 
   if before:
@@ -114,14 +106,20 @@ def splitVideo(pos, filename, before):
   cmd = "ffmpeg -i %sb%s -t %f -codec copy %s > /dev/null 2>&1" % (video, ext, len, splitname)
   os.system(cmd)
   os.remove("%sb%s" % (video, ext))
-  print splitname
+  print(splitname)
 
-offset = float(args.offset)
-findBlack(args.filename)
-findSilence(args.filename)
-split = bestMatch(offset, args.filename)
+def main():
+  args = build_argparser().parse_args()
+  offset = float(args.offset)
+  viddin.findBlack(args.filename)
+  viddin.findSilence(args.filename)
+  split = bestMatch(offset, args.filename)
 
-if args.offset[0] != '+':
-   splitVideo(split, args.filename, True)
-if offset >= 0:
-   splitVideo(split, args.filename, False)
+  if args.offset[0] != '+':
+     splitVideo(split, args.filename, True)
+  if offset >= 0:
+     splitVideo(split, args.filename, False)
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

@@ -329,7 +329,7 @@ class viddin:
   def findBlack(filename):
     video, ext = os.path.splitext(filename)
     if not os.path.exists("%s.blk" % video):
-      print "Finding black"
+      print("Finding black")
       cmd = "find-black --duration 0.05 \"%s\" \"%s.blk\" > /dev/null" \
             % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
       os.system(cmd)
@@ -338,7 +338,7 @@ class viddin:
   def findSilence(filename):
     video, ext = os.path.splitext(filename)
     if not os.path.exists("%s.sil" % video):
-      print "Finding silence"
+      print("Finding silence")
       cmd = "find-silence --threshold 40 --duration 0.01 \"%s\" \"%s.sil\" > /dev/null" \
             % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
       os.system(cmd)

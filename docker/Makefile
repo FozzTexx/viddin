@@ -3,7 +3,7 @@ VERSION=1.0
 BUNDLES=HandBrake.bundle ffmpeg.bundle viddin.tar
 SCRIPTS=adjust-volume convert2dv copy-tape dvdls dvdorder edit-chapters find-black \
 	find-silence guess-chapters restore-ntsc rip-series rip-video split-garfield \
-	split-video subinfo trackinfo trim-shorts vidinf splice
+	split-video subinfo trackinfo trim-shorts vidinf splice viddin.py
 OSCRIPTS=$(addprefix ../,$(SCRIPTS))
 
 docker-build: Dockerfile viddin-init install-handbrake.sh $(BUNDLES)

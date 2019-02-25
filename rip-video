@@ -25,9 +25,6 @@ import curses
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from viddin import viddin
 
-encoder = "x264"
-add_subtitles = False
-
 def build_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument("source", nargs="?", help="input file")
@@ -83,15 +80,17 @@ def build_argparser():
   parser.add_argument("--debug", action="store_true", help="print debug info")
   return parser
 
-def uniqueFile(path):
+def uniqueFile(path, extension=None):
   dest, ext = os.path.splitext(path)
+  if not extension:
+    extension = ext
   counter = None
-  upath = dest + "." + args.extension
+  upath = dest + "." + extension
   while os.path.exists(upath):
     if not counter:
       counter = 1
     counter += 1
-    upath = dest + str(counter) + "." + args.extension
+    upath = dest + str(counter) + "." + extension
   return upath
 
 def printSubs(subs, lang):
@@ -147,6 +146,8 @@ def main():
   args = build_argparser().parse_args()
 
   flags = []
+  encoder = "x264"
+  add_subtitles = False
 
   if args.animation:
     flags.extend(["-r", "23.976", "--x264-tune", "animation", "--detelecine", "--decomb"])
@@ -278,7 +279,7 @@ def main():
     dest = None
 
   if not dest:
-    dest = uniqueFile(source)
+    dest = uniqueFile(source, args.extension)
 
   if os.path.isdir(dest):
     base = os.path.basename(source)
@@ -295,7 +296,7 @@ def main():
   if args.debug:
     print(cmd)
   if not args.addsubsonly:
-  #  viddin.runCommand(cmd)
+    viddin.runCommand(cmd)
     olen = viddin.getLength(source, args.title, args.chapters, debugFlag=args.debug)
     if os.path.exists(dest):
       alen = viddin.getLength(dest, debugFlag=args.debug)
@@ -372,7 +373,7 @@ def main():
               print(cmd)
             viddin.runCommand(cmd)
 
-            temp = uniqueFile(dest)
+            temp = uniqueFile(dest, "mkv")
             cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
             cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s -s 0 \"%s\"" \
                 % (lang, spath)

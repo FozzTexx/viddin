@@ -261,9 +261,19 @@ class viddin:
     return tlen
 
   @staticmethod
-  def getLength(filename, title=None, chapters=None, debugFlag=False):
-    clen = []
-    if title:
+  def getLengthDVD(filename, title, chapters=None, debugFlag=False):
+    if not chapters is not None:
+      cmd = \
+          "mplayer dvd:// -identify -frames 0 -vo null -vc null -ao null 2>/dev/null \"%s\"" \
+          " | egrep '^ID_[A-Z0-9_]+='" % (filename)
+      if debugFlag:
+        print(cmd)
+      with os.popen(cmd) as f:
+        lines = f.read().splitlines()
+      key = "ID_DVD_TITLE_%s_LENGTH" % (title)
+      dvdInfo = {k:v for k,v in (x.split("=") for x in lines)}
+      return float(dvdInfo[key])
+    else:
       cmd = "lsdvd -t %s -c \"%s\"" % (title, filename)
       if debugFlag:
         print(cmd)
@@ -287,6 +297,13 @@ class viddin:
         tlen = 0
         for c in range(int(chaps[0]), int(chaps[1]) + 1):
           tlen += clen[c]
+      return tlen
+    
+  @staticmethod
+  def getLength(filename, title=None, chapters=None, debugFlag=False):
+    clen = []
+    if title:
+      return viddin.getLengthDVD(filename, title, chapters, debugFlag)
     else:
       _, ext = os.path.splitext(filename)
       if ext == ".mkv":
@@ -319,17 +336,19 @@ class viddin:
     master, slave = pty.openpty()
     with subprocess.Popen(cmd, shell=True, stdin=slave, stdout=slave, stderr=slave,
                          close_fds=True) as p:
-      m = os.fdopen(master, 'r')
+      m = os.fdopen(master, "rb")
       os.close(slave)
       try:
         while True:
-          c = m.read(1)
-          if c == '\n':
-            c = '\r'
-          if c == '\r' or width == 0 or pos < width - 2:
-            sys.stdout.write(c)
+          c = list(m.read(1))[0]
+          if c > 127:
+            continue
+          if c == 10:
+            c = 13
+          if c == 13 or width == 0 or pos < width - 2:
+            sys.stdout.write(chr(c))
             pos += 1
-            if c == '\r':
+            if c == 13:
               pos = 0
           sys.stdout.flush()
       except OSError:

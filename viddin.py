@@ -24,6 +24,7 @@ import sys
 import tvdb_api
 import operator
 import math
+import ast
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
@@ -92,95 +93,6 @@ class viddin:
         return track
     return None
 
-  # FIXME - call get tracks and filter out the subs
-  @staticmethod
-  def getSubs(path, title=None, debugFlag=False):
-    subs = []
-    _, ext = os.path.splitext(path)
-    if title is not None:
-      cmd = "lsdvd -t %i -s \"%s\"" % (int(title), path)
-      if debugFlag:
-        print(cmd)
-      else:
-        cmd += " 2>/dev/null"
-      with os.popen(cmd) as f:
-        for line in f:
-          fields = line.split()
-          if len(fields) and fields[0] == "Subtitle:":
-            key = None
-            val = None
-            end = False
-            values = {}
-            for field in fields[2:]:
-              if field[-1] == ':':
-                key = field[:-1]
-              else:
-                if field[-1] == ',':
-                  end = True
-                  field = field[:-1]
-                if not val:
-                  val = field
-                else:
-                  if not isinstance(val, list):
-                    val = [val]
-                  val.append(field)
-              if end:
-                values[key] = val
-                end = False
-                key = None
-                val = None
-            subs.append(values)
-    elif ext == ".mkv":
-      cmd = "mkvmerge -i -F json \"%s\"" % (path)
-      if debugFlag:
-        print(cmd)
-      process = os.popen(cmd)
-      jstr = process.read()
-      process.close()
-      jinfo = json.loads(jstr)
-
-      for track in jinfo['tracks']:
-        if track['type'] == "subtitles":
-          info = {}
-          info['rv_track_id'] = track['id'] 
-          info.update(track['properties'])
-          subs.append(info)
-
-      cmd = "mkvextract tags \"%s\"" % (path)
-      if debugFlag:
-        print(cmd)
-      process = os.popen(cmd)
-      xstr = process.read()
-      process.close()
-      xstr = xstr.strip()
-      if len(xstr):
-        xinfo = xmltodict.parse(xstr)['Tags']
-        xlist = []
-        for track in xinfo:
-          xi1 = xinfo[track]
-          for xi2 in xi1:
-            xdict = {}
-            if 'Targets' in xi2:
-              xi3 = xi2['Targets']
-              if xi3 and 'TrackUID' in xi3:
-                xdict['TrackUID'] = int(xi3['TrackUID'])
-            if 'Simple' in xi2:
-              xi3 = xi2['Simple']
-              if isinstance(xi3, list):
-                for xi4 in xi3:
-                  xdict[xi4['Name']] = xi4['String']
-              else:
-                xdict[xi3['Name']] = xi3['String']
-            xlist.append(xdict)
-
-        for track in xlist:
-          if 'TrackUID' in track:
-            sub = viddin.subWithUid(track['TrackUID'], subs)
-            if sub:
-              sub.update(track)
-
-    return subs
-
   @staticmethod
   def findLength(info):
     idx = info.index("Length:")
@@ -195,127 +107,6 @@ class viddin:
       if 'uid' in track and uid == track['uid']:
         return track
     return None
-
-  @staticmethod
-  def getLengthMKV(path, debugFlag=False):
-    cmd = "mkvmerge -i -F json \"%s\"" % (path)
-    if debugFlag:
-      print(cmd)
-    process = os.popen(cmd)
-    jstr = process.read()
-    process.close()
-    jinfo = json.loads(jstr)
-
-    tracks = []
-    for track in jinfo['tracks']:
-      info = {'type': track['type']}
-      info['rv_track_id'] = track['id']
-      info.update(track['properties'])
-      tracks.append(info)
-
-    cmd = "mkvextract tags \"%s\"" % (path)
-    if debugFlag:
-      print(cmd)
-    process = os.popen(cmd)
-    xstr = process.read()
-    process.close()
-    xstr = xstr.strip()
-    if len(xstr):
-      xinfo = xmltodict.parse(xstr)['Tags']
-      xlist = []
-      for track in xinfo:
-        xi1 = xinfo[track]
-        for xi2 in xi1:
-          xdict = {}
-          if 'Targets' in xi2:
-            xi3 = xi2['Targets']
-            if xi3 and 'TrackUID' in xi3:
-              xdict['TrackUID'] = int(xi3['TrackUID'])
-          if 'Simple' in xi2:
-            xi3 = xi2['Simple']
-            if type(xi3) == list:
-              for xi4 in xi3:
-                xdict[xi4['Name']] = xi4['String']
-            else:
-              xdict[xi3['Name']] = xi3['String']
-          xlist.append(xdict)
-
-      for track in xlist:
-        if 'TrackUID' in track:
-          tt = viddin.trackWithUid(track['TrackUID'], tracks)
-          if tt:
-            tt.update(track)
-
-    tlen = None
-    for track in tracks:
-      if track['type'] == "video" and 'DURATION' in track:
-        alen = viddin.decodeTimecode(track['DURATION'])
-        if not tlen or alen > tlen:
-          tlen = alen
-
-    if not tlen:
-      container = jinfo['container']['properties']
-      if 'duration' in container:
-        tlen = int(container['duration'])
-        tlen /= 1000000000
-    return tlen
-
-  @staticmethod
-  def getLengthDVD(filename, title, chapters=None, debugFlag=False):
-    cmd = "lsdvd -t %s -c \"%s\"" % (title, filename)
-    if debugFlag:
-      print(cmd)
-    else:
-      cmd += " 2>/dev/null"
-    with os.popen(cmd) as f:
-      lines = f.read().splitlines()
-    for line in lines:
-      info = line.split()
-      if len(info) < 1:
-        continue
-      if info[0] == "Title:":
-        tlen = viddin.findLength(info)
-      elif info[0] == "Chapter:":
-        clen.append(viddin.findLength(info))
-    if chapters:
-      if chapters.index("-"):
-        chaps = chapters.split("-")
-      else:
-        chaps = [chapters, chapters]
-      tlen = 0
-      for c in range(int(chaps[0]), int(chaps[1]) + 1):
-        tlen += clen[c]
-    return tlen
-    
-  @staticmethod
-  def getLength(filename, title=None, chapters=None, debugFlag=False):
-    clen = []
-    if title:
-      return viddin.getLengthDVD(filename, title, chapters, debugFlag)
-    else:
-      _, ext = os.path.splitext(filename)
-      if ext == ".mkv":
-        tlen = viddin.getLengthMKV(filename)
-      else:
-        cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
-        if debugFlag:
-          print(cmd)
-        process = os.popen(cmd)
-        tlen = float(process.read())
-        process.close()
-
-      if chapters:
-        if chapters.index("-"):
-          chaps = chapters.split("-")
-        else:
-          chaps = [chapters, chapters]
-        chaptimes = viddin.loadChapters(filename)
-        chaptimes.append(tlen)
-        tlen = abs(chaptimes[int(chaps[1])] - chaptimes[int(chaps[0]) - 1])
-        if debugFlag:
-          print("Chapters", chaptimes[int(chaps[0]) - 1], chaptimes[int(chaps[1])])
-
-    return tlen
 
   @staticmethod
   def runCommand(cmd):
@@ -397,83 +188,121 @@ class viddin:
 
     return None
 
+  class TitleInfo:
+    def __init__(self, info, infoType):
+      if infoType == "dvd":
+        self.length = info['length']
+        self.chapters = [0]
+        for idx in range(len(info['chapter'])):
+          chap = info['chapter'][idx]
+          pos = self.chapters[-1]
+          pos += chap['length']
+          self.chapters.append(pos)
+        self.audio = info['audio']
+        self.subtitles = info['subp']
+      else:
+        self.length = None
+        self.chapters = []
+        self.audio = []
+        self.subtitles = []
+        for track in info:
+          if track['type'] == "video":
+            if 'DURATION' in track:
+              self.length = viddin.decodeTimecode(track['DURATION'])
+          elif track['type'] == "audio":
+            self.audio.append(track)
+          elif track['type'] == "subtitles":
+            self.subtitles.append(track)
+      return
+      
   @staticmethod
-  def getTracks(path, title=None):
+  def getDVDInfo(path):
+    cmd = "lsdvd -asc -Oy %s 2>/dev/null" % (path)
+    process = os.popen(cmd)
+    pstr = process.read()
+    process.close()
+    pstr = pstr.replace("lsdvd = {", "{")
+    tracks = ast.literal_eval(pstr)
+    return tracks
+
+  @staticmethod
+  def getTitleInfoMKV(path, debugFlag=False):
+    cmd = "mkvmerge -i -F json \"%s\"" % (path)
+    process = os.popen(cmd)
+    jstr = process.read()
+    process.close()
+    jinfo = json.loads(jstr)
+
+    tracks = []
+    for track in jinfo['tracks']:
+      info = {'type': track['type']}
+      info['rv_track_id'] = track['id']
+      info.update(track['properties'])
+      tracks.append(info)
+
+    cmd = "mkvextract tags \"%s\"" % (path)
+    process = os.popen(cmd)
+    xstr = process.read()
+    process.close()
+    xstr = xstr.strip()
+    if len(xstr):
+      xinfo = xmltodict.parse(xstr)['Tags']
+      xlist = []
+      for track in xinfo:
+        xi1 = xinfo[track]
+        for xi2 in xi1:
+          xdict = {}
+          if 'Targets' in xi2:
+            xi3 = xi2['Targets']
+            if xi3 and 'TrackUID' in xi3:
+              xdict['TrackUID'] = int(xi3['TrackUID'])
+          if 'Simple' in xi2:
+            xi3 = xi2['Simple']
+            if type(xi3) == list:
+              for xi4 in xi3:
+                xdict[xi4['Name']] = xi4['String']
+            else:
+              xdict[xi3['Name']] = xi3['String']
+          xlist.append(xdict)
+
+      for track in xlist:
+        if 'TrackUID' in track:
+          tt = viddin.trackWithUid(track['TrackUID'], tracks)
+          if tt:
+            tt.update(track)
+
+    info = viddin.TitleInfo(tracks, None)
+    info.chapters = viddin.loadChapters(path)
+
+    tlen = None
+    for track in tracks:
+      if track['type'] == "video" and 'DURATION' in track:
+        alen = viddin.decodeTimecode(track['DURATION'])
+        if not tlen or alen > tlen:
+          tlen = alen
+
+    if not tlen:
+      container = jinfo['container']['properties']
+      if 'duration' in container:
+        tlen = int(container['duration'])
+        tlen /= 1000000000
+    info.length = tlen
+    return info
+    
+  @staticmethod
+  def getTitleInfo(path, title=None, debugFlag=False):
     tracks = []
     if title != None:
-      cmd = "lsdvd -t %i -s %s" % (int(title), path)
-      with os.popen(cmd) as f:
-        for line in f:
-          fields = line.split()
-          if len(fields):
-            key = None
-            val = None
-            end = False
-            values = {}
-            for field in fields[2:]:
-              if field[-1] == ':':
-                key = field[:-1]
-              else:
-                if field[-1] == ',':
-                  end = True
-                  field = field[:-1]
-                if not val:
-                  val = field
-                else:
-                  if not isinstance(val, list):
-                    val = [val]
-                  val.append(field)
-              if end:
-                values[key] = val
-                end = False
-                key = None
-                val = None
-            tracks.append(values)
+      dvdInfo = viddin.getDVDInfo(path)
+      return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
+
+    _, ext = os.path.splitext(path)
+    if ext == ".mkv":
+      track = viddin.getTitleInfoMKV(path)
     else:
-      cmd = "mkvmerge -i -F json \"%s\"" % (path)
-      process = os.popen(cmd)
-      jstr = process.read()
-      process.close()
-      jinfo = json.loads(jstr)
-
-      for track in jinfo['tracks']:
-        info = {'type': track['type']}
-        info['rv_track_id'] = track['id']
-        info.update(track['properties'])
-        tracks.append(info)
-
-      cmd = "mkvextract tags \"%s\"" % (path)
-      process = os.popen(cmd)
-      xstr = process.read()
-      process.close()
-      xstr = xstr.strip()
-      if len(xstr):
-        xinfo = xmltodict.parse(xstr)['Tags']
-        xlist = []
-        for track in xinfo:
-          xi1 = xinfo[track]
-          for xi2 in xi1:
-            xdict = {}
-            if 'Targets' in xi2:
-              xi3 = xi2['Targets']
-              if xi3 and 'TrackUID' in xi3:
-                xdict['TrackUID'] = int(xi3['TrackUID'])
-            if 'Simple' in xi2:
-              xi3 = xi2['Simple']
-              if type(xi3) == list:
-                for xi4 in xi3:
-                  xdict[xi4['Name']] = xi4['String']
-              else:
-                xdict[xi3['Name']] = xi3['String']
-            xlist.append(xdict)
-
-        for track in xlist:
-          if 'TrackUID' in track:
-            tt = trackWithUid(track['TrackUID'], tracks)
-            if tt:
-              tt.update(track)
-
-    return tracks
+      track = viddin.TitleInfo([], None)
+      track.length = viddin.getLength(path)
+    return track
 
   class EpisodeInfo:
     def __init__(self, airedSeason, airedEpisode, dvdSeason, dvdEpisode,

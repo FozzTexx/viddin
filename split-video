@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- python -*-
 #
 # Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -55,7 +56,8 @@ def findNearest(pos, before):
         return frame
     prev = frame
     
-def splitVideo(range, filename, output=None, trim=None):
+def splitVideo(range, filename, output=None, trim=None, quality=None,
+               transcodeFlag=False, iframeFlag=False):
   video, ext = os.path.splitext(filename)
 
   if not range[1]:
@@ -83,16 +85,16 @@ def splitVideo(range, filename, output=None, trim=None):
   if trim:
     end -= trim
 
-  if args.transcode and start > 0.0:
+  if transcodeFlag and start > 0.0:
     # FIXME - match codec of source?
-    quality = ""
-    if args.quality:
-      quality = "-crf %s" % (args.quality)
-    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\" > /dev/null 2>&1" % (filename, start, end, quality, output)
+    qstr = ""
+    if quality:
+      qstr = "-crf %s" % (quality)
+    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\" > /dev/null 2>&1" % (filename, start, end, qstr, output)
     print(cmd)
     os.system(cmd)
   else:
-    if args.iframes:
+    if iframeFlag:
       start = findNearest(start, True)
       iend = findNearest(end, False)
       if iend:
@@ -182,7 +184,9 @@ def main():
 
   outtype = args.outtype
   if not outtype:
-    outtype = ext
+    outtype = oext
+    if not args.transcode:
+      outtype = ext
   if outtype[0] != '.':
     outtype = "." + outtype
   if outtype == ".avi":
@@ -192,7 +196,8 @@ def main():
     output = ovid + append + outtype
     if len(append):
       output = output % (segments.index(range) + 1)
-    splitVideo(range, args.filename, output, args.trimend)
+    splitVideo(range, args.filename, output, args.trimend, quality=args.quality,
+               transcodeFlag=args.transcode, iframeFlag=args.iframes)
 
   # FIXME - if transcoding force keyframes into the right spot, but
   #         re-read because ffmpeg isn't exact and puts them "close"

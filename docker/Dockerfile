@@ -19,12 +19,11 @@ RUN apt-get update && apt-get install -y libfreetype6-dev libssl-dev
 COPY install-ffmpeg.sh ffmpeg.bundle /tmp/
 RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
 
-# Install viddin scripts
+# Install tools viddin scripts need
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
 RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
 RUN pip3 install xmltodict termcolor tvdb_api
-ADD viddin.tar /usr/local/bin
 
 # Install lsdvd from source because stock one is broken
 COPY install-lsdvd.sh /tmp/
@@ -37,3 +36,7 @@ RUN echo "$WSUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Copy init script
 COPY viddin-init /usr/local/bin/
+
+# Install viddin scripts
+ADD viddin.tar /usr/local/bin
+

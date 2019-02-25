@@ -44,7 +44,7 @@ def main():
     print("Unable to locate " + args.source)
     sys.exit(1)
 
-  tracks = getTracks(args.source, args.title)
+  tracks = viddin.getTitleInfo(args.source, args.title)
   for track in tracks:
     info = "%i:" % (track['rv_track_id'])
 

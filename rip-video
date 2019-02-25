@@ -297,9 +297,17 @@ def main():
     print(cmd)
   if not args.addsubsonly:
     viddin.runCommand(cmd)
-    olen = viddin.getLength(source, args.title, args.chapters, debugFlag=args.debug)
+    tinfo = viddin.getTitleInfo(source, args.title, debugFlag=args.debug)
+    olen = tinfo.length
+    if args.chapters:
+      if chapters.index("-"):
+        chaps = chapters.split("-")
+      else:
+        chaps = [chapters, chapters]
+      olen = tinfo.chapters[int(chaps[1])] - tinfo.chapters[int(chaps[0]) - 1]
+      
     if os.path.exists(dest):
-      alen = viddin.getLength(dest, debugFlag=args.debug)
+      alen = viddin.getTitleInfo(dest, debugFlag=args.debug).length
     else:
       alen = -1
     percent = abs(alen - olen) / olen
@@ -307,7 +315,7 @@ def main():
       outputStatus(dest, source, args.title, "FAILED TO RIP", "red",
                    "Expect %s  Got %s  Percent %.5f" %
                    (viddin.formatTimecode(olen), viddin.formatTimecode(alen), percent))
-      sys.exit(1)
+      exit(1)
 
     if args.normalize:
       tmp, ext = os.path.splitext(dest)
@@ -329,7 +337,7 @@ def main():
   # FIXME - can only do subtitles on mkv dest and mkv or dvd source
   if add_subtitles or args.addsubsonly:
     if os.path.isfile(dest):
-      subs = viddin.getSubs(dest, debugFlag=args.debug)
+      subs = viddin.getTitleInfo(dest, debugFlag=args.debug).subtitles
       if len(subs):
         cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
             (dest, int(subs[0]['rv_track_id']) + 1)
@@ -338,14 +346,14 @@ def main():
         viddin.runCommand(cmd)
     else:
       outputStatus(dest, source, args.title, "NO SUCH FILE", "red")
-      sys.exit(1)
+      exit(1)
 
     lang = "eng"
     if args.lang:
       lang = args.lang
 
     if args.title:
-      subs = viddin.getSubs(source, int(args.title))
+      subs = viddin.getTitleInfo(source, int(args.title)).subtitles
       if len(subs):
         path, ext = os.path.splitext(dest)
         subtemp = path + "-subs.mkv"
@@ -357,8 +365,9 @@ def main():
 
         if not os.path.exists(subtemp):
           print("Failed to extract subtitles")
+          exit(1)
         else:
-          subs = viddin.getSubs(subtemp)
+          subs = viddin.getTitleInfo(subtemp).subtitles
           best = None
           for sub in subs:
             if sub['language'] == lang and sub['codec_id'] == "S_VOBSUB":
@@ -387,7 +396,7 @@ def main():
             os.rename(temp, dest)
           os.remove(subtemp)
     elif os.path.isfile(source):
-      subs = viddin.getSubs(source)
+      subs = viddin.getTitleInfo(source).subtitles
       if len(subs):
         path, ext = os.path.splitext(dest)
         spaths = []
@@ -427,7 +436,7 @@ def main():
             else:
               chaps = [args.chapters, args.chapters]
             chaptimes = viddin.loadChapters(source)
-            chaptimes.append(getLength(source, debugFlag=args.debug))
+            chaptimes.append(viddin.getTitleInfo(source, debugFlag=args.debug).length)
             start = chaptimes[int(chaps[0]) - 1]
             end = chaptimes[int(chaps[1])]
             cmd = "mkvmerge --split parts:%s-%s -o \"%s\" \"%s\"" % \
@@ -474,7 +483,7 @@ def main():
     os.rename(path + "-NTSC" + ext, dest)
 
   sys.stdout.flush()
-  alen = viddin.getLength(dest, debugFlag=args.debug)
+  alen = viddin.getTitleInfo(dest, debugFlag=args.debug).length
   outputStatus(dest, source, args.title, addtl=str(viddin.formatTimecode(alen)))
 
   return

@@ -21,10 +21,14 @@ RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
 
 # Install viddin scripts
 ENV DEBIAN_FRONTEND noninteractive
-RUN apt-get update && apt-get install -y lsdvd libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
+RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
 RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
 RUN pip3 install xmltodict termcolor tvdb_api
 ADD viddin.tar /usr/local/bin
+
+# Install lsdvd from source because stock one is broken
+COPY install-lsdvd.sh /tmp/
+RUN /tmp/install-lsdvd.sh && rm /tmp/install-lsdvd.sh
 
 # Setup user
 ENV WSUSER viddin

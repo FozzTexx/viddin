@@ -262,42 +262,30 @@ class viddin:
 
   @staticmethod
   def getLengthDVD(filename, title, chapters=None, debugFlag=False):
-    if not chapters is not None:
-      cmd = \
-          "mplayer dvd:// -identify -frames 0 -vo null -vc null -ao null 2>/dev/null \"%s\"" \
-          " | egrep '^ID_[A-Z0-9_]+='" % (filename)
-      if debugFlag:
-        print(cmd)
-      with os.popen(cmd) as f:
-        lines = f.read().splitlines()
-      key = "ID_DVD_TITLE_%s_LENGTH" % (title)
-      dvdInfo = {k:v for k,v in (x.split("=") for x in lines)}
-      return float(dvdInfo[key])
+    cmd = "lsdvd -t %s -c \"%s\"" % (title, filename)
+    if debugFlag:
+      print(cmd)
     else:
-      cmd = "lsdvd -t %s -c \"%s\"" % (title, filename)
-      if debugFlag:
-        print(cmd)
+      cmd += " 2>/dev/null"
+    with os.popen(cmd) as f:
+      lines = f.read().splitlines()
+    for line in lines:
+      info = line.split()
+      if len(info) < 1:
+        continue
+      if info[0] == "Title:":
+        tlen = viddin.findLength(info)
+      elif info[0] == "Chapter:":
+        clen.append(viddin.findLength(info))
+    if chapters:
+      if chapters.index("-"):
+        chaps = chapters.split("-")
       else:
-        cmd += " 2>/dev/null"
-      with os.popen(cmd) as f:
-        lines = f.read().splitlines()
-      for line in lines:
-        info = line.split()
-        if len(info) < 1:
-          continue
-        if info[0] == "Title:":
-          tlen = viddin.findLength(info)
-        elif info[0] == "Chapter:":
-          clen.append(viddin.findLength(info))
-      if chapters:
-        if chapters.index("-"):
-          chaps = chapters.split("-")
-        else:
-          chaps = [chapters, chapters]
-        tlen = 0
-        for c in range(int(chaps[0]), int(chaps[1]) + 1):
-          tlen += clen[c]
-      return tlen
+        chaps = [chapters, chapters]
+      tlen = 0
+      for c in range(int(chaps[0]), int(chaps[1]) + 1):
+        tlen += clen[c]
+    return tlen
     
   @staticmethod
   def getLength(filename, title=None, chapters=None, debugFlag=False):

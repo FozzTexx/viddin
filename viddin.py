@@ -200,15 +200,18 @@ class viddin:
           self.chapters.append(pos)
         self.audio = info['audio']
         self.subtitles = info['subp']
+        self.video = []
       else:
         self.length = None
         self.chapters = []
         self.audio = []
         self.subtitles = []
+        self.video = []
         for track in info:
           if track['type'] == "video":
             if 'DURATION' in track:
               self.length = viddin.decodeTimecode(track['DURATION'])
+            self.video.append(track)
           elif track['type'] == "audio":
             self.audio.append(track)
           elif track['type'] == "subtitles":

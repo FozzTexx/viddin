@@ -166,6 +166,7 @@ def main():
     ovid, oext = os.path.splitext(args.output)
   else:
     ovid = video
+    oext = ext
 
   ifile = video + ".iframes"
   #if not args.iframes and os.path.exists(ifile) \

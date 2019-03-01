@@ -1,6 +1,7 @@
-#!/bin/sh
+#!/usr/bin/env python3
+# -*- python -*-
 #
-# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+# Copyright 2019 by Chris Osborn <fozztexx@fozztexx.com>
 #
 # This file is part of viddin.
 #
@@ -15,41 +16,123 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
-    case "$1" in
-	--normalize)
-	    NORMALIZE=1
-	    shift
-	    ;;
-	--volume)
-	    ADJFLAGS="--volume $2"
-	    shift 2
-	    ;;
-	*)
-	    unknown flag "$1"
-	    exit 1
-	    ;;
-    esac
-done
+import argparse
+import os
+import re
+import datetime
+import sys
+import tempfile
+import shutil
 
-SOURCE=$1
-ATEMP="${SOURCE%.*}"-$$.ac3
-AINPUT="${ATEMP}"
-VTEMP="${SOURCE%.*}"-$$.mkv
-OUTPUT="${SOURCE%.*}"-NTSC.mkv
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
 
-INRATE=$(mediainfo "--Inform=Video;%FrameRate%" "${SOURCE}")
-OUTRATE=$(python -c "print '%.3f' % (24000.0 / 25025 * $INRATE)")
+MULTIPLIER = 25 / (24000.0 / 1001)
 
-mkvmerge -o "${VTEMP}" --default-duration 0:${OUTRATE}fps -d 0 "${SOURCE}"
-ffmpeg -loglevel quiet -y -i "${SOURCE}" -vn -acodec ac3 -ab 448k -filter:a asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01:comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 "${ATEMP}"
+def build_argparser():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("file", help="input file")
+  parser.add_argument("--normalize", action="store_true", help="normalize audio")
+  parser.add_argument("--volume", help="adjust audio to specified level")
+  return parser
 
-if [ -n "${NORMALIZE}" ] ; then
-    adjust-volume ${ADJFLAGS} "${ATEMP}"
-    AINPUT="${ATEMP%.*}"-adj.ac3
-fi
+def subTimecode(tc):
+  ft = viddin.formatChapter(tc)
+  ft = ft[:-4] + ":" + ft[-3:] + ","
+  return ft
 
-mkvmerge -o "${OUTPUT}" -A "${VTEMP}" "${AINPUT}"
-edit-chapters --fix --multiplier 1.043 "${OUTPUT}"
+def slowVideo(path, tempdir):
+  cmd = "mediainfo '--Inform=Video;%%FrameRate%%' \"%s\"" % (path)
+  process = os.popen(cmd)
+  inrate = process.read().strip()
+  process.close()
+  if not len(inrate):
+    print("Not a constant frame rate")
+    return None
+  inrate = float(inrate)
+  outrate = 24000.0 / 25025 * inrate
 
-rm -rf "${ATEMP}" "${VTEMP}" "${AINPUT}"
+  vtemp = os.path.join(tempdir, os.path.basename(path))
+  cmd = "mkvmerge -o \"%s\" --default-duration 0:%0.3ffps -d 0 \"%s\"" % (vtemp, outrate, path)
+  viddin.runCommand(cmd)
+  return vtemp
+
+def slowAudio(path, tempdir):
+  atemp, ext = os.path.splitext(os.path.basename(path))
+  atemp += ".ac3"
+  atemp = os.path.join(tempdir, atemp)
+  cmd = "ffmpeg -y -i \"%s\" -vn -acodec ac3 -ab 448k -filter:a" \
+      " asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01" \
+      ":comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 \"%s\"" % (path, atemp)
+  viddin.runCommand(cmd)
+  return atemp
+
+def normalizeAudio(path, tempdir, volume):
+  atemp, ext = os.path.splitext(path)
+  atemp += "-adj" + ext
+  cmd = "adjust-volume"
+  if not volume is None:
+    cmd += " --volume %s" % (volume)
+  cmd += " \"%s\"" % (path)
+  viddin.runCommand(cmd)
+  return atemp
+
+def expandChapters(path):
+  cmd = "edit-chapters --fix --multiplier %0.3f \"%s\"" % (MULTIPLIER, path)
+  viddin.runCommand(cmd)
+  return
+
+def expandSubtitles(path, tempdir, tinfo):
+  outpath, ext = os.path.splitext(os.path.basename(path))
+  subs = []
+  for track in tinfo.subtitles:
+    subpath = outpath + "_%i" % (track['rv_track_id'])
+    subpath = os.path.join(tempdir, subpath)
+    cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (path, track['rv_track_id'], subpath + ".sub")
+    viddin.runCommand(cmd)
+    out_idx = open(subpath + "-exp.idx", "w")
+    for line in open(subpath + ".idx", "r"):
+      if line.startswith("timestamp:"):
+        fields = line.split()
+        tcstr = fields[1]
+        tcstr = tcstr[:-5] + "." + tcstr[-4:-1]
+        tc = viddin.decodeTimecode(tcstr)
+        tc *= MULTIPLIER
+        tcstr = subTimecode(tc)
+        fields[1] = tcstr
+        line = " ".join(fields) + "\n"
+      out_idx.write(line)
+    subs.append(subpath + ".idx")
+    os.rename(subpath + "-exp.idx", subpath + ".idx")
+  return subs
+  
+def main():
+  args = build_argparser().parse_args()
+  path = args.file
+  tempdir = os.path.dirname(path)
+  tempdir = tempfile.mkdtemp(dir=tempdir)
+
+  tinfo = viddin.getTitleInfo(path)
+  vtemp = slowVideo(path, tempdir)
+  atemp = slowAudio(path, tempdir)
+  if args.normalize:
+    atemp = normalizeAudio(atemp, args.volume)
+  expandChapters(vtemp)
+  subs = expandSubtitles(vtemp, tempdir, tinfo)
+
+  outpath, ext = os.path.splitext(path)
+  subpath, _ = os.path.splitext(os.path.basename(path))
+  subpath = os.path.join(tempdir, subpath)
+  outpath += "-NTSC" + ext
+  cmd = "mkvmerge -o \"%s\" -A -S \"%s\" \"%s\"" % (outpath, vtemp, atemp)
+  if len(tinfo.subtitles):
+    for track in tinfo.subtitles:
+      cmd += " --default-track 0:%i --forced-track 0:%i --language 0:%s \"%s\"" \
+          % (int(track['default_track']), int(track['forced_track']), track['language'],
+             subpath + "_%i.idx" % (track['rv_track_id']))
+  viddin.runCommand(cmd)
+  shutil.rmtree(tempdir)
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

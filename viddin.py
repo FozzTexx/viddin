@@ -25,6 +25,8 @@ import tvdb_api
 import operator
 import math
 import ast
+import tempfile
+import csv
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
@@ -75,6 +77,19 @@ class viddin:
         begin = float(re.sub(",", "", fields[3]))
         chapters.append(begin)
     return chapters
+
+  @staticmethod
+  def writeChapters(filename, chapters):
+    cfile, cfname = tempfile.mkstemp()
+    for idx in range(len(chapters)):
+      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1,
+                                                  viddin.formatChapter(chapters[idx])),
+                            "ASCII"))
+      os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (idx + 1, idx + 1), "ASCII"))
+    os.close(cfile)
+    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, filename.replace("\"", "\\\""))
+    viddin.runCommand(cmd)
+    os.remove(cfname)
 
   @staticmethod
   def loadChapterFile(filename):
@@ -330,7 +345,9 @@ class viddin:
       return
 
     def indexOf(self, episode):
-      return episodes.index(episode)
+      if isinstance(episode, list):
+        episode = episode[0]
+      return self.episodes.index(episode)
     
     def formatEpisodeID(self, episode):
       num = 0
@@ -368,7 +385,7 @@ class viddin:
       dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
       for row in self.episodes:
         if dvdseason == getattr(row, self.seasonKey) \
-              and dvdepisode == getattr(row, self.episodeKey):
+              and dvdepisode == int(getattr(row, self.episodeKey)):
           if not episode:
             episode = []
           episode.append(row)
@@ -378,6 +395,8 @@ class viddin:
       return episode
     
     def renameVid(self, episode, filename, dvdorderFlag, dryrunFlag):
+      if isinstance(episode, list):
+        episode = episode[0]
       epid = self.formatEpisodeID(episode)
 
       if not filename:
@@ -402,7 +421,7 @@ class viddin:
             title = title[:-4]
         eptitle = "%s %s%s" % (epid, title, ext)
         if filename != eptitle:
-          if not os.path.isfile(eptitle) or args.dryrun:
+          if not os.path.isfile(eptitle) or dryrunFlag:
             if not dryrunFlag:
               os.rename(filename, eptitle)
             print(filename + " to " + eptitle)

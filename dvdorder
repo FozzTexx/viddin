@@ -76,7 +76,7 @@ def main():
   if args.csv:
     csvdata = []
     for row in dvdorder.episodes:
-      info = [dvdorder.formatEpisodeID(row), \
+      info = [airedorder.formatEpisodeID(row), \
               "%ix%04.1f" % (row.dvdSeason, row.dvdEpisode), row.airDate, row.title]
       csvdata.append(info)
 
@@ -112,11 +112,11 @@ def main():
       else:
         episode = dvdorder.findEpisode(epid)
         if episode:
-          filename = dvdorder.renameVid(episode, filename, args.dvdorder, args.dryrun)
+          filename = airedorder.renameVid(episode, filename, args.dvdorder, args.dryrun)
       epnum += 1
   else:
     for row in dvdorder.episodes:
-      print(dvdorder.index(row) + 1, row.description())
+      print(dvdorder.episodes.index(row) + 1, row.description())
 
   return
 

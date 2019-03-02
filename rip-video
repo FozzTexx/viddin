@@ -21,6 +21,7 @@ import os
 import argparse
 from termcolor import colored
 import curses
+import time
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from viddin import viddin
@@ -288,6 +289,8 @@ def main():
   log, ext = os.path.splitext(dest)
   log += ".log"
 
+  encodeBegin = time.time()
+  
   cmd = "HandBrakeCLI --encoder " + encoder
   cmd += " " + " ".join(flags)
   cmd += " -i \"%s\" -o \"%s\"" % (source, dest)
@@ -484,7 +487,12 @@ def main():
 
   sys.stdout.flush()
   alen = viddin.getTitleInfo(dest, debugFlag=args.debug).length
-  outputStatus(dest, source, args.title, addtl=str(viddin.formatTimecode(alen)))
+
+  encodeEnd = time.time()
+  
+  outputStatus(dest, source, args.title,
+               addtl=str(viddin.formatTimecode(alen)) + "  rip: "
+               + str(viddin.formatTimecode(encodeEnd - encodeBegin)))
 
   return
 

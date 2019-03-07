@@ -244,6 +244,28 @@ class viddin:
     return tracks
 
   @staticmethod
+  def getLength(filename, title=None, chapters=None, debugFlag=False):
+    cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    if debugFlag:
+      print(cmd)
+    process = os.popen(cmd)
+    tlen = float(process.read())
+    process.close()
+
+    if chapters:
+      if chapters.index("-"):
+        chaps = chapters.split("-")
+      else:
+        chaps = [chapters, chapters]
+      chaptimes = viddin.loadChapters(filename)
+      chaptimes.append(tlen)
+      tlen = abs(chaptimes[int(chaps[1])] - chaptimes[int(chaps[0]) - 1])
+      if debugFlag:
+        print("Chapters", chaptimes[int(chaps[0]) - 1], chaptimes[int(chaps[1])])
+
+    return tlen
+
+  @staticmethod
   def getTitleInfoMKV(path, debugFlag=False):
     cmd = "mkvmerge -i -F json \"%s\"" % (path)
     process = os.popen(cmd)
@@ -315,9 +337,8 @@ class viddin:
       return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
 
     _, ext = os.path.splitext(path)
-    if ext == ".mkv":
-      track = viddin.getTitleInfoMKV(path)
-    else:
+    track = viddin.getTitleInfoMKV(path)
+    if track is None:
       track = viddin.TitleInfo([], None)
       track.length = viddin.getLength(path)
     return track

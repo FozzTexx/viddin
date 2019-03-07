@@ -27,9 +27,23 @@ import math
 import ast
 import tempfile
 import csv
+import curses
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
+  didCursesInit = False
+  @staticmethod
+  def initCurses():
+    if not viddin.didCursesInit:
+      curses.setupterm()
+      viddin.clearEOL = curses.tigetstr("el")
+      if viddin.clearEOL:
+        viddin.clearEOL = viddin.clearEOL.decode()
+      else:
+        viddin.clearEOL = ""
+      viddin.didCursesInit = True
+      return
+    
   @staticmethod
   def isint(s):
     try:
@@ -125,6 +139,7 @@ class viddin:
 
   @staticmethod
   def runCommand(cmd):
+    viddin.initCurses()
     width = os.get_terminal_size().columns
     pos = 0
     master, slave = pty.openpty()
@@ -139,6 +154,8 @@ class viddin:
             continue
           if c == 10:
             c = 13
+          if pos == 0:
+            sys.stdout.write(viddin.clearEOL)
           if c == 13 or width == 0 or pos < width - 2:
             sys.stdout.write(chr(c))
             pos += 1

@@ -20,7 +20,6 @@ import sys
 import os
 import argparse
 from termcolor import colored
-import curses
 import time
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
@@ -109,8 +108,8 @@ def printSubs(subs, lang):
         info += " UID=%i" % (sub['uid'])
 
       if 'language' in sub:
-        lang = sub['language']
-        if args.lang and lang != args.lang:
+        slang = sub['language']
+        if lang and slang != lang:
           continue
         info += " Language=%s" % (lang)
 
@@ -123,10 +122,7 @@ def printSubs(subs, lang):
       print(info)
 
 def outputStatus(dest, source, title, message=None, color=None, addtl=None):
-  if not hasattr(outputStatus, 'didInit'):
-    curses.setupterm()
-    outputStatus.didInit = True
-  
+  viddin.initCurses()
   status = dest + ":"
   if title:
     status += " " + title
@@ -135,12 +131,7 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   if addtl:
     status += " " + addtl
   # Clear to EOL at beginning and then at end in case this message wraps two lines
-  clearEOL = curses.tigetstr("el")
-  if clearEOL:
-    clearEOL = clearEOL.decode()
-  else:
-    clearEOL = ""
-  status = clearEOL + status + clearEOL
+  status = viddin.clearEOL + status + viddin.clearEOL
   print(status)
 
 def main():

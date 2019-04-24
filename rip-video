@@ -75,7 +75,8 @@ def build_argparser():
   parser.add_argument("--bluray", action="store_true", help="set defaults for ripping Blu-Ray")
   parser.add_argument("--movie", action="store_true", help="set defaults for movies")
   parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
-  parser.add_argument("--addsubsonly", action="store_true", help="slow down PAL speed-ups")
+  parser.add_argument("--addsubsonly", nargs="?", type=int, default=-1,
+                      help="add subtitles to existing rip")
   parser.add_argument("--normalize", action="store_true", help="normalize audio")
   parser.add_argument("--debug", action="store_true", help="print debug info")
   return parser
@@ -289,9 +290,13 @@ def main():
 
   if args.debug:
     print(cmd)
-  if not args.addsubsonly:
+  if args.addsubsonly == -1:
     viddin.runCommand(cmd)
     tinfo = viddin.getTitleInfo(source, args.title, debugFlag=args.debug)
+    if not tinfo is not None:
+      print("Not found")
+      exit(1)
+      
     olen = tinfo.length
     if args.chapters:
       if chapters.index("-"):
@@ -314,7 +319,7 @@ def main():
     if args.normalize:
       tmp, ext = os.path.splitext(dest)
       tmp += "_aa" + ext
-      cmd = "adjust-volume --volume -8 \"%s\" \"%s\"" % (dest, tmp)
+      cmd = "adjust-volume --volume -7 \"%s\" \"%s\"" % (dest, tmp)
       if args.debug:
         print(cmd)
       viddin.runCommand(cmd)
@@ -329,7 +334,7 @@ def main():
       viddin.runCommand(cmd)
 
   # FIXME - can only do subtitles on mkv dest and mkv or dvd source
-  if add_subtitles or args.addsubsonly:
+  if add_subtitles or args.addsubsonly != -1:
     if os.path.isfile(dest):
       subs = viddin.getTitleInfo(dest, debugFlag=args.debug).subtitles
       if len(subs):
@@ -395,23 +400,30 @@ def main():
         path, ext = os.path.splitext(dest)
         spaths = []
         longest = None
-        longest_len = None
-        subcount = 0
-        for sub in subs:
-          if sub['language'] == lang:
-            subcount += 1
-            sublen = viddin.decodeTimecode(sub['DURATION'])
-            if 'NUMBER_OF_FRAMES' in sub \
-                and (not longest or (sublen - longest_len) / longest_len > 0.10):
-              if longest_len:
-                print(sublen, longest_len, (sublen - longest_len) / longest_len)
-              longest = sub
-              longest_len = sublen
 
-        if subcount > 1:
-          outputStatus(dest, source, args.title, "WARNING", "yellow",
-                       "multiple matching subtitles. using %i" % (longest['rv_track_id']))
-          printSubs(subs, lang)
+        if args.addsubsonly is None or args.addsubsonly == -1:
+          longest_len = None
+          subcount = 0
+          for sub in subs:
+            if sub['language'] == lang:
+              subcount += 1
+              sublen = viddin.decodeTimecode(sub['DURATION'])
+              if 'NUMBER_OF_FRAMES' in sub \
+                  and (not longest or (sublen - longest_len) / longest_len > 0.10):
+                if longest_len:
+                  print(sublen, longest_len, (sublen - longest_len) / longest_len)
+                longest = sub
+                longest_len = sublen
+
+          if subcount > 1:
+            outputStatus(dest, source, args.title, "WARNING", "yellow",
+                         "multiple matching subtitles. using %i" % (longest['rv_track_id']))
+            printSubs(subs, lang)
+        else:
+          for sub in subs:
+            if args.addsubsonly == int(sub['rv_track_id']):
+              longest = sub
+              break
 
         if longest:
           sub_source = source

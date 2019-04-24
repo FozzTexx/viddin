@@ -109,6 +109,10 @@ def main():
         episode = airedorder.findEpisode(epid)
         if episode:
           filename = airedorder.renameVid(episode, filename, args.dvdorder, args.dryrun)
+      elif args.dvdorder:
+        episode = dvdorder.findEpisode(epid)
+        if episode:
+          filename = dvdorder.renameVid(episode, filename, args.dvdorder, args.dryrun)
       else:
         episode = dvdorder.findEpisode(epid)
         if episode:

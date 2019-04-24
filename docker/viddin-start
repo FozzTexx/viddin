@@ -15,22 +15,21 @@ export PWD=`pwd -P`
 ARGS=""
 
 DCKARGS="--privileged --cap-add=SYS_ADMIN --cap-add SYS_PTRACE"
-DCKNAME=viddin
+DCKARGS="${DCKARGS} -e DISPLAY -v ${HOME}/.Xauthority:/home/viddin/.Xauthority --net=host"
+
+# For makemkv
+DCKARGS="${DCKARGS} -e QT_X11_NO_MITSHM=1 -v ${HOME}/.MakeMKV:/home/viddin/.MakeMKV"
 
 DAEMON=0
-MQTT=1
 
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     case "$1" in
 	--shell)
 	    ARGS="${ARGS} $1"
-	    DCKARGS="${DCKARGS} -e DISPLAY -v ${HOME}/.Xauthority:/home/viddin/.Xauthority --net=host"
-	    DCKNAME=
 	    shift
 	    ;;
 	--super-shell)
 	    ARGS="${ARGS} $1"
-	    DCKNAME=
 	    shift
 	    ;;
 	--daemon)

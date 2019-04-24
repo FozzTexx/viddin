@@ -46,19 +46,21 @@ def main():
     chapters = viddin.loadChapters(args.file)
 
   doEdit = False
-  if args.fix or len(chapters) == 0:
-    chapters.sort()
-    if len(chapters) > 0 and chapters[0] < 2:
-      chapters[0] = 0
-    else:
-      chapters.insert(0, 0)
-    doEdit = True
 
   if not args.add is None:
     for pos in args.add:
-      chapters.append(decodeTimecode(pos))
+      chapters.append(viddin.decodeTimecode(pos))
     chapters.sort()
     doEdit = True
+
+  if not args.delete is None:
+    for pos in args.delete:
+      offset = viddin.decodeTimecode(pos)
+      for chap in chapters:
+        if abs(chap - offset) < 2:
+          chapters.remove(chap)
+          doEdit = True
+          break
 
   if args.multiplier:
     for idx in range(len(chapters)):
@@ -71,17 +73,16 @@ def main():
     if abs(chap - nchap) < 1:
       chapters[idx:idx+1] = []
 
+  if args.fix or doEdit:
+    chapters.sort()
+    if len(chapters) > 0 and chapters[0] < 2:
+      chapters[0] = 0
+    else:
+      chapters.insert(0, 0)
+    doEdit = True
+      
   if doEdit:
-    cfile, cfname = tempfile.mkstemp()
-    for i in range(len(chapters)):
-      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1,
-                                                  viddin.formatChapter(chapters[i])), 'UTF-8'))
-      os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1), 'UTF-8'))
-    os.close(cfile)
-
-    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
-    os.system(cmd)
-    os.remove(cfname)
+    viddin.writeChapters(args.file, chapters)
 
   else:
     if len(chapters) == 0:

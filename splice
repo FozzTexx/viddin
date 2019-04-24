@@ -25,6 +25,7 @@ import tempfile
 import shutil
 import pty
 import subprocess
+import sys
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from viddin import viddin
@@ -39,7 +40,7 @@ def main():
   args = build_argparser().parse_args()
   longest = None
   for vid in args.files:
-    length = getLength(vid)
+    length = viddin.getLength(vid)
     if not longest or length > longest[1]:
       longest = (vid, length)
 
@@ -65,7 +66,7 @@ def main():
       cmd = "ffmpeg -i \"%s\" -vf scale=%i:%i -c copy -vcodec libx264 -map 0 %s" % \
           (vid, dsize['ID_VIDEO_WIDTH'], dsize['ID_VIDEO_HEIGHT'], tmp)
       print(cmd)
-      runCommand(cmd)
+      viddin.runCommand(cmd)
       inputs.append(tmp)
 
   # mergetxt = os.path.join(tmpdir, "merge.txt")
@@ -83,7 +84,7 @@ def main():
     cmd += " \"%s\"" % (vid)
 
   print(cmd)
-  runCommand(cmd)
+  viddin.runCommand(cmd)
 
   shutil.rmtree(tmpdir)
 

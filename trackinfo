@@ -50,6 +50,9 @@ def main():
   tracks.extend(tinfo.audio)
   tracks.extend(tinfo.subtitles)
   for track in tracks:
+    if 'DURATION' not in track:
+      track['DURATION'] = str(tinfo.length)
+      
     info = "%i:" % (track['rv_track_id'])
 
     info += " Type=" + track['type']
@@ -70,7 +73,8 @@ def main():
       info += " Language=%s" % (lang)
 
     if 'DURATION' in track:
-      info += " Duration=%s" % (track['DURATION'])
+      dur = viddin.decodeTimecode(track['DURATION'])
+      info += " Duration=%s" % (viddin.formatTimecode(dur))
 
     if 'NUMBER_OF_FRAMES' in track:
       info += " Frames=%s" % (track['NUMBER_OF_FRAMES'])
@@ -78,8 +82,11 @@ def main():
     if 'NUMBER_OF_BYTES' in track:
       info += " Bytes=%s" % (track['NUMBER_OF_BYTES'])
 
-    if 'codec_id' in track:
-      info += " Codec=%s" % (track['codec_id'])
+    if 'codec' in track:
+      info += " Codec=%s" % (track['codec'])
+
+    if 'audio_channels' in track:
+      info += " Channels=%s" % (track['audio_channels'])
 
     print(info)
   return

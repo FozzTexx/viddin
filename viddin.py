@@ -93,17 +93,47 @@ class viddin:
     return chapters
 
   @staticmethod
-  def writeChapters(filename, chapters):
-    cfile, cfname = tempfile.mkstemp()
-    for idx in range(len(chapters)):
-      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1,
-                                                  viddin.formatChapter(chapters[idx])),
-                            "ASCII"))
-      os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (idx + 1, idx + 1), "ASCII"))
-    os.close(cfile)
-    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, filename.replace("\"", "\\\""))
-    viddin.runCommand(cmd)
-    os.remove(cfname)
+  def writeChapters(path, chapters):
+    _, ext = os.path.splitext(path)
+    if ext == ".mkv":
+      cfile, cfname = tempfile.mkstemp()
+      for idx in range(len(chapters)):
+        os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1,
+                                                    viddin.formatChapter(chapters[idx])),
+                              'UTF-8'))
+        os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (idx + 1, idx + 1), 'UTF-8'))
+      os.close(cfile)
+
+      cmd = "mkvpropedit -c %s \"%s\"" % (cfname, path.replace("\"", "\\\""))
+      os.system(cmd)
+      os.remove(cfname)
+    else:
+      vlen = viddin.getLength(path)
+      if vlen is not None:
+        if abs(vlen - chapters[-1]) > 1:
+          chapters = chapters.copy()
+          chapters.append(vlen)
+        cfile, cfname = tempfile.mkstemp()
+        os.write(cfile, bytes(";FFMETADATA1\n", 'UTF-8'))
+        for i in range(len(chapters) - 1):
+          os.write(cfile, bytes("[CHAPTER]\n", 'UTF-8'))
+          os.write(cfile, bytes("TIMEBASE=1/1000\n", 'UTF-8'))
+          os.write(cfile, bytes("START=%i\n" % (int(chapters[i] * 1000)), 'UTF-8'))
+          os.write(cfile, bytes("END=%i\n" % (int(chapters[i + 1] * 1000)), 'UTF-8'))
+          os.write(cfile, bytes("title=Chapter %i\n" % (i + 1), 'UTF-8'))
+        os.close(cfile)
+
+        dpath = os.path.dirname(path)
+        tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
+        cmd = "ffmpeg -y -i \"%s\" -i %s -map_metadata 1 -codec copy -map 0 \"%s\"" % \
+            (path.replace("\"", "\\\""), cfname, tf.name.replace("\"", "\\\""))
+        stat = os.system(cmd)
+        if stat == 0:
+          os.rename(tf.name, path)
+        else:
+          os.remove(tf.name)
+        os.remove(cfname)
+    return
 
   @staticmethod
   def loadChapterFile(filename):
@@ -142,6 +172,7 @@ class viddin:
     viddin.initCurses()
     width = os.get_terminal_size().columns
     pos = 0
+    err = None
     master, slave = pty.openpty()
     with subprocess.Popen(cmd, shell=True, stdin=slave, stdout=slave, stderr=slave,
                          close_fds=True) as p:
@@ -164,7 +195,10 @@ class viddin:
           sys.stdout.flush()
       except OSError:
         pass
-    return
+      os.close(master)
+      p.wait()
+      err = p.returncode
+    return err
 
   @staticmethod
   def findBlack(filename):
@@ -249,6 +283,9 @@ class viddin:
           elif track['type'] == "subtitles":
             self.subtitles.append(track)
       return
+
+    def __repr__(self):
+      return "TitleInfo %0.3f" % (self.length)
       
   @staticmethod
   def getDVDInfo(path):
@@ -267,20 +304,23 @@ class viddin:
     jstr = process.read()
     process.close()
     jinfo = json.loads(jstr)
+    if 'tracks' not in jinfo:
+      return None
 
     tracks = []
     for track in jinfo['tracks']:
-      info = {'type': track['type']}
+      info = track.copy()
       info['rv_track_id'] = track['id']
-      info.update(track['properties'])
+      if 'properties' in track:
+        info.update(track['properties'])
       tracks.append(info)
 
-    cmd = "mkvextract tags \"%s\"" % (path)
+    cmd = "mkvextract tags \"%s\" 2>/dev/null" % (path)
     process = os.popen(cmd)
     xstr = process.read()
     process.close()
     xstr = xstr.strip()
-    if len(xstr):
+    if len(xstr) and not xstr.startswith("Error:"):
       xinfo = xmltodict.parse(xstr)['Tags']
       xlist = []
       for track in xinfo:
@@ -321,18 +361,31 @@ class viddin:
       if 'duration' in container:
         tlen = int(container['duration'])
         tlen /= 1000000000
+    if not tlen:
+      tlen = viddin.getLength(path)
     info.length = tlen
     return info
-    
+
+  @staticmethod
+  def getLength(filename):
+    result = subprocess.Popen(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                               "-of", "default=noprint_wrappers=1:nokey=1", filename],
+                              stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+    lstr = result.stdout.readline().decode('UTF-8')
+    if re.match("^[0-9.]+$", lstr):
+      return float(lstr)
+    return None
+  
   @staticmethod
   def getTitleInfo(path, title=None, debugFlag=False):
-    tracks = []
     if title != None:
       dvdInfo = viddin.getDVDInfo(path)
       return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
 
+    # ffprobe -v quiet -print_format json -show_format -show_streams
+    
     _, ext = os.path.splitext(path)
-    if ext == ".mkv":
+    if True or ext == ".mkv":
       track = viddin.getTitleInfoMKV(path)
     else:
       track = viddin.TitleInfo([], None)
@@ -423,14 +476,14 @@ class viddin:
         video, ext = os.path.splitext(filename)
 
         if episode == episode:
-          title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", episode.title.strip()))
+          title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", episode.title.strip()))
         else:
           title = ""
           for ep in episode:
             if len(title):
               title += " / "
             title += ep.title
-        title = re.sub("[:/]", "-", re.sub("[.!?]+$", "", title))
+        title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", title))
 
         if dvdorderFlag:
           part = int((episode.dvdEpisode * 10) % 10)

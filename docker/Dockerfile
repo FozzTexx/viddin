@@ -29,6 +29,11 @@ RUN pip3 install xmltodict termcolor tvdb_api
 COPY install-lsdvd.sh /tmp/
 RUN /tmp/install-lsdvd.sh && rm /tmp/install-lsdvd.sh
 
+# Install makemkv
+RUN apt-get update && apt-get install -y libqt4-dev
+COPY install-makemkv.sh /tmp/
+RUN /tmp/install-makemkv.sh && rm /tmp/install-makemkv.sh
+
 # Setup user
 ENV WSUSER viddin
 RUN useradd -s /bin/bash $WSUSER && eval WSHOME=~$WSUSER && mkdir $WSHOME && chown $WSUSER.$WSUSER $WSHOME && usermod -aG cdrom $WSUSER

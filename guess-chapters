@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- python -*-
 #
 # Copyright 2017 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -30,7 +31,6 @@ def build_argparser():
   parser.add_argument("file", help="Video file to guess")
   parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
   parser.add_argument("--force", action="store_true", help="Force a chapter at locations even if there's no matching silence")
-  parser.add_argument("-u", "--update", action="store_true", help="Update chapters of file instead of printing them")
   parser.add_argument("-a", "--add", action="store_true", help="Add chapters to existing chapters")
   parser.add_argument("--debug", action="store_true", help="Turn on debug output")
   parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
@@ -77,10 +77,7 @@ def main():
       splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
   if expected:
-    if args.add:
-      chapters = viddin.loadChapters(args.file)
-    else:
-      chapters = [0]
+    chapters = viddin.loadChapters(args.file)
     for offset in expected:
       bdiff = -1
       boffset = None
@@ -94,6 +91,10 @@ def main():
         chapters.append(boffset)
 
     chapters.sort()
+    if len(chapters) > 0 and chapters[0] < 2:
+      chapters[0] = 0
+    else:
+      chapters.insert(0, 0)
     cfile, cfname = tempfile.mkstemp()
 
     for i in range(len(chapters)):
@@ -102,11 +103,8 @@ def main():
       os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1), "ASCII"))
     os.close(cfile)
 
-    if args.update:
-      cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
-      os.system(cmd)
-    else:
-      os.system("cat " + cfname)
+    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
+    os.system(cmd)
     os.remove(cfname)
 
   else:

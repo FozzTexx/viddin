@@ -298,6 +298,28 @@ class viddin:
     return tracks
 
   @staticmethod
+  def getLength(filename, title=None, chapters=None, debugFlag=False):
+    cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    if debugFlag:
+      print(cmd)
+    process = os.popen(cmd)
+    tlen = float(process.read())
+    process.close()
+
+    if chapters:
+      if chapters.index("-"):
+        chaps = chapters.split("-")
+      else:
+        chaps = [chapters, chapters]
+      chaptimes = viddin.loadChapters(filename)
+      chaptimes.append(tlen)
+      tlen = abs(chaptimes[int(chaps[1])] - chaptimes[int(chaps[0]) - 1])
+      if debugFlag:
+        print("Chapters", chaptimes[int(chaps[0]) - 1], chaptimes[int(chaps[1])])
+
+    return tlen
+
+  @staticmethod
   def getTitleInfoMKV(path, debugFlag=False):
     cmd = "mkvmerge -i -F json \"%s\"" % (path)
     process = os.popen(cmd)
@@ -365,17 +387,7 @@ class viddin:
       tlen = viddin.getLength(path)
     info.length = tlen
     return info
-
-  @staticmethod
-  def getLength(filename):
-    result = subprocess.Popen(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                               "-of", "default=noprint_wrappers=1:nokey=1", filename],
-                              stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-    lstr = result.stdout.readline().decode('UTF-8')
-    if re.match("^[0-9.]+$", lstr):
-      return float(lstr)
-    return None
-  
+    
   @staticmethod
   def getTitleInfo(path, title=None, debugFlag=False):
     if title != None:

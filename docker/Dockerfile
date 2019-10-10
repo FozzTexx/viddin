@@ -30,9 +30,15 @@ COPY install-lsdvd.sh /tmp/
 RUN /tmp/install-lsdvd.sh && rm /tmp/install-lsdvd.sh
 
 # Install makemkv
-RUN apt-get update && apt-get install -y libqt4-dev
+RUN apt-get update && apt-get install -y libqt4-dev tesseract-ocr libtesseract-dev
+COPY install-ccextractor.sh /tmp/
+RUN /tmp/install-ccextractor.sh && rm /tmp/install-ccextractor.sh
 COPY install-makemkv.sh /tmp/
 RUN /tmp/install-makemkv.sh && rm /tmp/install-makemkv.sh
+
+RUN apt-get update && apt-get install -y libterm-readkey-perl libwww-perl libdbi-perl libdbd-mysql-perl libgd-gd2-perl
+COPY install-tvrenamer.sh /tmp/
+RUN /tmp/install-tvrenamer.sh && rm /tmp/install-tvrenamer.sh
 
 # Setup user
 ENV WSUSER viddin

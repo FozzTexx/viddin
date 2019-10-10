@@ -60,11 +60,13 @@ def splitVideo(range, input, output=None, trim=None, quality=None,
                transcodeFlag=False, iframeFlag=False):
   video, ext = os.path.splitext(input)
 
+  cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % input
+  process = os.popen(cmd)
+  val = process.read()
+  vlen = float(val)
+  process.close()
+
   if not range[1]:
-    cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % input
-    process = os.popen(cmd)
-    vlen = float(process.read())
-    process.close()
     range[1] = vlen
 
   if not output:
@@ -90,10 +92,10 @@ def splitVideo(range, input, output=None, trim=None, quality=None,
     qstr = ""
     if quality:
       qstr = "-crf %s" % (quality)
-    cmd = "ffmpeg -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\"" \
-        " > /dev/null 2>&1" % (input, start, end, qstr, output)
+    cmd = "ffmpeg -y -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\"" \
+        % (input, start, end, qstr, output)
     print(cmd)
-    os.system(cmd)
+    viddin.runCommand(cmd)
   else:
     if iframeFlag:
       start = findNearest(start, True)
@@ -108,20 +110,20 @@ def splitVideo(range, input, output=None, trim=None, quality=None,
           os.remove(temp)
       else:
         temp = output
-      cmd = "mkvmerge --split parts:%s-%s -o \"%s\" \"%s\" > /dev/null" % \
+      cmd = "mkvmerge --split parts:%s-%s -o \"%s\" \"%s\"" % \
           (datetime.timedelta(seconds = start), datetime.timedelta(seconds = end),
            temp, input)
       print(cmd)
-      os.system(cmd)
+      viddin.runCommand(cmd)
     else:
       temp = input
 
     if end < vlen:
       tlen = end - start
-      cmd = "ffmpeg -i \"%s\" -t %f -codec copy -map 0 \"%s\" > /dev/null 2>&1" \
+      cmd = "ffmpeg -y -i \"%s\" -t %f -codec copy -map 0 \"%s\"" \
           % (temp, tlen, output)
       print(cmd)
-      os.system(cmd)
+      viddin.runCommand(cmd)
       
     if temp != input and temp != output:
       os.remove(temp)

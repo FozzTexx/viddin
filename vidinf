@@ -15,6 +15,11 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
+if ! type mplayer > /dev/null ; then
+    echo mplayer not installed
+    exit 1
+fi
+
 PRINTNAME=0
 if [ $# -gt 1 ] ; then
     PRINTNAME=1

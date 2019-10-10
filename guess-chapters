@@ -66,7 +66,7 @@ def main():
   if len(args.offsets):
     expected = []
     for offset in args.offsets:
-      expected.append(float(offset))
+      expected.append(viddin.decodeTimecode(offset))
 
   splits = []
   for row in black:
@@ -95,22 +95,12 @@ def main():
       chapters[0] = 0
     else:
       chapters.insert(0, 0)
-    cfile, cfname = tempfile.mkstemp()
 
-    for i in range(len(chapters)):
-      os.write(cfile, bytes("CHAPTER%02i=%s\n" % (i + 1, viddin.formatChapter(chapters[i])),
-                            "ASCII"))
-      os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (i + 1, i + 1), "ASCII"))
-    os.close(cfile)
-
-    cmd = "mkvpropedit -c %s \"%s\"" % (cfname, args.file.replace("\"", "\\\""))
-    os.system(cmd)
-    os.remove(cfname)
-
+    viddin.writeChapters(args.file, chapters)
   else:
     for row in splits:
       if row >= 0 or args.force:
-        print("%0.3f" % (row))
+        print("%0.3f\t%s" % (row, viddin.formatTimecode(abs(row))))
 
   return
 

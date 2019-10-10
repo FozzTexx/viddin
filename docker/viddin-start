@@ -20,6 +20,9 @@ DCKARGS="${DCKARGS} -e DISPLAY -v ${HOME}/.Xauthority:/home/viddin/.Xauthority -
 # For makemkv
 DCKARGS="${DCKARGS} -e QT_X11_NO_MITSHM=1 -v ${HOME}/.MakeMKV:/home/viddin/.MakeMKV"
 
+# For tvrenamer.pl
+DCKARGS="${DCKARGS} -v ${HOME}/.tvrenamerrc:/home/viddin/.tvrenamerrc"
+
 DAEMON=0
 
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
@@ -56,6 +59,11 @@ IFACE=$(ip route show default | awk '/default/ {print $5}')
 MACADDR=$(cat /sys/class/net/$IFACE/address)
 DCKARGS="${DCKARGS} -e MACADDR=${MACADDR}"
 
-docker run ${DCKARGS} -v "${PWD}":${APPDIR} ${IMAGE} ${INIT} ${ARGS} "${PWD}" $@
+HOSTDIR="${PWD}"
+DCKARGS="${DCKARGS} -e HOSTDIR=""${HOSTDIR}"
+DCKARGS=($DCKARGS)
+ARGS=($ARGS)
+IFS=
+docker run ${DCKARGS[@]} -v "${HOSTDIR}":${APPDIR} ${IMAGE} ${INIT} ${ARGS[@]} "${PWD}" $@
 STATUS=$?
 exit ${STATUS}

@@ -299,10 +299,10 @@ def main():
       
     olen = tinfo.length
     if args.chapters:
-      if chapters.index("-"):
-        chaps = chapters.split("-")
+      if args.chapters.index("-"):
+        chaps = args.chapters.split("-")
       else:
-        chaps = [chapters, chapters]
+        chaps = [args.chapters, args.chapters]
       olen = tinfo.chapters[int(chaps[1])] - tinfo.chapters[int(chaps[0]) - 1]
       
     if os.path.exists(dest):

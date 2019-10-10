@@ -127,7 +127,7 @@ class viddin:
         tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
         cmd = "ffmpeg -y -i \"%s\" -i %s -map_metadata 1 -codec copy -map 0 \"%s\"" % \
             (path.replace("\"", "\\\""), cfname, tf.name.replace("\"", "\\\""))
-        stat = os.system(cmd)
+        stat = viddin.runCommand(cmd)
         if stat == 0:
           os.rename(tf.name, path)
         else:
@@ -274,6 +274,8 @@ class viddin:
         self.subtitles = []
         self.video = []
         for track in info:
+          if 'properties' in track:
+            track = {**track, **track['properties']}
           if track['type'] == "video":
             if 'DURATION' in track:
               self.length = viddin.decodeTimecode(track['DURATION'])
@@ -289,7 +291,7 @@ class viddin:
       
   @staticmethod
   def getDVDInfo(path):
-    cmd = "lsdvd -asc -Oy %s 2>/dev/null" % (path)
+    cmd = "lsdvd -asc -Oy \"%s\" 2>/dev/null" % (path)
     process = os.popen(cmd)
     pstr = process.read()
     process.close()
@@ -406,11 +408,12 @@ class viddin:
 
   class EpisodeInfo:
     def __init__(self, airedSeason, airedEpisode, dvdSeason, dvdEpisode,
-                 title=None, airDate=None):
+                 absoluteNum=None, title=None, airDate=None):
       self.airedSeason = airedSeason
       self.airedEpisode = airedEpisode
       self.dvdSeason = dvdSeason
       self.dvdEpisode = dvdEpisode
+      self.absoluteNum = absoluteNum
       self.title = title
       self.airDate = airDate
       return
@@ -530,7 +533,7 @@ class viddin:
         epid = epnum[0] + "x" + epnum[1].zfill(2)
         info = viddin.EpisodeInfo(int(epnum[0]), int(epnum[1]),
                                   int(dvdnum[0]), float(dvdnum[1]),
-                           row[CSV_TITLE], row[CSV_ORIGDATE])
+                                  title=row[CSV_TITLE], airDate=row[CSV_ORIGDATE])
         series.append(info)
     finally:
       f.close()
@@ -553,22 +556,30 @@ class viddin:
         episode = show[season][epnum]
         epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
         epinfo = None
+        anum = episode['absoluteNumber']
+        if anum:
+          anum = int(anum)
+        else:
+          anum = 0
         if not dvdIgnore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
           epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
                                       int(episode['episodenumber']),
                                       int(episode[TVDB_DVDSEASON]),
-                                      float(episode[TVDB_DVDEPNUM]))
+                                      float(episode[TVDB_DVDEPNUM]),
+                                      absoluteNum=anum)
         elif not dvdIgnore and episode[TVDB_DVDEPNUM]:
           epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
                                       int(episode['episodenumber']),
                                       int(episode['seasonnumber']),
-                                      float(episode[TVDB_DVDEPNUM]))
+                                      float(episode[TVDB_DVDEPNUM]),
+                                      absoluteNum=anum)
         else:
           if dvdMissing or dvdIgnore:
             epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
                                         int(episode['episodenumber']),
                                         int(episode['seasonnumber']),
-                                        float(episode['episodenumber']))
+                                        float(episode['episodenumber']),
+                                        absoluteNum=anum)
             if len(series) > 0:
               epnum = series[-1].dvdEpisode
               if len(series) > 1 and series[-1].dvdSeason == series[-2].dvdSeason \

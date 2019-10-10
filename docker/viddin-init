@@ -6,16 +6,28 @@ WORKSPACE=${WORKSPACE:-/workspace}
 ln -s sr0 /dev/dvd
 ln -s sr0 /dev/cdrom
 
-WSUID=$(stat -c '%u' "${WORKSPACE}")
-WSGID=$(stat -c '%g' "${WORKSPACE}")
-if [ ${WSGID} != ${WSUSER} ] ; then
-    groupmod -g ${WSGID} ${WSUSER}
-fi
-if [ ${WSGID} != ${WSUSER} -o ${WSUID} != ${WSUSER} ] ; then
-    usermod -u ${WSUID} -g ${WSGID} ${WSUSER}
-fi
 
-while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+if [ -d "${WOWRKSPACE}" ] ; then
+    WSUID=$(stat -c '%u' "${WORKSPACE}")
+    WSGID=$(stat -c '%g' "${WORKSPACE}")
+    if [ ${WSGID} != ${WSUSER} ] ; then
+	groupmod -g ${WSGID} ${WSUSER}
+    fi
+    if [ ${WSGID} != ${WSUSER} -o ${WSUID} != ${WSUSER} ] ; then
+	usermod -u ${WSUID} -g ${WSGID} ${WSUSER}
+    fi
+
+    # Create a bind mount to the same location of the host dir
+
+    if [ -n "${HOSTDIR}" ] ; then
+	mkdir -p "${HOSTDIR}"
+	mount --bind "${WORKSPACE}" "${HOSTDIR}"
+	cd "${WORKSPACE}"
+    fi
+fi
+    
+IFS=
+while [ $# -gt 0 -a x$(expr substr "${1:-empty}" 1 2) = "x--" ] ; do
     case "$1" in
 	--shell)
 	    DO_SHELL=user
@@ -28,14 +40,6 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
     esac
 done
 		
-# Create a bind mount to the same location of the host dir
-
-HOSTDIR="$1"
-shift
-mkdir -p "${HOSTDIR}"
-mount --bind "${WORKSPACE}" "${HOSTDIR}"
-cd "${WORKSPACE}"
-
 if [ "$DO_SHELL" = 'user' ] ; then
     cd "${HOSTDIR}"
     if [ $# -gt 0 ] ; then

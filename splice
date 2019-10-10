@@ -32,24 +32,34 @@ from viddin import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
-  parser.add_argument("files", nargs="*", help="input files")
+  parser.add_argument("files", nargs="+", help="input files")
   parser.add_argument("dest", help="output file")
+  parser.add_argument("--chapters", action="store_true",
+                      help="add chapter markers at splice points")
   return parser
 
-def main():
-  args = build_argparser().parse_args()
-  longest = None
-  for vid in args.files:
-    length = viddin.getLength(vid)
-    if not longest or length > longest[1]:
-      longest = (vid, length)
-
-  cmd = "vidinf \"%s\" | egrep 'ID_VIDEO_WIDTH|ID_VIDEO_HEIGHT'" % (longest[0])
+def getResolution(path):
+  cmd = "vidinf \"%s\" | egrep 'ID_VIDEO_WIDTH|ID_VIDEO_HEIGHT'" % (path)
   process = os.popen(cmd)
   size = process.read()
   process.close()
   size = size.strip().split()
   dsize = {k:int(v) for k,v in (x.split("=") for x in size)}
+  return dsize
+  
+def main():
+  args = build_argparser().parse_args()
+  longest = None
+  chapters = []
+  for vid in args.files:
+    length = viddin.getLength(vid)
+    if not longest or length > longest[1]:
+      longest = (vid, length)
+    if len(chapters):
+      length += chapters[-1]
+    chapters.append(length)
+
+  dsize = getResolution(longest[0])
   print(dsize)
 
   tmpdir = tempfile.mkdtemp()
@@ -57,7 +67,8 @@ def main():
   
   inputs = []
   for vid in args.files:
-    if vid == longest[0]:
+    res = getResolution(vid)
+    if res == dsize:
       inputs.append(os.path.abspath(vid))
     else:
       tmp, ext = os.path.splitext(vid)
@@ -88,6 +99,14 @@ def main():
 
   shutil.rmtree(tmpdir)
 
+  if args.chapters:
+    chapters.sort()
+    if len(chapters) > 0 and chapters[0] < 2:
+      chapters[0] = 0
+    else:
+      chapters.insert(0, 0)
+    viddin.writeChapters(args.dest, chapters)
+    
   return
 
 if __name__ == '__main__':

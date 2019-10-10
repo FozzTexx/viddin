@@ -64,6 +64,6 @@ DCKARGS="${DCKARGS} -e HOSTDIR=""${HOSTDIR}"
 DCKARGS=($DCKARGS)
 ARGS=($ARGS)
 IFS=
-docker run ${DCKARGS[@]} -v "${HOSTDIR}":${APPDIR} ${IMAGE} ${INIT} ${ARGS[@]} "${PWD}" $@
+docker run ${DCKARGS[@]} -v "${HOSTDIR}":"${APPDIR}" ${IMAGE} ${ARGS[@]} $@
 STATUS=$?
 exit ${STATUS}

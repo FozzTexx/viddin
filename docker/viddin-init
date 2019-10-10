@@ -6,8 +6,7 @@ WORKSPACE=${WORKSPACE:-/workspace}
 ln -s sr0 /dev/dvd
 ln -s sr0 /dev/cdrom
 
-
-if [ -d "${WOWRKSPACE}" ] ; then
+if [ -d "${WORKSPACE}" ] ; then
     WSUID=$(stat -c '%u' "${WORKSPACE}")
     WSGID=$(stat -c '%g' "${WORKSPACE}")
     if [ ${WSGID} != ${WSUSER} ] ; then
@@ -43,10 +42,10 @@ done
 if [ "$DO_SHELL" = 'user' ] ; then
     cd "${HOSTDIR}"
     if [ $# -gt 0 ] ; then
-#	echo "Starting shell with command: $@"
+	echo "Starting shell with command: $@"
 	sudo -u ${WSUSER} -E -H -s $@
     else
-#	echo "Starting shell"
+	echo "Starting shell"
 	su ${WSUSER}
     fi
 elif [ "$DO_SHELL" = 'super' ] ; then

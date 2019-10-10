@@ -17,7 +17,7 @@ def main():
   for dir in args.dirs:
     basedir = os.path.basename(dir)
     for file in sorted(glob.glob(os.path.join(dir, "*.mkv"))):
-      video = os.path.basename(file)
+      output = video = os.path.basename(file)
       if not video.startswith(basedir):
         output = basedir + "_" + video
       print(output)

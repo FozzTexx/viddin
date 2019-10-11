@@ -60,10 +60,11 @@ MACADDR=$(cat /sys/class/net/$IFACE/address)
 DCKARGS="${DCKARGS} -e MACADDR=${MACADDR}"
 
 HOSTDIR="${PWD}"
-DCKARGS="${DCKARGS} -e HOSTDIR=""${HOSTDIR}"
 DCKARGS=($DCKARGS)
 ARGS=($ARGS)
 IFS=
+DCKARGS+=(-e)
+DCKARGS+=(HOSTDIR="${HOSTDIR}")
 docker run ${DCKARGS[@]} -v "${HOSTDIR}":"${APPDIR}" ${IMAGE} ${ARGS[@]} $@
 STATUS=$?
 exit ${STATUS}

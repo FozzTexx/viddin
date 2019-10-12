@@ -301,12 +301,14 @@ class viddin:
 
   @staticmethod
   def getLength(filename, title=None, chapters=None, debugFlag=False):
-    cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
+    cmd = "ffprobe -v error -show_entries format=duration -of" \
+          " default=noprint_wrappers=1:nokey=1 \"%s\"" % (filename)
     if debugFlag:
       print(cmd)
     process = os.popen(cmd)
-    tlen = float(process.read())
+    jstr = process.read()
     process.close()
+    tlen = float(jstr)
 
     if chapters:
       if chapters.index("-"):
@@ -434,12 +436,16 @@ class viddin:
         episode = episode[0]
       return self.episodes.index(episode)
     
-    def formatEpisodeID(self, episode):
+    def formatEpisodeID(self, episode, skey=None, ekey=None):
       num = 0
-      season = getattr(episode, self.seasonKey)
-      epnum = getattr(episode, self.episodeKey)
+      if not skey:
+        skey = self.seasonKey
+      if not ekey:
+        ekey = self.episodeKey
+      season = getattr(episode, skey)
+      epnum = getattr(episode, ekey)
       for row in self.episodes:
-        if getattr(row, self.seasonKey) == season:
+        if getattr(row, skey) == season:
           num += 1
       if num < 1:
         num = 1
@@ -482,7 +488,10 @@ class viddin:
     def renameVid(self, episode, filename, dvdorderFlag, dryrunFlag):
       if isinstance(episode, list):
         episode = episode[0]
-      epid = self.formatEpisodeID(episode)
+      if dvdorderFlag:
+        epid = self.formatEpisodeID(episode, "dvdSeason", "dvdEpisode")
+      else:
+        epid = self.formatEpisodeID(episode)
 
       if not filename:
         filename = findVideo(episode)

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 import argparse
 import os, glob
+import sys
+
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
 
 FLAGS="--lang=eng --bluray"
 
 def build_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument("dirs", nargs="+", help="input files")
-  parser.add_argument("--flags", help="flags to pass to rip-video, default is <" + FLAGS + ">")
+  parser.add_argument("--flags", default=FLAGS, help="flags to pass to rip-video")
   # parser.add_argument("--chapters", action="store_true",
   #                     help="add chapter markers at splice points")
   return parser
@@ -20,14 +24,27 @@ def main():
       output = video = os.path.basename(file)
       if not video.startswith(basedir):
         output = basedir + "_" + video
-      print(output)
       log, _ = os.path.splitext(output)
       log += ".log"
-      # FIXME - if log exists and video exists check length
+
+      doRip = False
       if not os.path.exists(log):
-        cmd = "rip-video " + FLAGS + " \"%s\" \"%s\"" % (file, output)
+        doRip = True
+      elif os.path.exists(output):
+        inlength = viddin.getLength(file)
+        outlength = viddin.getLength(output)
+        diff = inlength - outlength
+        if diff > 5 or diff / inlength > 0.03:
+          doRip = True
+      if doRip:
+        print(output)
+        cmd = "rip-video " + args.flags + " \"%s\" \"%s\"" % (file, output)
         print(cmd)
-        os.system(cmd)
+        result = os.WEXITSTATUS(os.system(cmd))
+        if result != 0:
+          exit(result)
+      else:
+        print(output, "Skipped")
   return
 
 if __name__ == '__main__':

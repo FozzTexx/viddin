@@ -308,7 +308,10 @@ class viddin:
     process = os.popen(cmd)
     jstr = process.read()
     process.close()
-    tlen = float(jstr)
+    try:
+      tlen = float(jstr)
+    except ValueError:
+      tlen = 0
 
     if chapters:
       if chapters.index("-"):

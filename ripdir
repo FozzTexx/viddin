@@ -30,12 +30,20 @@ def main():
       doRip = False
       if not os.path.exists(log):
         doRip = True
-      elif os.path.exists(output):
-        inlength = viddin.getLength(file)
-        outlength = viddin.getLength(output)
-        diff = inlength - outlength
-        if diff > 5 or diff / inlength > 0.03:
-          doRip = True
+      else:
+        if os.path.exists(output):
+          inlength = viddin.getLength(file)
+          outlength = viddin.getLength(output)
+          diff = inlength - outlength
+          if diff > 5 or diff / inlength > 0.03:
+            print("Incomplete", diff, diff / inlength)
+            doRip = True
+        else:
+          with open(log) as f:
+            lines = f.read().splitlines()
+            if len(lines) < 2 or lines[-2] != "Encode done!":
+              print("Incomplete")
+              doRip = True
       if doRip:
         print(output)
         cmd = "rip-video " + args.flags + " \"%s\" \"%s\"" % (file, output)

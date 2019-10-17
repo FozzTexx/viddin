@@ -292,9 +292,11 @@ class viddin:
   @staticmethod
   def getDVDInfo(path):
     cmd = "lsdvd -asc -Oy \"%s\" 2>/dev/null" % (path)
-    process = os.popen(cmd)
-    pstr = process.read()
-    process.close()
+    process = subprocess.Popen(["lsdvd", "-asc", "-Oy", path], stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    pstr = process.stdout.read()
+    process.stdout.close()
+    pstr = pstr.decode("utf-8", "backslashreplace")
     pstr = pstr.replace("lsdvd = {", "{")
     tracks = ast.literal_eval(pstr)
     return tracks
@@ -327,8 +329,22 @@ class viddin:
     return tlen
 
   @staticmethod
+  def getResolution(filename, debugFlag=False):
+    cmd = "ffprobe -v error -select_streams v:0 -show_entries stream=width,height" \
+          " -of csv=s=x:p=0 \"%s\"" % (filename)
+    if debugFlag:
+      print(cmd)
+    process = os.popen(cmd)
+    res = process.read()
+    process.close()
+    res = res.split('x')
+    return (int(res[0]), int(res[1]))
+
+  @staticmethod
   def getTitleInfoMKV(path, debugFlag=False):
     cmd = "mkvmerge -i -F json \"%s\"" % (path)
+    if debugFlag:
+      print(cmd)
     process = os.popen(cmd)
     jstr = process.read()
     process.close()

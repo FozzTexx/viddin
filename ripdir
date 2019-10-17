@@ -12,8 +12,8 @@ def build_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument("dirs", nargs="+", help="input files")
   parser.add_argument("--flags", default=FLAGS, help="flags to pass to rip-video")
-  # parser.add_argument("--chapters", action="store_true",
-  #                     help="add chapter markers at splice points")
+  parser.add_argument("--dryrun", action="store_true",
+                      help="only print actions, don't rip")
   return parser
 
 def main():
@@ -48,9 +48,10 @@ def main():
         print(output)
         cmd = "rip-video " + args.flags + " \"%s\" \"%s\"" % (file, output)
         print(cmd)
-        result = os.WEXITSTATUS(os.system(cmd))
-        if result != 0:
-          exit(result)
+        if not args.dryrun:
+          result = os.WEXITSTATUS(os.system(cmd))
+          if result != 0:
+            exit(result)
       else:
         print(output, "Skipped")
   return

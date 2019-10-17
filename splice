@@ -38,15 +38,6 @@ def build_argparser():
                       help="add chapter markers at splice points")
   return parser
 
-def getResolution(path):
-  cmd = "vidinf \"%s\" | egrep 'ID_VIDEO_WIDTH|ID_VIDEO_HEIGHT'" % (path)
-  process = os.popen(cmd)
-  size = process.read()
-  process.close()
-  size = size.strip().split()
-  dsize = {k:int(v) for k,v in (x.split("=") for x in size)}
-  return dsize
-  
 def main():
   args = build_argparser().parse_args()
   longest = None
@@ -59,7 +50,7 @@ def main():
       length += chapters[-1]
     chapters.append(length)
 
-  dsize = getResolution(longest[0])
+  dsize = viddin.getResolution(longest[0])
   print(dsize)
 
   tmpdir = tempfile.mkdtemp()
@@ -67,7 +58,7 @@ def main():
   
   inputs = []
   for vid in args.files:
-    res = getResolution(vid)
+    res = viddin.getResolution(vid)
     if res == dsize:
       inputs.append(os.path.abspath(vid))
     else:
@@ -75,7 +66,7 @@ def main():
       tmp += "_%i" % (args.files.index(vid)) + ext
       tmp = os.path.join(tmpdir, tmp)
       cmd = "ffmpeg -i \"%s\" -vf scale=%i:%i -c copy -vcodec libx264 -map 0 %s" % \
-          (vid, dsize['ID_VIDEO_WIDTH'], dsize['ID_VIDEO_HEIGHT'], tmp)
+          (vid, dsize[0], dsize[1], tmp)
       print(cmd)
       viddin.runCommand(cmd)
       inputs.append(tmp)

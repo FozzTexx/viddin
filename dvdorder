@@ -38,6 +38,7 @@ def build_argparser():
   parser.add_argument("--first", default=1, help="Start enumeration at this number")
   parser.add_argument("--minsize", help="Ignore videos smaller than this")
   parser.add_argument("--dvdorder", action="store_true", help="keep episodes in DVD order")
+  parser.add_argument("--absolute", action="store_true", help="put episodes in absolute order")
   parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
   parser.add_argument("--csv", action="store_true", help="output data as csv")
   parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
@@ -106,18 +107,23 @@ def main():
       epid = video
       if args.enumerate:
         epid = epnum + first - 1
+      order = viddin.ORDER_AIRED
+      if args.dvdorder:
+        order = viddin.ORDER_DVD
+      if args.absolute:
+        order = viddin.ORDER_ABSOLUTE
       if args.airedorder:
         episode = airedorder.findEpisode(epid)
         if episode:
-          filename = airedorder.renameVid(episode, filename, args.dvdorder, args.dryrun)
+          filename = airedorder.renameVid(episode, filename, order, args.dryrun)
       elif args.dvdorder:
         episode = dvdorder.findEpisode(epid)
         if episode:
-          filename = dvdorder.renameVid(episode, filename, args.dvdorder, args.dryrun)
+          filename = dvdorder.renameVid(episode, filename, order, args.dryrun)
       else:
         episode = dvdorder.findEpisode(epid)
         if episode:
-          filename = airedorder.renameVid(episode, filename, args.dvdorder, args.dryrun)
+          filename = airedorder.renameVid(episode, filename, order, args.dryrun)
       epnum += 1
   else:
     for row in dvdorder.episodes:

@@ -85,8 +85,10 @@ def uniqueFile(path, extension=None):
   dest, ext = os.path.splitext(path)
   if not extension:
     extension = ext
+  if extension[0] != '.':
+    extension = "." + extension
   counter = None
-  upath = dest + "." + extension
+  upath = dest + extension
   while os.path.exists(upath):
     if not counter:
       counter = 1
@@ -144,12 +146,15 @@ def main():
 
   if args.animation:
     flags.extend(["-r", "23.976", "--x264-tune", "animation", "--detelecine", "--decomb"])
+    add_subtitles = True
 
   if args.pal_animation:
     flags.extend(["--x264-tune", "animation", "--decomb"])
+    add_subtitles = True
 
   if args.lap_animation:
     flags.extend(["--x264-tune", "animation", "--deinterlace=mode=1:parity=1"])
+    add_subtitles = True
 
   if args.film:
     flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
@@ -245,6 +250,7 @@ def main():
   if args.pixel_aspect:
     flags.extend(["--pixel-aspect", args.pixel_aspect])
 
+  # FIXME - if user specifies a range or a list, abort
   if args.title:
     flags.extend(["--title", args.title])
     if args.source:
@@ -271,6 +277,9 @@ def main():
     source = dest
     dest = None
 
+  if args.extension[0] != '.':
+    args.extension = "." + args.extension
+    
   if not dest:
     dest = uniqueFile(source, args.extension)
 
@@ -279,6 +288,8 @@ def main():
     dest = os.path.join(dest, base)
 
   log, ext = os.path.splitext(dest)
+  if len(ext) == 0:
+    dest += args.extension
   log += ".log"
 
   encodeBegin = time.time()
@@ -292,25 +303,36 @@ def main():
     print(cmd)
   if args.addsubsonly == -1:
     viddin.runCommand(cmd)
-    tinfo = viddin.getTitleInfo(source, args.title, debugFlag=args.debug)
-    if not tinfo is not None:
-      print("Not found")
-      exit(1)
-      
-    olen = tinfo.length
-    if args.chapters:
-      if args.chapters.index("-"):
-        chaps = args.chapters.split("-")
-      else:
-        chaps = [args.chapters, args.chapters]
-      olen = tinfo.chapters[int(chaps[1])] - tinfo.chapters[int(chaps[0]) - 1]
+    # FIXME - title might be a list or a range
+    if not args.title is None and '-' in args.title:
+      titles = args.title.split("-")
+      olen = 0
+      for t in range(int(titles[0]), int(titles[1]) + 1):
+        tinfo = viddin.getTitleInfo(source, t, debugFlag=args.debug)
+        if not tinfo is not None:
+          print("Not found")
+          exit(1)
+        olen += tinfo.length
+    else:
+      tinfo = viddin.getTitleInfo(source, args.title, debugFlag=args.debug)
+      if not tinfo is not None:
+        print("Not found")
+        exit(1)
+      olen = tinfo.length
+      tinfo.chapters.append(olen)
+      if args.chapters:
+        if '-' in args.chapters:
+          chaps = args.chapters.split("-")
+        else:
+          chaps = [args.chapters, args.chapters]
+        olen = tinfo.chapters[int(chaps[1])] - tinfo.chapters[int(chaps[0]) - 1]
       
     if os.path.exists(dest):
       alen = viddin.getTitleInfo(dest, debugFlag=args.debug).length
     else:
       alen = -1
     percent = abs(alen - olen) / olen
-    if alen < olen and abs(alen - olen) > 0.5 and percent > 0.001:
+    if alen < olen and abs(alen - olen) > 0.5 and percent > 0.0014:
       outputStatus(dest, source, args.title, "FAILED TO RIP", "red",
                    "Expect %s  Got %s  Percent %.5f" %
                    (viddin.formatTimecode(olen), viddin.formatTimecode(alen), percent))
@@ -351,13 +373,15 @@ def main():
     if args.lang:
       lang = args.lang
 
-    if args.title:
+    if args.title and viddin.isDVD(source):
       subs = viddin.getTitleInfo(source, int(args.title)).subtitles
       if len(subs):
         path, ext = os.path.splitext(dest)
         subtemp = path + "-subs.mkv"
         cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
             " -i \"%s\" --title %i -o \"%s\"" % (lang, source, int(args.title), subtemp)
+        if args.chapters:
+          cmd += " --chapters " + args.chapters
         if args.debug:
           print(cmd)
         viddin.runCommand(cmd)
@@ -437,7 +461,7 @@ def main():
             ts_path += ".mkv"
             sub_source = uniqueFile(ts_path)
 
-            if args.chapters.index("-"):
+            if '-' in args.chapters:
               chaps = args.chapters.split("-")
             else:
               chaps = [args.chapters, args.chapters]

@@ -28,9 +28,14 @@ import ast
 import tempfile
 import csv
 import curses
+import stat
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
+  ORDER_AIRED = 1
+  ORDER_DVD = 2
+  ORDER_ABSOLUTE = 3
+  
   didCursesInit = False
   @staticmethod
   def initCurses():
@@ -181,13 +186,12 @@ class viddin:
       try:
         while True:
           c = list(m.read(1))[0]
-          if c > 127:
+          if c > 127 or c == 27:
             continue
           if c == 10:
             c = 13
-          if pos == 0:
+          if (c == 13 and pos > 0) or width == 0 or pos < width - 2:
             sys.stdout.write(viddin.clearEOL)
-          if c == 13 or width == 0 or pos < width - 2:
             sys.stdout.write(chr(c))
             pos += 1
             if c == 13:
@@ -291,7 +295,6 @@ class viddin:
       
   @staticmethod
   def getDVDInfo(path):
-    cmd = "lsdvd -asc -Oy \"%s\" 2>/dev/null" % (path)
     process = subprocess.Popen(["lsdvd", "-asc", "-Oy", path], stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     pstr = process.stdout.read()
@@ -410,10 +413,20 @@ class viddin:
       tlen = viddin.getLength(path)
     info.length = tlen
     return info
+
+  @staticmethod
+  def isDVD(path):
+    mode = os.stat(path).st_mode
+    if stat.S_ISBLK(mode) or stat.S_ISDIR(mode):
+      return True
+    _, ext = os.path.splitext(path)
+    if ext == ".iso":
+      return True
+    return False
     
   @staticmethod
   def getTitleInfo(path, title=None, debugFlag=False):
-    if title != None:
+    if viddin.isDVD(path) and title != None:
       dvdInfo = viddin.getDVDInfo(path)
       return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
 
@@ -461,11 +474,15 @@ class viddin:
         skey = self.seasonKey
       if not ekey:
         ekey = self.episodeKey
-      season = getattr(episode, skey)
       epnum = getattr(episode, ekey)
-      for row in self.episodes:
-        if getattr(row, skey) == season:
-          num += 1
+      if isinstance(skey, int):
+        season = skey
+        num = len(self.episodes)
+      else:
+        season = getattr(episode, skey)
+        for row in self.episodes:
+          if getattr(row, skey) == season:
+            num += 1
       if num < 1:
         num = 1
       digits = int(math.floor(math.log(num, 10)) + 1)
@@ -504,11 +521,13 @@ class viddin:
         episode = episode[0]
       return episode
     
-    def renameVid(self, episode, filename, dvdorderFlag, dryrunFlag):
+    def renameVid(self, episode, filename, order, dryrunFlag):
       if isinstance(episode, list):
         episode = episode[0]
-      if dvdorderFlag:
+      if order == viddin.ORDER_DVD:
         epid = self.formatEpisodeID(episode, "dvdSeason", "dvdEpisode")
+      elif order == viddin.ORDER_ABSOLUTE:
+        epid = self.formatEpisodeID(episode, 1, "absoluteNum")
       else:
         epid = self.formatEpisodeID(episode)
 
@@ -528,7 +547,7 @@ class viddin:
             title += ep.title
         title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", title))
 
-        if dvdorderFlag:
+        if order == viddin.ORDER_DVD:
           part = int((episode.dvdEpisode * 10) % 10)
           if part and title.endswith(" (" + str(part) + ")"):
             title = title[:-4]
@@ -548,6 +567,7 @@ class viddin:
     CSV_DVDEP = 1
     CSV_ORIGDATE = 2
     CSV_TITLE = 3
+    CSV_ABSOLUTE = 4
     series = []
     f = open(filename, 'rU')
     try:
@@ -561,7 +581,8 @@ class viddin:
         epid = epnum[0] + "x" + epnum[1].zfill(2)
         info = viddin.EpisodeInfo(int(epnum[0]), int(epnum[1]),
                                   int(dvdnum[0]), float(dvdnum[1]),
-                                  title=row[CSV_TITLE], airDate=row[CSV_ORIGDATE])
+                                  title=row[CSV_TITLE], airDate=row[CSV_ORIGDATE],
+                                  absoluteNum=int(row[CSV_ABSOLUTE]))
         series.append(info)
     finally:
       f.close()
@@ -575,6 +596,7 @@ class viddin:
       TVDB_DVDSEASON = "dvdSeason"
       TVDB_DVDEPNUM = "dvdEpisodeNumber"
 
+    # If you're having problems finding the series, use interactive=True on the Tvdb() call
     series = []
     t = tvdb_api.Tvdb()
     show = t[seriesName]

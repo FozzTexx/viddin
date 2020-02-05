@@ -19,10 +19,10 @@ def build_argparser():
 def main():
   args = build_argparser().parse_args()
   for dir in args.dirs:
-    basedir = os.path.basename(dir)
+    basedir = os.path.basename(os.path.abspath(dir))
     for file in sorted(glob.glob(os.path.join(dir, "*.mkv"))):
       output = video = os.path.basename(file)
-      if not video.startswith(basedir):
+      if not output.startswith(basedir):
         output = basedir + "_" + video
       log, _ = os.path.splitext(output)
       log += ".log"

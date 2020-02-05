@@ -51,9 +51,9 @@ ENV WSUSER viddin
 RUN useradd -s /bin/bash $WSUSER && eval WSHOME=~$WSUSER && mkdir $WSHOME && chown $WSUSER.$WSUSER $WSHOME && usermod -aG cdrom $WSUSER
 RUN echo "$WSUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Install viddin scripts
-ADD viddin.tar /usr/local/bin
-
 # Copy init script
 COPY viddin-init /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/viddin-init"]
+
+# Install viddin scripts
+ADD viddin.tar /usr/local/bin

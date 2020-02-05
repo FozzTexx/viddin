@@ -60,12 +60,7 @@ def splitVideo(range, input, output=None, trim=None, quality=None,
                transcodeFlag=False, iframeFlag=False):
   video, ext = os.path.splitext(input)
 
-  cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % input
-  process = os.popen(cmd)
-  val = process.read()
-  vlen = float(val)
-  process.close()
-
+  vlen = viddin.getLength(input)
   if not range[1]:
     range[1] = vlen
 
@@ -87,7 +82,7 @@ def splitVideo(range, input, output=None, trim=None, quality=None,
   if trim:
     end -= trim
 
-  if transcodeFlag and start > 0.0:
+  if transcodeFlag: # and start > 0.0:
     # FIXME - match codec of source?
     qstr = ""
     if quality:

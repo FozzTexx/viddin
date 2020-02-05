@@ -76,6 +76,7 @@ def main():
     else:
       splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
+  doEdit = False
   if expected:
     chapters = viddin.loadChapters(args.file)
     for offset in expected:
@@ -89,14 +90,15 @@ def main():
             boffset = abs(row)
       if boffset and bdiff < args.distance:
         chapters.append(boffset)
+        doEdit = True
 
-    chapters.sort()
-    if len(chapters) > 0 and chapters[0] < 2:
-      chapters[0] = 0
-    else:
-      chapters.insert(0, 0)
-
-    viddin.writeChapters(args.file, chapters)
+    if doEdit:
+      chapters.sort()
+      if len(chapters) > 0 and chapters[0] < 2:
+        chapters[0] = 0
+      else:
+        chapters.insert(0, 0)
+      viddin.writeChapters(args.file, chapters)
   else:
     for row in splits:
       if row >= 0 or args.force:

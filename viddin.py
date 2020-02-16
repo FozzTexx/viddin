@@ -186,12 +186,19 @@ class viddin:
       try:
         while True:
           c = list(m.read(1))[0]
-          if c > 127 or c == 27:
+          if c > 127:
             continue
+          if c == 27:
+            c = list(m.read(1))[0]
+            if c == '[':
+              c = list(m.read(1))[0]
+              if c == 'K':
+                continue
           if c == 10:
             c = 13
           if (c == 13 and pos > 0) or width == 0 or pos < width - 2:
-            sys.stdout.write(viddin.clearEOL)
+            if pos == 0:
+              sys.stdout.write(viddin.clearEOL)
             sys.stdout.write(chr(c))
             pos += 1
             if c == 13:
@@ -355,7 +362,6 @@ class viddin:
     process = os.popen(cmd)
     jstr = process.read()
     process.close()
-    print("AAAAAAAAAA", jstr)
     jinfo = json.loads(jstr)
     if 'tracks' not in jinfo:
       return None

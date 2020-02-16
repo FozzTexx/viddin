@@ -632,7 +632,8 @@ def main():
         ep = episode[epnum]
         title = re.sub("[:/]", "-", re.sub("[.!?]$", "", ep.title))
         eptitle = "%s.%i %s%s" % (video, quickie + epnum + 1, title, ext)
-        alttitle = "%s %s%s" % (episodes.formatEpisodeID(ep), title, ext)
+        alttitle = "%s %s%s" % (episodes.formatEpisodeID(ep, "airedSeason", "airedEpisode"),
+                                title, ext)
         epnum += 1
       elif ctype == TYPE_TITLE:
         title = "Opening"

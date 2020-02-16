@@ -97,6 +97,11 @@ def main():
         episode = dvdorder.findEpisode(args.first)
         first = dvdorder.indexOf(episode) + 1
 
+    if args.airedorder:
+      eids = airedorder.episodeNumbers()
+    else:
+      eids = dvdorder.episodeNumbers()
+    
     for filename in videos:
       if minsize:
         size = os.path.getsize(filename)
@@ -106,7 +111,7 @@ def main():
       video, ext = os.path.splitext(filename)
       epid = video
       if args.enumerate:
-        epid = epnum + first - 1
+        epid = eids[epnum + first - 1]
       order = viddin.ORDER_AIRED
       if args.dvdorder:
         order = viddin.ORDER_DVD
@@ -117,7 +122,7 @@ def main():
         if episode:
           filename = airedorder.renameVid(episode, filename, order, args.dryrun)
       elif args.dvdorder:
-        episode = dvdorder.findEpisode(epid)
+        episode = dvdorder.findEpisode(epid, order)
         if episode:
           filename = dvdorder.renameVid(episode, filename, order, args.dryrun)
       else:

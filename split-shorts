@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2016 by Chris Osborn <fozztexx@fozztexx.com>
 #
@@ -15,17 +15,19 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-import glob
 import os
 import datetime
-import tvdb_api
 import sys
 from operator import itemgetter
 import re
 import argparse
-import bisect
-import csv
+import glob
 import math
+import tvdb_api
+import csv
+
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
+from viddin import viddin
 
 EP_ID = 0
 EP_SEASON = 1
@@ -35,308 +37,643 @@ EP_DVDEPISODE = 4
 EP_TITLE = 5
 EP_ORIGDATE = 6
 
+SFLAG_CHAP = 1
+SFLAG_NOSIL = 2
+
 CSV_EPISODE = 0
 CSV_DVDEP = 1
 CSV_ORIGDATE = 2
 CSV_TITLE = 3
 CSV_SERIES = 4
 
+MARGIN = 5
+
+TYPE_TITLE = "Title"
+TYPE_CREDITS = "Credits"
+TYPE_QUICKIE = "Quickie"
+TYPE_SHORT = "Short"
+TYPE_PREV = "Prev"
+TYPE_NEXT = "Next"
+
+TVDB_DVDSEASON = "dvd_season"
+TVDB_DVDEPNUM = "dvd_episodenumber"
+if float(tvdb_api.__version__) >= 2.0:
+  TVDB_DVDSEASON = "dvdSeason"
+  TVDB_DVDEPNUM = "dvdEpisodeNumber"
+
 ftr = [3600,60,1]
 
-parser = argparse.ArgumentParser()
-parser.add_argument("series", nargs="?", help="Name of series on thetvdb.com or csv file with episode information")
-parser.add_argument("--titlelen", help="length in seconds of opening titles", default=78)
-parser.add_argument("--creditlen", help="length in seconds of end credits", default=55)
-parser.add_argument("--bumpermin", help="minimum length in seconds of bumpers", default=10)
-parser.add_argument("--bumpermax", help="maximum in seconds of bumpers", default=20)
-parser.add_argument("--prebumper", action="store_true", help="a bumper can occur before first chapter")
-parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
-parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
-parser.add_argument("--glob", help="pattern for finding videos", default="[0-9]x[0-9][0-9].mkv")
-parser.add_argument("--split", action="store_true", help="Split videos into segments, using titles if available")
-parser.add_argument("--exceedchapter", action="store_true", help="Allow splitting past chapter marker")
-args = parser.parse_args()
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("series", help="Name of series on thetvdb.com")
+  parser.add_argument("files", nargs="*", help="examine only these files")
+  parser.add_argument("--quickies", default="18-56", help="range of quickie length")
+  parser.add_argument("--minlength", default=320, type=float, help="minimum short length")
+  parser.add_argument("--titlelen", help="length in seconds of opening titles", default=60, type=float)
+  parser.add_argument("--creditlen", help="length in seconds of end credits", default=35, type=float)
+  parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+  parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
+  parser.add_argument("--split", action="store_true", help="Split and rename instead of printing")
+  parser.add_argument("--transcode-flags", help="extra flags to pass to transcoder")
+  parser.add_argument("--notranscode", action="store_true", help="Split video without transcoding")
+  parser.add_argument("--chaptersonly", action="store_true", help="Only look for shorts at chapter markers")
+  parser.add_argument("--keepcredits", action="store_true", help="When splitting create files for opening titles and end credits")
+  parser.add_argument("--endonly", action="store_true", help="Quickies only occur at the end of chapter")
+  parser.add_argument("--crosschapters", action="store_true", help="Shorts can cross chapter markers")
+  parser.add_argument("--debug", action="store_true", help="Turn on debug output")
+  return parser
 
-args.titlelen = float(args.titlelen)
-args.creditlen = float(args.creditlen)
-args.bumpermin = float(args.bumpermin)
-args.bumpermax = float(args.bumpermax)
+class Segment:
+  def __init__(self, position, length,
+               segType=None, segBlack=None, segSilence=None, segChap=None):
+    splen = 0.0
+    if segBlack:
+      sbegin = segBlack[0] if not segSilence or segBlack[0] > segSilence[0] else segSilence[0]
+      send = segBlack[1] if not segSilence or segBlack[1] > segSilence[1] else segSilence[1]
+      splen = send - sbegin
+    self.position = position
+    self.length = length
+    self.segType = segType
+    self.segBlack = segBlack
+    self.segSilence = segSilence
+    self.segChap = segChap
+    self.splen = splen
+    return
 
-if args.series:
-  episodes = []
-  if os.path.isfile(args.series):
-    f = open(args.series, 'rU')
-    try:
-      reader = csv.reader(f)
-      for row in reader:
-        epnum = re.split(" *x *", row[CSV_EPISODE])
-        dvdnum = re.split(" *x *", row[CSV_DVDEP])
-        epid = epnum[0] + "x" + epnum[1].zfill(2)
-        info = [epid, int(epnum[0]), int(epnum[1]), int(dvdnum[0]), float(dvdnum[1]), \
-                  row[CSV_TITLE], row[CSV_ORIGDATE]]
-        episodes.append(info)
-    finally:
-      f.close()
-
-  else:
-    t = tvdb_api.Tvdb()
-    show = t[args.series]
-    for season in show:
-      for epnum in show[season]:
-        episode = show[season][epnum]
-        epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
-        if episode['dvd_season'] and episode['dvd_episodenumber']:
-          info = [epid, int(episode['seasonnumber']), int(episode['episodenumber']), \
-                    int(episode['dvd_season']), float(episode['dvd_episodenumber']), \
-                    episode['episodename'], episode['firstaired']]
-          episodes.append(info)
-        elif not args.quiet:
-          print "No DVD info for"
-          print episode
-          if args.dvdmissing:
-            info = [epid, int(episode['seasonnumber']), int(episode['episodenumber']), \
-                      int(episode['seasonnumber']), float(episode['episodenumber']), \
-                      episode['episodename'], episode['firstaired']]
-            episodes.append(info)
-  episodes = sorted(episodes, key=itemgetter(EP_DVDSEASON, EP_DVDEPISODE))
-
-def findBlack(filename):
+def findSplits(filename, vlen, chapters):
   video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.split" % video):
-    print "Finding black " + filename
-    os.system("find-black --duration 0.1 \"%s\" \"%s.split\" > /dev/null" % (filename, video))
+  black = viddin.loadSplits(video + ".blk")
+  silence = viddin.loadSplits(video + ".sil")
 
-def findSilence(filename):
-  video, ext = os.path.splitext(filename)
-  if not os.path.exists("%s.sil" % video):
-    print "Finding silence " + filename
-    os.system("find-silence --duration 0.1 \"%s\" \"%s.sil\" > /dev/null" % (filename, video))
-
-def loadOffsets(offsets, filename):
-  with open(filename) as f:
-    for line in f:
-      info = line.split()
-      begin = float(info[1])
-      end = float(info[2])
-      offsets.append([begin, end])
-
-def loadChapters(chapters, filename):
-  chap = 1
-  segments = []
-  with os.popen("mediainfo \"" + filename + "\" | grep Chapter") as f:
-    for line in f:
-      # FIXME - mediainfo incorrectly puts leading zero on decimal part of seconds
-      tcode = line.split()[0]
-      seconds = sum([a*b for a,b in zip(ftr, map(float, tcode.split(':')))])
-
-      segments.append("# Chapter %i: %s %f" % (chap, datetime.timedelta(seconds = seconds), seconds))
-      chapters.append(seconds)
-      chap += 1
-  return segments
-
-def totalLen(filename):
-  with os.popen("vidinf \"" + filename + "\" | grep ID_LENGTH") as f:
-    for line in f:
-      totallen = float(re.sub("ID_LENGTH=", "", line))
-      break
-  return totallen
-
-def getTitle(episode):
-  eptitle = re.split(" - ", episode[EP_TITLE])
-  return eptitle
-
-def formatTitle(eptitle, episode, video, ext, segnum):
-  title = "# Title: " + video + "_" + str(segnum).zfill(3) + ext
-  title += " \"" + eptitle[0] + "\""
-  title += " \"" + str(episode[EP_SEASON]) + "x" + str(episode[EP_NUM]).zfill(3)
-  if len(eptitle) > 1:
-    title += " " + eptitle[1] + ext + "\""
-  else:
-    title += " " + eptitle[0] + ext + "\""
-  return title
-  
-def bestMatch(offset, black, silence):
-  best = None
+  splits = [Segment(0.0, None)]
   for row in black:
-    seconds = (row[0] + row[1]) / 2
-    diff = abs(seconds - offset)
-    if not best or diff < best[0]:
-      best = [diff, seconds, row[0], row[1]]
-        
-  bestsil = None
-  for row in silence:
-    seconds = (row[0] + row[1]) / 2
-    diff = abs(seconds - best[1])
-    if ((row[0] >= best[2] and row[0] <= best[3]) \
-          or (row[1] >= best[2] and row[1] <= best[3]) \
-          or (best[2] >= row[0] and best[2] <= row[1]) \
-          or (best[3] >= row[0] and best[3] <= row[1])) \
-          and (not bestsil or diff < bestsil[0]):
-      bestsil = [diff, seconds, row[0], row[1]]
+    match = viddin.bestSilence(row, silence)
+    if match:
+      splits.append(Segment((match[1] - match[0]) / 2 + match[0], None))
+    else:
+      splits.append(Segment(0 - ((row[1] - row[0]) / 2 + row[0]), None))
 
-  if bestsil:
-    begin = bestsil[2]
-    if begin < best[2]:
-      begin = best[2]
-    end = bestsil[3]
-    if end > best[3]:
-      end = best[3]
-    split = (begin + end) / 2
-    return split
+  splits.append(Segment(vlen, 0))
 
-  return best[1]
+  for chap in chapters:
+    best = None
+    for seg in splits:
+      pos = abs(seg.position)
+      if not best or abs(chap - pos) < abs(chap - abs(best.position)):
+        best = seg
+    if best and abs(chap - abs(best.position)) < 10:
+      best.segChap = chap
+      
+  for i in range(len(splits) - 1):
+    cc = splits[i].position
+    cn = splits[i+1].position
+    splits[i].length = abs(cn) - abs(cc)
+  
+  return splits
 
-def formatEpisodeID(season, epnum):
-  num = 0
-  if args.series:
-    for row in episodes:
-      if row[EP_SEASON] == season:
-        num += 1
-  if not num:
-    num = 1
-  digits = int(math.floor(math.log(num, 10)) + 1)
-  epid = "%%ix%%0%ii" % digits
-  return epid % (season, epnum)
+def getShortTotal(segment):
+  ci = segments.index(segment)
+  slen = 0
+  for segment in segments[ci:len(segments) - 1]:
+    if segment.segType:
+      break
+    slen += segment.length
+  return slen
 
-def findSegments(episode, filename):
-  segments = []
-  splits = []
-  video, ext = os.path.splitext(filename)
-  if args.series:
-    epindex = episodes.index(episode)
-
-  findBlack(filename)
-  findSilence(filename)
-  bmarkers = []
-  loadOffsets(bmarkers, video + ".split")
-  silence = []
-  loadOffsets(silence, video + ".sil")
-  cmarkers = []
-  segments.extend(loadChapters(cmarkers, filename))
-  totallen = totalLen(filename)
-
-  # FIXME - allow user to manually correct chapters
-
-  # The Mr. Magoo Show
-  # if len(cmarkers) == 5:
-  #   # Some episodes of Magoo are missing the first chapter marker
-  #   bumper = bestMatch(args.titlelen, bmarkers, silence)
-  #   seg = bestMatch(bumper + (args.bumpermin + args.bumpermax) / 2, bmarkers, silence)
-  #   bisect.insort(cmarkers, seg)
-    
-  segnum = 2
-  epnum = 0
-  for chap in cmarkers:
-    if chap < args.titlelen:
-      skip = True
-      if chap > 0.0:
-        if args.series:
-          episode = episodes[epindex + epnum]
-          title = getTitle(episode)
-          segments.append(formatTitle(title, episode, video, ext, segnum - 1))
-        epnum += 1
-      else:
-        ci = cmarkers.index(chap)
-        if ci < len(cmarkers) - 1 and \
-              abs(args.titlelen - cmarkers[ci+1]) > args.bumpermax + 10:
-          chap = bestMatch(args.titlelen, bmarkers, silence)
-          skip = False
-      if skip:
+def getChapters(filename, vlen, splitFlag=False):
+  chap = 0
+  chapters = []
+  with os.popen("ffmpeg -i \"" + filename + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
+    for line in f:
+      fields = line.split()
+      begin = float(re.sub(",", "", fields[3]))
+      end = float(fields[5])
+      if begin == 0.0 and abs(end - vlen) < 1:
         continue
+      chapters.append(begin)
+      chap += 1
+      if not splitFlag:
+        print("# Chapter %i: %s %f" % (chap, datetime.timedelta(seconds = begin), begin))
+  return chapters
 
-    if chap >= totallen - args.creditlen:
+def nearestChapter(position):
+  for chap in chapters:
+    if abs(position - chap) < 10:
+      return chap
+  return None
+
+def segmentLength(seg, segments):
+  si = segments.index(seg) + 1
+  while si < len(segments) and segments[si].segType == TYPE_PREV:
+    si += 1
+  if si >= len(segments):
+    si = len(segments) - 1
+  return abs(segments[si].position) - abs(seg.position)
+
+def findPrevious(seg, segments):
+  si = segments.index(seg)
+  while si > 0:
+    if segments[si - 1].segType != TYPE_PREV:
+      return segments[si - 1]
+    si -= 1
+  return None
+
+def findNext(seg, segments):
+  si = segments.index(seg)
+  while si < len(segments) - 1:
+    stype = segments[si + 1].segType
+    if stype != TYPE_PREV and stype != TYPE_CREDITS:
+      return segments[si + 1]
+    si += 1
+  return None
+
+def printSegments(segments):
+  for segment in segments:
+    pos = segment.position
+    slen = segment.length
+    stype = segment.segType
+    sblack = segment.segBlack
+    ssil = segment.segSilence
+    schap = segment.segChap
+    splen = segment.splen
+
+    if pos < 0:
+      sys.stdout.write("-")
+    else:
+      sys.stdout.write(" ")
+
+    if stype:
+      sys.stdout.write(stype[0])
+    else:
+      sys.stdout.write(" ")
+
+    sys.stdout.write(": %9.4f %9.4f" % (abs(pos), slen))
+    if stype == TYPE_SHORT or stype == TYPE_QUICKIE or stype == TYPE_TITLE:
+      sys.stdout.write(" %9.4f" % segmentLength(segment, segments))
+    else:
+      sys.stdout.write("          ")
+    
+    if schap != None:
+      sys.stdout.write(" %9.4f" % schap)
+    else:
+      sys.stdout.write("          ")
+
+    sys.stdout.write(" %9.4f" % splen)
+      
+    sys.stdout.write("  ")
+    sys.stdout.write(str(sblack))
+    sys.stdout.write("  ")
+    sys.stdout.write(str(ssil))
+    sys.stdout.write("\n")
+
+  sys.stdout.write("\n")
+  sys.stdout.flush()
+
+def countShorts(segments):
+  epnum = 0
+  for seg in segments:
+    if seg.segType == TYPE_SHORT:
+      epnum += 1
+  return epnum
+  
+def main():
+  args = build_argparser().parse_args()
+  quickies = []
+  if re.match("^[-+]?[0-9]+(\.[0-9]+)?$", args.quickies):
+    quickies.append(int(args.quickies))
+    quickies.append(quickies[0])
+  elif re.match("^[0-9]+(.[0-9]+)?-[0-9]+(\.[0-9]+)?$", args.quickies):
+    times = args.quickies.split("-")
+    quickies.append(int(times[0]))
+    quickies.append(int(times[1]))
+
+  if os.path.isfile(args.series):
+    series = viddin.loadEpisodeInfoCSV(args.series)
+  else:
+    series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=args.dvdignore,
+                                        dvdMissing=args.dvdmissing, quietFlag=args.quiet)
+  episodes = viddin.EpisodeList(series, "dvdSeason", "dvdEpisode")
+
+  if args.files:
+    videos = args.files
+  else:
+    videos = [file for file in glob.glob("[0-9]x[0-9][0-9].mkv")]
+    videos.sort()
+
+  transcode = "--transcode"
+  if args.notranscode:
+    transcode = ""
+
+  for filename in videos:
+    video, ext = os.path.splitext(filename)
+
+    episode = episodes.findEpisode(filename)
+    if not episode:
+      sys.stderr.write("Unable to find episode for " + filename + "\n")
       continue
 
-    seg = bestMatch(chap, bmarkers, silence);
-    if epnum or args.prebumper:
-      bumper = bestMatch(chap - args.bumpermax, bmarkers, silence)
-      if bumper >= chap - args.bumpermax and bumper <= chap - args.bumpermin:
-        segments.append("# Bumper: " + str(datetime.timedelta(seconds = bumper)))
-        segments.append(bumper)
-        segnum += 1
-        splits.append([bumper, None])
+    vlen = viddin.getLength(filename)
 
-    if seg > chap and not args.exceedchapter:
-      print "Warning: best found split %s was after chapter %s" \
-          % (datetime.timedelta(seconds = seg), datetime.timedelta(seconds = chap))
-      seg = chap
-      
-    segments.append("# Segment: " + str(datetime.timedelta(seconds = seg)))
-    epinfo = [seg]
-    if args.series:
-      episode = episodes[epindex + epnum]
-      title = getTitle(episode)
-      segments.append(formatTitle(title, episode, video, ext, segnum))
-      if len(title) > 1:
-        epinfo.append(title[1])
-      else:
-        epinfo.append(title[0])
+    chapters = getChapters(filename, vlen, args.split)
+    chaponly = len(chapters) and args.chaptersonly
+
+    numshorts = len(episode)
+    # numshorts = 0
+    # shortindex = epindex = episodes.index(episode)
+    # while shortindex < len(episodes) and \
+    #       int(episodes[shortindex][EP_DVDEPISODE]) == int(episode[EP_DVDEPISODE]):
+    #   print(episodes[shortindex])
+    #   numshorts += 1
+    #   shortindex += 1
+
+    viddin.findBlack(filename)
+    viddin.findSilence(filename)
+
+    segments = findSplits(filename, vlen, chapters)
+
+    if args.debug:
+      printSegments(segments)
+
+    if segments[0].length < 3:
+      if segments[0].segChap != None:
+        segments[1].segChap = abs(segments[1].position)
+      del segments[0]
+
+    while segments[-1].length < args.creditlen and \
+          args.creditlen - (segments[-2].length + segments[-1].length) > -10:
+      segments[-2].length += segments[-1].length
+      del segments[-1]
+
+    if (args.creditlen > 0 or segments[-1].length == 0) and \
+          (segments[-1].length < args.creditlen \
+             or segments[-1].length - args.creditlen < 20):
+      segments[-1].segType = TYPE_CREDITS
     else:
-      epinfo.append(video + "_" + str(segnum).zfill(3) + ext)
-    epinfo.append(formatEpisodeID(episode[EP_SEASON], episode[EP_NUM]))
-    splits.append(epinfo)
-    segments.append(seg)
+      segments.append(Segment(vlen, 0.0, segType=TYPE_CREDITS))
 
-    segnum += 1
-    epnum += 1
+    didtitle = False
+    pos = 0
+    endpos = len(segments) - 1
+    while pos < endpos:
+      segment = segments[pos]
+      quickie = False
+      prevc = None
+      if pos:
+        prevc = segments[pos - 1]
+      nextc = segments[pos + 1]
 
-  for black in reversed(bmarkers):
-    if totallen - black[0] >= args.creditlen:
-      pos = (black[0] + black[1]) / 2
-      segments.append("# Credits: " + str(datetime.timedelta(seconds = pos)))
-      segments.append(pos)
-      splits.append([pos, None])
-      break
+      clen = segment.length
+      if quickies[0] > 0:
+        qpercent = clen / quickies[0] * 100
+      else:
+        qpercent = 0
 
-  if args.split:
-    for row in splits:
-      if not row[1]:
-        continue
-      begin = row[0]
-      end = splits[splits.index(row) + 1][0]
-      title = re.sub("[:/]", "-", re.sub("[.!?]$", "", row[1]))
-      eptitle = "%s %s%s" % (row[2], title, ext)
-      cmd = "split-video --output \"%s\" \"%s\" %f-%f" % (eptitle, filename, begin, end)
-      print cmd
-      os.system(cmd)
-      
-  return segments
+      if clen > 0 and clen >= quickies[0] and clen <= quickies[1] and \
+            (segment.position > 0 or segment.segChap or \
+               (not prevc or \
+                (prevc.segType and segment.position > 0) or \
+                (prevc.segType and prevc.segType != TYPE_QUICKIE)) or \
+               segment.splen > 2):
+        quickie = True
+        if len(chapters) and prevc and prevc.segType == TYPE_QUICKIE:
+          achap = nearestChapter(abs(segment.position))
+          bchap = nearestChapter(abs(nextc.position))
+          if not achap and not bchap:
+            quickie = False
+            if args.debug:
+              print("FAR")
+        if quickie and (not chaponly or not segment.segChap) \
+              and (not args.endonly or nextc.segChap):
+          segment.segType = TYPE_QUICKIE
+          if args.debug:
+            print("QUICKIE", segment)
+          if prevc and prevc.segType == TYPE_QUICKIE:
+            chap = nearestChapter(abs(prevc.position))
+            if chap and (segment.segChap or
+                         abs(chap - prevc.position) < abs(chap - segment.position)):
+              segment.segType = None
+              quickie = False
+            else:
+              prevc.segType = None
+        else:
+          quickie = False
 
-def rename(filename, episode):
-  video, ext = os.path.splitext(filename)
-  title = re.sub("[:/]", "-", re.sub("[.!?]$", "", episode[TITLE]))
-  eptitle = "%s %s%s" % (episode[EPID], title, ext)
-  os.rename("%sc%s" % (video, ext), eptitle)
-  print eptitle
+      if not quickie:
+        if args.titlelen > 0 and abs(clen - args.titlelen) < MARGIN \
+              and not didtitle and pos < 3 \
+              and (not pos or segments[pos - 1].segType):
+          segment.segType = TYPE_TITLE
+          didtitle = True
+        elif clen < quickies[0] and segment.position > 0 and \
+              (nextc.position < 0 or nextc.splen < 0.5) and \
+              clen + nextc.length >= quickies[0] and clen + nextc.length <= quickies[1] and \
+              qpercent > 50 and (not prevc or prevc.segType != TYPE_QUICKIE):
+          if args.debug:
+            print("JOIN", qpercent, clen, segment, nextc)
+          segment.segType = TYPE_QUICKIE
+          nextc.segType = TYPE_PREV
+          clen += nextc.length
+          pos += 1
+          nextc = segments[pos]
+          while clen >= quickies[0] and nextc.splen < 0.6 and \
+                clen + nextc.length < quickies[1] and nextc.position < 0:
+            if args.debug:
+              print("DOUBLE JOIN", qpercent, clen, segment, nextc)
+            nextc.segType = TYPE_PREV
+            clen += nextc.length
+            pos += 1
+            nextc = segments[pos]
 
-# FIXME - make this an option, numbering may not match anything
-# depending on how DVD chapters were split
-def guessEpisode(filename):
-  m = re.search("([0-9]+)x([0-9]+)", filename)
-  if not m:
-    m = re.search("[Ss]([0-9]+)[Ee]([0-9]+)", filename)
-  if m:
-    sn = int(m.group(1))
-    ep = int(m.group(2))
-    if args.series:
-      for row in episodes:
-        if sn == row[EP_DVDSEASON] and ep == int(row[EP_DVDEPISODE]):
-          return row
-    return ["%ix%02i" % (sn, ep), sn, ep, None, None, None, None]
-  return None
-    
-videos = [file for file in glob.glob(args.glob)]
-videos.sort()
+      pos += 1
 
-for filename in videos:
-  print filename
-  video, ext = os.path.splitext(filename)
-  
-  episode = None
-  episode = guessEpisode(filename)
-    
-  segs = findSegments(episode, filename)
-  f = open(video + ".segs", "w")
-  for row in segs:
-    f.write(str(row) + "\n")
-  f.close()
+    if args.titlelen > 0 and not didtitle and segments[0].length < (args.titlelen + MARGIN) \
+          and (not segments[0].segType or segments[0].segType == TYPE_QUICKIE):
+      tseg = segments[0]
+      tseg.segType = TYPE_TITLE
+      tlen = segmentLength(tseg, segments)
+      tpos = 1
+      while tlen < args.titlelen and \
+            (abs(args.titlelen - (tlen + segments[tpos].length)) < MARGIN or
+             tlen + segments[tpos].length < args.titlelen):
+        if args.debug:
+          print("TITLE JOIN", tlen, args.titlelen)
+        segments[tpos].segType = TYPE_PREV
+        tlen += segments[tpos].length
+        tpos += 1
+
+    # If there are chapter markers then quickies/shorts will be at each one
+    if len(chapters):
+      for seg in segments:
+        if (seg.segChap != None and not args.crosschapters) or segments.index(seg) == 0:
+          if seg.segType == TYPE_TITLE:
+            if args.debug:
+              print("UNTITLE")
+            nextc = findNext(seg, segments)
+            if nextc.segType == TYPE_QUICKIE:
+              nextc = findNext(nextc, segments)
+            nextc.segType = TYPE_SHORT
+          elif seg.segType == TYPE_QUICKIE:
+            nextc = findNext(seg, segments)
+            if nextc:
+              nextc.segType = TYPE_SHORT
+          elif seg.segType != TYPE_CREDITS:
+            seg.segType = TYPE_SHORT
+
+    if args.debug:
+      print
+      printSegments(segments)
+
+    totallen = 0
+    for segment in segments:
+      if not segment.segType or segment.segType == TYPE_SHORT:
+        totallen += abs(segment.length)
+    avglen = totallen / numshorts
+    if args.debug:
+      print("Average short len:", avglen, numshorts, totallen)
+
+    clen = 0
+    for curc in segments:
+      pos = segments.index(curc)
+      prevc = None
+      if pos:
+        prevc = segments[pos - 1]
+      nextc = None
+      if pos < len(segments) - 1:
+        nextc = segments[pos + 1]
+      if not curc.segType:
+        if not chaponly and \
+              (not prevc or prevc.segType == TYPE_QUICKIE or prevc.segType == TYPE_TITLE):
+          curc.segType = TYPE_SHORT
+          clen = curc.length
+          if args.debug:
+            print("SHORT", curc)
+        else:
+          curc.segType = TYPE_PREV
+          plen = clen
+          clen += curc.length
+          if args.debug:
+            print("UPMERGE", plen, clen, curc)
+
+          if chaponly or (plen and plen < args.minlength):
+            continue
+
+          overpercent = (clen - avglen) / curc.length * 100
+          if args.debug:
+            print(overpercent)
+          if overpercent > 50 and not nextc.segSilence:
+            if args.debug:
+              print("OVER", curc.position, nextc.position, prevc.position,
+                    overpercent, plen, clen)
+            curc.segType = TYPE_SHORT
+            clen = curc.length
+            continue
+
+          underpercent = (avglen - clen) / avglen * 100
+          badsplit = curc.position < 0 and curc.splen < 0.8
+          test1 = clen > avglen and (overpercent > 110 or curc.position > 0 or \
+                                       curc.splen > 1.5) and not badsplit
+          test2 = not nextc.segType and clen > args.minlength and \
+                             clen + nextc.length > avglen and nextc.position > 0 \
+                             and not badsplit
+          test3 = nextc.position > 0 and underpercent > 0 and underpercent < 8 and \
+                   clen + nextc.length < avglen and clen - curc.length >= args.minlength
+          test4 = clen >= args.minlength and curc.segSilence != None
+          if test1 or test2 or test3 or test4:
+            curc.segType = TYPE_SHORT
+            if args.debug:
+              print("END", curc.position, nextc.position, curc.splen)
+              print("Length:", clen, avglen)
+              print("Under/Over:", underpercent, overpercent)
+              print("Tests:", test1, test2, test3, test4)
+            clen = curc.length
+
+    for segment in segments:
+      if segment.segChap and segment.segType != TYPE_SHORT and \
+            segment.segType != TYPE_QUICKIE and segment.segType != TYPE_TITLE \
+            and segment.segType != TYPE_CREDITS and not args.crosschapters:
+        if args.debug:
+          print("NOSHORT", segment)
+        nextc = segments[segments.index(segment)]
+        if nextc.segType != TYPE_SHORT:
+          if args.debug:
+            print("MARKED", segment, nextc)
+          segment.segType = TYPE_SHORT
+
+    if args.debug:
+      print
+      printSegments(segments)
+
+    i = 0
+    while i < len(segments) - 1:
+      segment = segments[i]
+      if segment.segType == TYPE_SHORT:
+        slen = segmentLength(segment, segments)
+        if slen < args.minlength:
+          prevc = findPrevious(segment, segments)
+          nextc = findNext(segment, segments)
+          if args.debug:
+            print("TOO SHORT", segment.position, end="")
+            if prevc:
+              print(prevc.position, prevc.segType, end="")
+            else:
+              print("None", end="")
+            if nextc:
+              print(nextc.position, nextc.segType, end="")
+            else:
+              print("None")
+          if segment.segChap or not prevc or prevc.segType != TYPE_SHORT:
+            if nextc:
+              if args.debug:
+                print("WANT DOWN", args.minlength / 2, args.minlength - slen)
+              if not nextc.segChap or args.crosschapters:
+                if args.debug:
+                  print("MERGING DOWN")
+                nlen = segmentLength(nextc, segments)
+                if nextc.segType == TYPE_QUICKIE and slen + nlen <= quickies[1]:
+                  segment.segType = nextc.segType
+                nextc.segType = TYPE_PREV
+                i -= 1
+            elif not segment.segChap or args.crosschapters:
+              if args.debug:
+                print("SHIFTING UP")
+              prevc.segType = TYPE_SHORT
+              segment.segType = TYPE_PREV
+              i = segments.index(prevc)
+              i -= 1
+          else:
+            if i and segments[i - 1].segType == TYPE_PREV:
+              plen = None
+              nlen = None
+              if prevc:
+                plen = segmentLength(prevc, segments)
+              if nextc:
+                nlen = segmentLength(nextc, segments)
+              if nlen and plen and nlen < plen and nextc.segType == TYPE_SHORT \
+                 and (not nextc.segChap or args.crosschapters):
+                if abs((plen + segment.length) - (slen - segment.length + nlen)) < 4 \
+                   or nextc.segChap:
+                  if args.debug:
+                    print("SHIFTING UP", slen, plen)
+                  segment.segType = TYPE_PREV
+                  if segments[i + 1].segType == TYPE_PREV:
+                    segments[i + 1].segType = TYPE_SHORT
+                else:
+                  if args.debug:
+                    print("JOINING NEXT", slen, plen, nlen, plen + segment.length,
+                          slen - segment.length + nlen)
+                  nextc.segType = TYPE_PREV
+                  i -= 1
+              elif not prevc or plen > avglen:
+                segment.segType = TYPE_PREV
+                if plen - segments[i - 1].length < args.minlength:
+                  if args.debug:
+                    print("MERGING UP")
+                else:
+                  if args.debug:
+                    print("SHIFTING UP", slen, plen, nlen)
+                  segments[i - 1].segType = TYPE_SHORT
+                  i -= 2
+              else:
+                if nlen and abs((slen + nlen) - avglen) < 20 and not nextc.segChap:
+                  if args.debug:
+                    print("NEXTING3", slen, plen, nlen)
+                  nextc.segType = TYPE_PREV
+                  i -= 1
+                elif prevc and abs(plen - args.minlength) < 10:
+                  if args.debug:
+                    print("SPLITTING", plen, slen, nlen)
+                  segment.segType = TYPE_PREV
+                  if segments[i + 1].segType == TYPE_PREV:
+                    segments[i + 1].segType = TYPE_SHORT
+                else:
+                  if args.debug:
+                    print("MERGING UP")
+                  segment.segType = TYPE_PREV
+            else:
+              if args.debug:
+                print("MERGING UP")
+              segment.segType = TYPE_PREV
+      i += 1
+
+    if args.debug:
+      print
+      printSegments(segments)
+
+    segments.append(Segment(vlen, 0.0))
+
+    epnum = countShorts(segments)
+    if epnum != numshorts:
+      for seg in segments:
+        if seg.segType == TYPE_SHORT:
+          slen = segmentLength(seg, segments)
+          if slen < avglen:
+            nextc = findNext(seg, segments)
+            nlen = segmentLength(nextc, segments)
+            if nlen < avglen and not nextc.segChap and nextc.segType == TYPE_SHORT:
+              if args.debug:
+                print("COMBINING", seg.position, nextc.position)
+              nextc.segType = TYPE_PREV
+
+      epnum = countShorts(segments)
+      if epnum != numshorts:
+        print("ABORTING. WRONG number of shorts: found %i, should be %i" % (epnum, numshorts))
+        sys.exit(1)
+
+    quickie = 0
+    epnum = 0
+    for current in segments[:-1]:
+      ctype = current.segType
+      if ctype == TYPE_QUICKIE:
+        quickie += 1
+        title = "Quickie %i" % quickie
+        eptitle = "%s.%i %s%s" % (video, quickie + epnum, title, ext)
+        alttitle = None
+      elif ctype == TYPE_SHORT:
+        ep = episode[epnum]
+        title = re.sub("[:/]", "-", re.sub("[.!?]$", "", ep.title))
+        eptitle = "%s.%i %s%s" % (video, quickie + epnum + 1, title, ext)
+        alttitle = "%s %s%s" % (episodes.formatEpisodeID(ep), title, ext)
+        epnum += 1
+      elif ctype == TYPE_TITLE:
+        title = "Opening"
+        eptitle = "%s.0 %s%s" % (video, title, ext)
+        alttitle = None
+      elif ctype == TYPE_CREDITS:
+        title = "Credits"
+        eptitle = "%s.%i %s%s" % (video, quickie + epnum + 1, title, ext)
+        alttitle = None
+
+      begin = abs(current.position)
+      end = begin + segmentLength(current, segments)
+      if current.segChap:
+        begin = current.segChap
+
+      if args.split:
+        if ctype == TYPE_QUICKIE or ctype == TYPE_SHORT or \
+              (args.keepcredits and (ctype == TYPE_TITLE or ctype == TYPE_CREDITS)):
+          temp = video + "_tmp" + ext
+          cmd = "split-video %s --output \"%s\" \"%s\" %f-%f" \
+                % (transcode, temp, filename, begin, end)
+          if args.transcode_flags and not args.notranscode:
+            cmd += ' --transcode-flags="' + args.transcode_flags + '"'
+          print(cmd)
+          os.system(cmd)
+          cmd = "adjust-volume --volume -8 \"%s\" \"%s\" > /dev/null 2>&1" % (temp, eptitle)
+          print(cmd)
+          os.system(cmd)
+          os.remove(temp)
+          if alttitle:
+            print("Linking " + eptitle + " to " + alttitle)
+            if os.path.exists(alttitle):
+              os.remove(alttitle)
+            os.link(eptitle, alttitle)
+      elif ctype != TYPE_PREV:
+        print("# " + ctype, end - begin)
+        if ctype == TYPE_SHORT or ctype == TYPE_QUICKIE:
+          print("# " + title)
+        print(begin)
+
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

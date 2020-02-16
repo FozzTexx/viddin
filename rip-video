@@ -79,6 +79,8 @@ def build_argparser():
                       help="add subtitles to existing rip")
   parser.add_argument("--normalize", action="store_true", help="normalize audio")
   parser.add_argument("--debug", action="store_true", help="print debug info")
+  parser.add_argument("--start-at", help="start position to transcode from")
+  parser.add_argument("--stop-at", help="stop position to transcode to")
   return parser
 
 def uniqueFile(path, extension=None):
@@ -270,6 +272,12 @@ def main():
   elif args.animation or args.pal_animation or args.lap_animation or args.film or args.pal_film or args.tv or args.tv_bob:
     flags.extend(["--vfr"])
 
+  if args.start_at:
+    flags.extend(["--start-at", str(viddin.decodeTimecode(args.start_at))])
+      
+  if args.stop_at:
+    flags.extend(["--stop-at", str(viddin.decodeTimecode(args.stop_at))])
+      
   if add_subtitles:
     flags.extend(["--subtitle", "scan", "--subtitle-forced"])
 

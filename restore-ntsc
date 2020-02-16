@@ -67,7 +67,7 @@ def slowAudio(path, tempdir):
   viddin.runCommand(cmd)
   return atemp
 
-def normalizeAudio(path, tempdir, volume):
+def normalizeAudio(path, volume):
   atemp, ext = os.path.splitext(path)
   atemp += "-adj" + ext
   cmd = "adjust-volume"

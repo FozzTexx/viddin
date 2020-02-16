@@ -31,6 +31,7 @@ def build_argparser():
   parser.add_argument("filename", help="Video to split")
   parser.add_argument("ranges", nargs="+", help="Split at offset(s) or ranges. Use negative number for offset from end. If argument is a filename, load offsets from it.")
   parser.add_argument("--transcode", action="store_true", help="transcode video for perfect split points")
+  parser.add_argument("--transcode-flags", help="extra flags to pass to transcoder")
   parser.add_argument("--iframes", action="store_true", help="compare split positions to iframes from video")
   parser.add_argument("--output", help="name to use when creating splits")
   parser.add_argument("--outtype", help="force split to be this type")
@@ -57,7 +58,7 @@ def findNearest(pos, before):
     prev = frame
     
 def splitVideo(range, input, output=None, trim=None, quality=None,
-               transcodeFlag=False, iframeFlag=False):
+               transcodeFlag=False, transcodeOptions=None, iframeFlag=False):
   video, ext = os.path.splitext(input)
 
   vlen = viddin.getLength(input)
@@ -87,8 +88,11 @@ def splitVideo(range, input, output=None, trim=None, quality=None,
     qstr = ""
     if quality:
       qstr = "-crf %s" % (quality)
-    cmd = "ffmpeg -y -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\"" \
-        % (input, start, end, qstr, output)
+    # cmd = "ffmpeg -y -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\"" \
+    #     % (input, start, end, qstr, output)
+    cmd = "rip-video --start-at %f --stop-at %f \"%s\" \"%s\"" % (start, end, input, output)
+    if transcodeOptions:
+      cmd += " " + transcodeOptions
     print(cmd)
     viddin.runCommand(cmd)
   else:
@@ -202,7 +206,8 @@ def main():
     if len(append):
       output = output % (segments.index(range) + 1)
     splitVideo(range, args.filename, output, args.trimend, quality=args.quality,
-               transcodeFlag=args.transcode, iframeFlag=args.iframes)
+               transcodeFlag=args.transcode, transcodeOptions=args.transcode_flags,
+               iframeFlag=args.iframes)
 
   # FIXME - if transcoding force keyframes into the right spot, but
   #         re-read because ffmpeg isn't exact and puts them "close"

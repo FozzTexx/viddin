@@ -300,8 +300,12 @@ class viddin:
     pstr = process.stdout.read()
     process.stdout.close()
     pstr = pstr.decode("utf-8", "backslashreplace")
-    pstr = pstr.replace("lsdvd = {", "{")
-    tracks = ast.literal_eval(pstr)
+    pstr = pstr.replace("lsdvd = {", "{").strip()
+    tracks = None
+    if pstr[-1] == '}':
+      tracks = ast.literal_eval(pstr)
+    else:
+      print("bad track info", pstr)
     return tracks
 
   @staticmethod
@@ -351,6 +355,7 @@ class viddin:
     process = os.popen(cmd)
     jstr = process.read()
     process.close()
+    print("AAAAAAAAAA", jstr)
     jinfo = json.loads(jstr)
     if 'tracks' not in jinfo:
       return None
@@ -428,7 +433,10 @@ class viddin:
   def getTitleInfo(path, title=None, debugFlag=False):
     if viddin.isDVD(path) and title != None:
       dvdInfo = viddin.getDVDInfo(path)
-      return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
+      if not dvdInfo is None:
+        return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
+      print("Failed to get title info", title)
+      return None
 
     # ffprobe -v quiet -print_format json -show_format -show_streams
     
@@ -467,7 +475,15 @@ class viddin:
       if isinstance(episode, list):
         episode = episode[0]
       return self.episodes.index(episode)
-    
+
+    def episodeNumbers(self):
+      eps = []
+      for e in self.episodes:
+        eid = self.formatEpisodeID(e, self.seasonKey, self.episodeKey)
+        if eid not in eps:
+          eps.append(eid)
+      return eps
+      
     def formatEpisodeID(self, episode, skey=None, ekey=None):
       num = 0
       if not skey:
@@ -492,7 +508,7 @@ class viddin:
       return epid % (season, epnum)
 
     def findVideo(self, episode):
-      guess = "\\b" + formatEpisodeID(episode.dvdSeason, episode.dvdEpisode) + "\\b"
+      guess = "\\b" + self.formatEpisodeID(episode.dvdSeason, episode.dvdEpisode) + "\\b"
       indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
       if not len(indices):
         guess = "\\b[sS]%02i[eE]%02i\\b" % (episode.dvdSeason, episode.dvdEpisode)
@@ -501,9 +517,14 @@ class viddin:
         return videos[indices[0]]
       return None
 
-    def findEpisode(self, epid):
+    def findEpisode(self, epid, order=None):
       if type(epid) is int:
-        epid = self.formatEpisodeID(self.episodes[epid])
+        if order == viddin.ORDER_DVD:
+          epid = self.formatEpisodeID(self.episodes[epid], "dvdSeason", "dvdEpisode")
+        elif order == viddin.ORDER_ABSOLUTE:
+          epid = self.formatEpisodeID(self.episode[epid], 1, "absoluteNum")
+        else:
+          epid = self.formatEpisodeID(self.episodes[epid])
 
       episode = None
       epcount = 0
@@ -523,7 +544,23 @@ class viddin:
     
     def renameVid(self, episode, filename, order, dryrunFlag):
       if isinstance(episode, list):
+        title = ""
+        for e in episode:
+          t = e.title.strip()
+          if order == viddin.ORDER_DVD:
+            part = int((e.dvdEpisode * 10) % 10)
+            pstr = " (" + str(part) + ")"
+            if part and t.endswith(pstr):
+              t = t[:-len(pstr)]
+          if title != t:
+            if len(title):
+              title += " / "
+            title += t
         episode = episode[0]
+      else:
+        title = episode.title.strip()
+      title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", title))
+        
       if order == viddin.ORDER_DVD:
         epid = self.formatEpisodeID(episode, "dvdSeason", "dvdEpisode")
       elif order == viddin.ORDER_ABSOLUTE:
@@ -536,21 +573,6 @@ class viddin:
 
       if filename:
         video, ext = os.path.splitext(filename)
-
-        if episode == episode:
-          title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", episode.title.strip()))
-        else:
-          title = ""
-          for ep in episode:
-            if len(title):
-              title += " / "
-            title += ep.title
-        title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", title))
-
-        if order == viddin.ORDER_DVD:
-          part = int((episode.dvdEpisode * 10) % 10)
-          if part and title.endswith(" (" + str(part) + ")"):
-            title = title[:-4]
         eptitle = "%s %s%s" % (epid, title, ext)
         if filename != eptitle:
           if not os.path.isfile(eptitle) or dryrunFlag:

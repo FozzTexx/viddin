@@ -88,7 +88,7 @@ def main():
           if not boffset or diff < bdiff:
             bdiff = diff
             boffset = abs(row)
-      if boffset and bdiff < args.distance:
+      if boffset and bdiff < args.distance and boffset not in chapters:
         chapters.append(boffset)
         doEdit = True
 
@@ -98,6 +98,10 @@ def main():
         chapters[0] = 0
       else:
         chapters.insert(0, 0)
+      dedup = []
+      [dedup.append(x) for x in chapters if x not in dedup]
+      if dedup != chapters:
+        chapters = dedup
       viddin.writeChapters(args.file, chapters)
   else:
     for row in splits:

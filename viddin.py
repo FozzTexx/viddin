@@ -130,8 +130,9 @@ class viddin:
 
         dpath = os.path.dirname(path)
         tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
-        cmd = "ffmpeg -y -i \"%s\" -i %s -map_metadata 1 -codec copy -map 0 \"%s\"" % \
-            (path.replace("\"", "\\\""), cfname, tf.name.replace("\"", "\\\""))
+        cmd = "ffmpeg -y -i \"%s\" -i %s -map_metadata 1 -movflags disable_chpl" \
+              " -codec copy -map 0 \"%s\"" % \
+              (path.replace("\"", "\\\""), cfname, tf.name.replace("\"", "\\\""))
         stat = viddin.runCommand(cmd)
         if stat == 0:
           os.rename(tf.name, path)
@@ -309,7 +310,7 @@ class viddin:
     pstr = pstr.decode("utf-8", "backslashreplace")
     pstr = pstr.replace("lsdvd = {", "{").strip()
     tracks = None
-    if pstr[-1] == '}':
+    if len(pstr) and pstr[-1] == '}':
       tracks = ast.literal_eval(pstr)
     else:
       print("bad track info", pstr)
@@ -431,13 +432,13 @@ class viddin:
     if stat.S_ISBLK(mode) or stat.S_ISDIR(mode):
       return True
     _, ext = os.path.splitext(path)
-    if ext == ".iso":
+    if ext.lower() == ".iso":
       return True
     return False
     
   @staticmethod
   def getTitleInfo(path, title=None, debugFlag=False):
-    if viddin.isDVD(path) and title != None:
+    if title != None:
       dvdInfo = viddin.getDVDInfo(path)
       if not dvdInfo is None:
         return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
@@ -553,11 +554,10 @@ class viddin:
         title = ""
         for e in episode:
           t = e.title.strip()
-          if order == viddin.ORDER_DVD:
-            part = int((e.dvdEpisode * 10) % 10)
-            pstr = " (" + str(part) + ")"
-            if part and t.endswith(pstr):
-              t = t[:-len(pstr)]
+          part = int((e.dvdEpisode * 10) % 10)
+          pstr = " (" + str(part) + ")"
+          if part and t.endswith(pstr):
+            t = t[:-len(pstr)]
           if title != t:
             if len(title):
               title += " / "
@@ -607,26 +607,29 @@ class viddin:
           dvdep = row[CSV_EPISODE] + "." + dvdep
         dvdnum = re.split(" *x *", dvdep)
         epid = epnum[0] + "x" + epnum[1].zfill(2)
+        anum = None
+        if CSV_ABSOLUTE < len(row):
+          anum = int(row[CSV_ABSOLUTE])
         info = viddin.EpisodeInfo(int(epnum[0]), int(epnum[1]),
                                   int(dvdnum[0]), float(dvdnum[1]),
                                   title=row[CSV_TITLE], airDate=row[CSV_ORIGDATE],
-                                  absoluteNum=int(row[CSV_ABSOLUTE]))
+                                  absoluteNum=anum)
         series.append(info)
     finally:
       f.close()
     return series
 
   @staticmethod
-  def loadEpisodeInfoTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quietFlag=False):
+  def loadEpisodeInfoTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quietFlag=False,
+                          interactiveFlag=False):
     TVDB_DVDSEASON = "dvd_season"
     TVDB_DVDEPNUM = "dvd_episodenumber"
     if float(tvdb_api.__version__) >= 2.0:
       TVDB_DVDSEASON = "dvdSeason"
       TVDB_DVDEPNUM = "dvdEpisodeNumber"
 
-    # If you're having problems finding the series, use interactive=True on the Tvdb() call
     series = []
-    t = tvdb_api.Tvdb()
+    t = tvdb_api.Tvdb(interactive=interactiveFlag)
     show = t[seriesName]
 
     for season in show:

@@ -100,6 +100,11 @@ class Segment:
     self.splen = splen
     return
 
+  def __repr__(self):
+    l = [self.position, self.length, self.segType, self.segBlack, self.segSilence,
+         self.segChap, self.splen]
+    return str(l)
+
 def findSplits(filename, vlen, chapters):
   video, ext = os.path.splitext(filename)
   black = viddin.loadSplits(video + ".blk")
@@ -156,7 +161,7 @@ def getChapters(filename, vlen, splitFlag=False):
         print("# Chapter %i: %s %f" % (chap, datetime.timedelta(seconds = begin), begin))
   return chapters
 
-def nearestChapter(position):
+def nearestChapter(position, chapters):
   for chap in chapters:
     if abs(position - chap) < 10:
       return chap
@@ -244,8 +249,8 @@ def main():
     quickies.append(quickies[0])
   elif re.match("^[0-9]+(.[0-9]+)?-[0-9]+(\.[0-9]+)?$", args.quickies):
     times = args.quickies.split("-")
-    quickies.append(int(times[0]))
-    quickies.append(int(times[1]))
+    quickies.append(float(times[0]))
+    quickies.append(float(times[1]))
 
   if os.path.isfile(args.series):
     series = viddin.loadEpisodeInfoCSV(args.series)
@@ -277,6 +282,9 @@ def main():
     chapters = getChapters(filename, vlen, args.split)
     chaponly = len(chapters) and args.chaptersonly
 
+    if not isinstance(episode, list):
+      exit(0)
+      
     numshorts = len(episode)
     # numshorts = 0
     # shortindex = epindex = episodes.index(episode)
@@ -336,8 +344,8 @@ def main():
                segment.splen > 2):
         quickie = True
         if len(chapters) and prevc and prevc.segType == TYPE_QUICKIE:
-          achap = nearestChapter(abs(segment.position))
-          bchap = nearestChapter(abs(nextc.position))
+          achap = nearestChapter(abs(segment.position), chapters)
+          bchap = nearestChapter(abs(nextc.position), chapters)
           if not achap and not bchap:
             quickie = False
             if args.debug:
@@ -348,7 +356,7 @@ def main():
           if args.debug:
             print("QUICKIE", segment)
           if prevc and prevc.segType == TYPE_QUICKIE:
-            chap = nearestChapter(abs(prevc.position))
+            chap = nearestChapter(abs(prevc.position), chapters)
             if chap and (segment.segChap or
                          abs(chap - prevc.position) < abs(chap - segment.position)):
               segment.segType = None
@@ -432,16 +440,17 @@ def main():
       print("Average short len:", avglen, numshorts, totallen)
 
     clen = 0
-    for curc in segments:
-      pos = segments.index(curc)
+    for pos, curc in enumerate(segments):
       prevc = None
       if pos:
         prevc = segments[pos - 1]
       nextc = None
       if pos < len(segments) - 1:
         nextc = segments[pos + 1]
-      if not curc.segType:
-        if not chaponly and \
+      if curc.segType:
+        clen = curc.length
+      else:
+        if (not chaponly or curc.segChap) and \
               (not prevc or prevc.segType == TYPE_QUICKIE or prevc.segType == TYPE_TITLE):
           curc.segType = TYPE_SHORT
           clen = curc.length

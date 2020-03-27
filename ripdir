@@ -20,12 +20,16 @@ def main():
   args = build_argparser().parse_args()
   for dir in args.dirs:
     basedir = os.path.basename(os.path.abspath(dir))
-    for file in sorted(glob.glob(os.path.join(dir, "*.mkv"))):
+    files = []
+    for ext in ("*.mkv", "*.mp4"):
+      files.extend(glob.glob(os.path.join(dir, ext)))
+    for file in sorted(files):
       output = video = os.path.basename(file)
       if not output.startswith(basedir):
         output = basedir + "_" + video
-      log, _ = os.path.splitext(output)
-      log += ".log"
+      p, e = os.path.splitext(output)
+      output = p + ".mkv"
+      log = p + ".log"
 
       doRip = False
       if not os.path.exists(log):

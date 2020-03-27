@@ -42,8 +42,9 @@ def build_argparser():
   parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
   parser.add_argument("--csv", action="store_true", help="output data as csv")
   parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
-  parser.add_argument("--glob", help="pattern for finding videos", default="[0-9]x[0-9][0-9].mkv")
+  parser.add_argument("--regex", help="pattern for finding videos", default="[0-9]+x[0-9][0-9]\\.(mkv|mp4)")
   parser.add_argument("--dryrun", action="store_true", help="Don't actually rename files")
+  parser.add_argument("--interactive", action="store_true", help="Choose from list of matching TVDB titles")
   return parser
   
 # FIXME - make finding the file as smart as tvrenamer.pl
@@ -54,12 +55,14 @@ def main():
     series = viddin.loadEpisodeInfoCSV(args.series)
   else:
     series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=args.dvdignore,
-                                        dvdMissing=args.dvdmissing, quietFlag=args.quiet)
+                                        dvdMissing=args.dvdmissing, quietFlag=args.quiet,
+                                        interactiveFlag=args.interactive)
     
   dvdorder = viddin.EpisodeList(series, "dvdSeason", "dvdEpisode")
   airedorder = viddin.EpisodeList(series, "airedSeason", "airedEpisode")
 
-  videos = [file for file in glob.glob(args.glob)]
+  files = os.listdir(".")
+  videos = [f for f in files if re.match(args.regex, f)]
   videos.sort()
 
   minsize = 0
@@ -87,6 +90,11 @@ def main():
   elif args.rename:
     epnum = 0
 
+    if args.airedorder:
+      eids = airedorder.episodeNumbers()
+    else:
+      eids = dvdorder.episodeNumbers()
+
     if viddin.isint(args.first):
       first = int(args.first)
     else:
@@ -96,12 +104,11 @@ def main():
       else:
         episode = dvdorder.findEpisode(args.first)
         first = dvdorder.indexOf(episode) + 1
+      for idx, e in enumerate(eids):
+        if e == args.first:
+          first = idx + 1
+          break
 
-    if args.airedorder:
-      eids = airedorder.episodeNumbers()
-    else:
-      eids = dvdorder.episodeNumbers()
-    
     for filename in videos:
       if minsize:
         size = os.path.getsize(filename)
@@ -111,6 +118,7 @@ def main():
       video, ext = os.path.splitext(filename)
       epid = video
       if args.enumerate:
+        oid = epid
         epid = eids[epnum + first - 1]
       order = viddin.ORDER_AIRED
       if args.dvdorder:

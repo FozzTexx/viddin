@@ -79,8 +79,14 @@ def main():
       chapters[0] = 0
     else:
       chapters.insert(0, 0)
+
+    dedup = []
+    [dedup.append(x) for x in chapters if x not in dedup]
+    if dedup != chapters:
+      chapters = dedup
+
     doEdit = True
-      
+  
   if doEdit:
     viddin.writeChapters(args.file, chapters)
 

@@ -54,6 +54,8 @@ def build_argparser():
                       help="TV content, convert all fields to frames")
   parser.add_argument("--tv-bob-tff", action="store_true",
                       help="TV content, convert all fields to frames")
+  parser.add_argument("--pal-tv", action="store_true",
+                      help="PAL TV content, only try decomb")
   parser.add_argument("--decomb", action="store_true", help="decomb interlaced content")
   parser.add_argument("--detelecine", action="store_true", help="detelecine NTSC content")
   parser.add_argument("--detelecine-bff", action="store_true",
@@ -189,6 +191,10 @@ def main():
   if args.tv_bob_tff:
   #  flags.extend(["--deinterlace=mode=15:parity=0"])
     flags.extend(["--decomb=mode=1:parity=0"])
+    add_subtitles = True
+
+  if args.pal_tv:
+    flags.extend(["--decomb"])
     add_subtitles = True
 
   if args.bluray:
@@ -349,8 +355,12 @@ def main():
       alen = viddin.getTitleInfo(dest, debugFlag=args.debug).length
     else:
       alen = -1
-    percent = abs(alen - olen) / olen
+    percent = 1
+    if olen != 0.0:
+      percent = abs(alen - olen) / olen
     if alen < olen and abs(alen - olen) > 0.5 and percent > 0.0014:
+      if alen < 0:
+        alen = 0
       outputStatus(dest, source, args.title, "FAILED TO RIP", "red",
                    "Expect %s  Got %s  Percent %.5f" %
                    (viddin.formatTimecode(olen), viddin.formatTimecode(alen), percent))
@@ -398,6 +408,15 @@ def main():
         subtemp = path + "-subs.mkv"
         cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
             " -i \"%s\" --title %i -o \"%s\"" % (lang, source, int(args.title), subtemp)
+
+        if args.start_at:
+          cmd += "--start-at" + "seconds:" + str(viddin.decodeTimecode(args.start_at))
+        if args.stop_at:
+          stop = viddin.decodeTimecode(args.stop_at)
+          if args.start_at:
+            stop -= viddin.decodeTimecode(args.start_at)
+          cmd += "--stop-at" + "seconds:" + str(stop)
+        
         if args.chapters:
           cmd += " --chapters " + args.chapters
         if args.debug:

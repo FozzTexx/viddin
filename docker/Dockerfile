@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y lsdvd
 # RUN /tmp/install-lsdvd.sh && rm /tmp/install-lsdvd.sh
 
 # Install makemkv
-RUN apt-get update && apt-get install -y libqt4-dev tesseract-ocr libtesseract-dev libavcodec-dev libavutil-dev
+RUN apt-get update && apt-get install -y qt5-default tesseract-ocr libtesseract-dev libavcodec-dev libavutil-dev
 COPY install-ccextractor.sh /tmp/
 RUN /tmp/install-ccextractor.sh && rm /tmp/install-ccextractor.sh
 COPY install-makemkv.sh /tmp/

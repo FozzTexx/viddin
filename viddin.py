@@ -29,6 +29,7 @@ import tempfile
 import csv
 import curses
 import stat
+import io
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
@@ -376,6 +377,8 @@ class viddin:
       tracks.append(info)
 
     cmd = "mkvextract tags \"%s\" 2>/dev/null" % (path)
+    if debugFlag:
+      print(cmd)
     process = os.popen(cmd)
     xstr = process.read()
     process.close()
@@ -386,6 +389,8 @@ class viddin:
       for track in xinfo:
         xi1 = xinfo[track]
         for xi2 in xi1:
+          if isinstance(xi2, str):
+            continue
           xdict = {}
           if 'Targets' in xi2:
             xi3 = xi2['Targets']
@@ -449,7 +454,7 @@ class viddin:
     
     _, ext = os.path.splitext(path)
     if True or ext == ".mkv":
-      track = viddin.getTitleInfoMKV(path)
+      track = viddin.getTitleInfoMKV(path, debugFlag=debugFlag)
     else:
       track = viddin.TitleInfo([], None)
       track.length = viddin.getLength(path)
@@ -629,8 +634,11 @@ class viddin:
       TVDB_DVDEPNUM = "dvdEpisodeNumber"
 
     series = []
+    old_stdout = sys.stdout
+    sys.stdout = open("/dev/tty", "w")
     t = tvdb_api.Tvdb(interactive=interactiveFlag)
     show = t[seriesName]
+    sys.stdout = old_stdout
 
     for season in show:
       for epnum in show[season]:
@@ -686,5 +694,5 @@ class viddin:
           epinfo.airDate = episode['firstaired']
           epinfo.productionCode = episode['productioncode']
           series.append(epinfo)
-
+          
     return series

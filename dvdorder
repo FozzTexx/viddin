@@ -42,7 +42,7 @@ def build_argparser():
   parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
   parser.add_argument("--csv", action="store_true", help="output data as csv")
   parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
-  parser.add_argument("--regex", help="pattern for finding videos", default="[0-9]+x[0-9][0-9]\\.(mkv|mp4)")
+  parser.add_argument("--regex", help="pattern for finding videos", default="[0-9]+x[0-9][0-9]+\\.(mkv|mp4)")
   parser.add_argument("--dryrun", action="store_true", help="Don't actually rename files")
   parser.add_argument("--interactive", action="store_true", help="Choose from list of matching TVDB titles")
   return parser

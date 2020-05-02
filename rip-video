@@ -61,8 +61,7 @@ def build_argparser():
   parser.add_argument("--detelecine-bff", action="store_true",
                       help="detelecine NTSC content, bottom field first")
   parser.add_argument("--rate", help="force frame rate")
-  parser.add_argument("--subtitles", action="store_true", help="include forced subtitles")
-  parser.add_argument("--subtitle", help="indexes of subtitles to copy")
+  parser.add_argument("--autosubs", action="store_true", help="include longest subtitles")
   parser.add_argument("--lang", help="only use subtitles in specified language")
   parser.add_argument("--audio-lang", help="only use audio tracks in specified language")
   parser.add_argument("--yprv", action="store_true", help="YPRV?")
@@ -77,28 +76,15 @@ def build_argparser():
   parser.add_argument("--bluray", action="store_true", help="set defaults for ripping Blu-Ray")
   parser.add_argument("--movie", action="store_true", help="set defaults for movies")
   parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
-  parser.add_argument("--addsubsonly", nargs="?", type=int, default=-1,
-                      help="add subtitles to existing rip")
+  parser.add_argument("--norip", action="store_true", help="use existing file, don't rip")
   parser.add_argument("--normalize", action="store_true", help="normalize audio")
   parser.add_argument("--debug", action="store_true", help="print debug info")
   parser.add_argument("--start-at", help="start position to transcode from")
   parser.add_argument("--stop-at", help="stop position to transcode to")
+  parser.add_argument("--subtitle", action="append", help="additional subtitle track to add")
+  parser.add_argument("--commentary", action="append",
+                      help="audio track with commentary to include")
   return parser
-
-def uniqueFile(path, extension=None):
-  dest, ext = os.path.splitext(path)
-  if not extension:
-    extension = ext
-  if extension[0] != '.':
-    extension = "." + extension
-  counter = None
-  upath = dest + extension
-  while os.path.exists(upath):
-    if not counter:
-      counter = 1
-    counter += 1
-    upath = dest + str(counter) + "." + extension
-  return upath
 
 def printSubs(subs, lang):
   for sub in subs:
@@ -127,6 +113,7 @@ def printSubs(subs, lang):
         info += " Frames=%s" % (sub['NUMBER_OF_FRAMES'])
   
       print(info)
+  return
 
 def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   viddin.initCurses()
@@ -140,71 +127,167 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   # Clear to EOL at beginning and then at end in case this message wraps two lines
   status = viddin.clearEOL + status + viddin.clearEOL
   print(status)
+  return
+
+def parseTrackDescriptors(tracks):
+  parsed = []
+  for trk in tracks:
+    sep = trk.find(':')
+    if sep >= 0:
+      tnum = int(trk[:sep])
+      ttitle = trk[sep+1:]
+    else:
+      tnum = int(trk)
+      ttitle = None
+    parsed.append({'number': tnum, 'title': ttitle})
+  return parsed
+
+def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
+  if not os.path.exists(dest.path):
+    print("Cannot add commentary: %s does not exist" % dest.path)
+    return False
+    
+  if lang is None:
+    lang = "eng"
+
+  ptracks = parseTrackDescriptors(tracks)
+
+  start = end = None
+  if not chapters is None:
+    if '-' in chapters:
+      chaps = chapters.split("-")
+    else:
+      chaps = [chapters, chapters]
+    chaptimes = source.loadChapters()
+    chaptimes.append(source.getTitleInfo(debugFlag=debugFlag).length)
+    start = chaptimes[int(chaps[0]) - 1]
+    end = chaptimes[int(chaps[1])]
+      
+  for trk in ptracks:
+    tpath = source.extractTrack(dest.path, trk['number'], start, end, lang, debugFlag)
+    trk['file'] = tpath
+
+  temp = viddin.uniqueFile(dest.path)
+  cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest.path)
+  for trk in ptracks:
+    cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s" % (lang)
+    if trk['title'] is not None:
+      cmd += " --track-name 0:\"%s\"" % (trk['title']) # FIXME - what if title has quotes?
+    cmd += " \"%s\"" % (trk['file'].primary)
+  if debugFlag:
+    print(cmd)
+  stat = viddin.runCommand(cmd)
+
+  for trk in ptracks:
+    trk['file'].remove()
+  if stat == 0:
+    os.rename(temp, dest.path)
+    return True
+  return False
+
+def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
+  if lang is None:
+    lang = "eng"
+
+  if not tracks is not None:
+    tinfo = source.getTitleInfo()
+    subs = tinfo.subtitles
+    if len(subs) == 0:
+      return
+
+    path, ext = os.path.splitext(dest.path)
+    spaths = []
+    longest = None
+    longest_len = None
+    subcount = 0
+    for sub in subs:
+      if 'DURATION' not in sub:
+        sub['DURATION'] = str(tinfo.length)
+      if sub['language'] == lang:
+        subcount += 1
+        sublen = viddin.decodeTimecode(sub['DURATION'])
+        if 'NUMBER_OF_FRAMES' in sub \
+            and (not longest or (sublen - longest_len) / longest_len > 0.10):
+          if longest_len:
+            print(sublen, longest_len, (sublen - longest_len) / longest_len)
+          longest = sub
+          longest_len = sublen
+
+    if longest is None:
+      longest = subs[0]
+    if subcount > 1:
+      outputStatus(dest.path, source.path, args.title, "WARNING", "yellow",
+                   "multiple matching subtitles. using %i" % (longest['rv_track_id']))
+      printSubs(subs, lang)
+    tracks = [str(longest['rv_track_id'])]
+
+  mergeTracks(source, dest, tracks, chapters, lang, debugFlag)
+  return
 
 def main():
   args = build_argparser().parse_args()
 
   flags = []
   encoder = "x264"
-  add_subtitles = False
+  add_autosubs = False
 
   if args.animation:
     flags.extend(["-r", "23.976", "--x264-tune", "animation", "--detelecine", "--decomb"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.pal_animation:
     flags.extend(["--x264-tune", "animation", "--decomb"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.lap_animation:
     flags.extend(["--x264-tune", "animation", "--deinterlace=mode=1:parity=1"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.film:
     flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.pal_film:
     flags.extend(["--x264-tune", "film", "--detelecine", "--decomb"])
 
   if args.tv:
     flags.extend(["--detelecine", "--decomb"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.tv_bob:
     flags.extend(["--detelecine", "--decomb=bob"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.tv_bff:
     flags.extend(["--detelecine=parity=1", "--decomb=parity=1"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.tv_tff:
     flags.extend(["--detelecine=parity=0", "--decomb=parity=0"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.tv_bob_bff:
   #  flags.extend(["--deinterlace=mode=15:parity=1"])
     flags.extend(["--decomb=mode=1:parity=1"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.tv_bob_tff:
   #  flags.extend(["--deinterlace=mode=15:parity=0"])
     flags.extend(["--decomb=mode=1:parity=0"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.pal_tv:
     flags.extend(["--decomb"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.bluray:
     flags.extend(["--aencoder", "ac3", "--mixdown", "5point1"])
     encoder = "x265"
-    add_subtitles = True
+    add_autosubs = True
 
   if args.movie:
     flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
-    add_subtitles = True
+    add_autosubs = True
 
   if args.decomb:
     flags.extend(["--decomb"])
@@ -221,11 +304,8 @@ def main():
   if args.crop:
     flags.extend(["--crop", args.crop])
 
-  if args.subtitles:
-    add_subtitles = True
-
-  if args.subtitle:
-    flags.extend(["--subtitle", args.subtitle])
+  if args.autosubs:
+    add_autosubs = True
 
   if args.lang:
     flags.extend(["--native-language", args.lang, "--native-dub"])
@@ -262,13 +342,13 @@ def main():
   if args.title:
     flags.extend(["--title", args.title])
     if args.source:
-      source = args.source
+      path_source = args.source
     else:
-      source = "/dev/dvd"
-    dest = args.dest
+      path_source = "/dev/dvd"
+    path_dest = args.dest
   else:
-    source = args.source
-    dest = args.dest
+    path_source = args.source
+    path_dest = args.dest
 
   if args.chapters:
     flags.extend(["--chapters", args.chapters])
@@ -286,52 +366,55 @@ def main():
     if args.start_at:
       stop -= viddin.decodeTimecode(args.start_at)
     flags.extend(["--stop-at", "seconds:" + str(stop)])
-      
-  if add_subtitles:
-    flags.extend(["--subtitle", "scan", "--subtitle-forced"])
 
-  if not source:
-    source = dest
-    dest = None
+  # Always include forced subtitles
+  flags.extend(["--subtitle", "scan", "--subtitle-forced"])
+
+  if not path_source:
+    path_source = path_dest
+    path_dest = None
 
   if args.extension[0] != '.':
     args.extension = "." + args.extension
     
-  if not dest:
-    dest = uniqueFile(source, args.extension)
+  if not path_dest:
+    path_dest = viddin.uniqueFile(path_source, args.extension)
 
-  if os.path.isdir(dest):
-    base = os.path.basename(source)
-    dest = os.path.join(dest, base)
+  if os.path.isdir(path_dest):
+    base = os.path.basename(path_source)
+    path_dest = os.path.join(path_dest, base)
 
-  log, ext = os.path.splitext(dest)
+  log, ext = os.path.splitext(path_dest)
   if len(ext) == 0:
-    dest += args.extension
+    path_dest += args.extension
   log += ".log"
 
   encodeBegin = time.time()
+
+  source = viddin.VideoSpec(path_source, args.title)
+  dest = viddin.VideoSpec(path_dest, None)
   
   cmd = "HandBrakeCLI --encoder " + encoder
   cmd += " " + " ".join(flags)
-  cmd += " -i \"%s\" -o \"%s\"" % (source, dest)
+  cmd += " -i \"%s\" -o \"%s\"" % (source.path, dest.path)
   cmd += " 2>\"" + log + "\""
 
   if args.debug:
     print(cmd)
-  if args.addsubsonly == -1:
+  if not args.norip:
     viddin.runCommand(cmd)
     # FIXME - title might be a list or a range
     if not args.title is None and '-' in args.title:
       titles = args.title.split("-")
       olen = 0
       for t in range(int(titles[0]), int(titles[1]) + 1):
-        tinfo = viddin.getTitleInfo(source, t, debugFlag=args.debug)
+        tinfo = source.getTitleInfo(t, debugFlag=args.debug)
         if not tinfo is not None:
           print("Not found")
           exit(1)
         olen += tinfo.length
     else:
-      tinfo = viddin.getTitleInfo(source, args.title, debugFlag=args.debug)
+      tinfo = source.getTitleInfo(args.title, debugFlag=args.debug)
       if not tinfo is not None:
         print("Not found")
         exit(1)
@@ -351,8 +434,8 @@ def main():
       print("OLEN", olen, viddin.decodeTimecode(args.start_at),
             viddin.decodeTimecode(args.stop_at))
       
-    if os.path.exists(dest):
-      alen = viddin.getTitleInfo(dest, debugFlag=args.debug).length
+    if os.path.exists(dest.path):
+      alen = dest.getTitleInfo(debugFlag=args.debug).length
     else:
       alen = -1
     percent = 1
@@ -361,200 +444,61 @@ def main():
     if alen < olen and abs(alen - olen) > 0.5 and percent > 0.0014:
       if alen < 0:
         alen = 0
-      outputStatus(dest, source, args.title, "FAILED TO RIP", "red",
+      outputStatus(dest.path, source.path, args.title, "FAILED TO RIP", "red",
                    "Expect %s  Got %s  Percent %.5f" %
                    (viddin.formatTimecode(olen), viddin.formatTimecode(alen), percent))
       exit(1)
 
+    # Fix flags on any forced subs that were added
+    subs = dest.getTitleInfo(debugFlag=debugFlag).subtitles
+    if len(subs):
+      cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
+          (dest.path, int(subs[0]['rv_track_id']) + 1)
+      if debugFlag:
+        print(cmd)
+      viddin.runCommand(cmd)
+      
     if args.normalize:
-      tmp, ext = os.path.splitext(dest)
+      tmp, ext = os.path.splitext(dest.path)
       tmp += "_aa" + ext
-      cmd = "adjust-volume --volume -7 \"%s\" \"%s\"" % (dest, tmp)
+      cmd = "adjust-volume --volume -7 \"%s\" \"%s\"" % (dest.path, tmp)
       if args.debug:
         print(cmd)
       viddin.runCommand(cmd)
-      os.rename(tmp, dest)
+      os.rename(tmp, dest.path)
 
     # Keep getting titles in the mkv that are the name of the disk
-    path, ext = os.path.splitext(dest)
+    path, ext = os.path.splitext(dest.path)
     if ext == ".mkv":
-      cmd = "mkvpropedit \"%s\" -d title" % (dest)
+      cmd = "mkvpropedit \"%s\" -d title" % (dest.path)
       if args.debug:
         print(cmd)
       viddin.runCommand(cmd)
 
   # FIXME - can only do subtitles on mkv dest and mkv or dvd source
-  if add_subtitles or args.addsubsonly != -1:
-    if os.path.isfile(dest):
-      subs = viddin.getTitleInfo(dest, debugFlag=args.debug).subtitles
-      if len(subs):
-        cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
-            (dest, int(subs[0]['rv_track_id']) + 1)
-        if args.debug:
-          print(cmd)
-        viddin.runCommand(cmd)
-    else:
-      outputStatus(dest, source, args.title, "NO SUCH FILE", "red")
-      exit(1)
+  if add_autosubs or args.subtitle:
+    addSubtitles(source, args.chapters, dest, args.lang, args.subtitle, args.debug)
 
-    lang = "eng"
-    if args.lang:
+  if args.commentary:
+    lang = args.audio_lang
+    if lang is None:
       lang = args.lang
-
-    if args.title and viddin.isDVD(source):
-      subs = viddin.getTitleInfo(source, int(args.title)).subtitles
-      if len(subs):
-        path, ext = os.path.splitext(dest)
-        subtemp = path + "-subs.mkv"
-        cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
-            " -i \"%s\" --title %i -o \"%s\"" % (lang, source, int(args.title), subtemp)
-
-        if args.start_at:
-          cmd += "--start-at" + "seconds:" + str(viddin.decodeTimecode(args.start_at))
-        if args.stop_at:
-          stop = viddin.decodeTimecode(args.stop_at)
-          if args.start_at:
-            stop -= viddin.decodeTimecode(args.start_at)
-          cmd += "--stop-at" + "seconds:" + str(stop)
-        
-        if args.chapters:
-          cmd += " --chapters " + args.chapters
-        if args.debug:
-          print(cmd)
-        viddin.runCommand(cmd)
-
-        if not os.path.exists(subtemp):
-          print("Failed to extract subtitles")
-          exit(1)
-        else:
-          subs = viddin.getTitleInfo(subtemp).subtitles
-          best = None
-          for sub in subs:
-            if sub['language'] == lang and sub['codec_id'] == "S_VOBSUB":
-              best = sub
-              break
-
-          if best:
-            tnum = int(best['rv_track_id'])
-            spath = "%s_%i.idx" % (path, tnum)
-            cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (subtemp, tnum, spath)
-            if args.debug:
-              print(cmd)
-            viddin.runCommand(cmd)
-
-            temp = uniqueFile(dest, "mkv")
-            cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
-            cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s -s 0 \"%s\"" \
-                % (lang, spath)
-            if args.debug:
-              print(cmd)
-            viddin.runCommand(cmd)
-
-            os.remove(spath)
-            path, ext = os.path.splitext(spath)
-            os.remove(path + ".sub")
-            os.rename(temp, dest)
-          os.remove(subtemp)
-    elif os.path.isfile(source):
-      subs = viddin.getTitleInfo(source).subtitles
-      if len(subs):
-        path, ext = os.path.splitext(dest)
-        spaths = []
-        longest = None
-
-        if args.addsubsonly is None or args.addsubsonly == -1:
-          longest_len = None
-          subcount = 0
-          for sub in subs:
-            if sub['language'] == lang:
-              subcount += 1
-              sublen = viddin.decodeTimecode(sub['DURATION'])
-              if 'NUMBER_OF_FRAMES' in sub \
-                  and (not longest or (sublen - longest_len) / longest_len > 0.10):
-                if longest_len:
-                  print(sublen, longest_len, (sublen - longest_len) / longest_len)
-                longest = sub
-                longest_len = sublen
-
-          if subcount > 1:
-            outputStatus(dest, source, args.title, "WARNING", "yellow",
-                         "multiple matching subtitles. using %i" % (longest['rv_track_id']))
-            printSubs(subs, lang)
-        else:
-          for sub in subs:
-            if args.addsubsonly == int(sub['rv_track_id']):
-              longest = sub
-              break
-
-        if longest:
-          sub_source = source
-
-          # If chapters were specified, the original file has to be
-          # split just to split the subs, otherwise the subs will be
-          # misaligned.
-
-          if args.chapters:
-            ts_path, ext = os.path.splitext(path)
-            ts_path += ".mkv"
-            sub_source = uniqueFile(ts_path)
-
-            if '-' in args.chapters:
-              chaps = args.chapters.split("-")
-            else:
-              chaps = [args.chapters, args.chapters]
-            chaptimes = viddin.loadChapters(source)
-            chaptimes.append(viddin.getTitleInfo(source, debugFlag=args.debug).length)
-            start = chaptimes[int(chaps[0]) - 1]
-            end = chaptimes[int(chaps[1])]
-            cmd = "mkvmerge --split parts:%s-%s -o \"%s\" \"%s\"" % \
-                (viddin.formatTimecode(start), viddin.formatTimecode(end), sub_source, source)
-            if args.debug:
-              print(cmd)
-            viddin.runCommand(cmd)
-
-          tnum = int(longest['rv_track_id'])
-          spath = "%s_%i.sub" % (path, tnum)
-          cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (sub_source, tnum, spath)
-          if args.debug:
-            print(cmd)
-          viddin.runCommand(cmd)
-          spath2 = "%s_%i.idx" % (path, tnum)
-          if os.path.exists(spath2):
-            spath = spath2
-          spaths.append(spath)
-          if sub_source != source:
-            os.remove(sub_source)
-
-        temp = uniqueFile(dest)
-        cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
-        for p in spaths:
-          cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s \"%s\"" % (lang, p)
-        if args.debug:
-          print(cmd)
-        viddin.runCommand(cmd)
-
-        for p in spaths:
-          os.remove(p)
-          p2, ext = os.path.splitext(p)
-          p2 += ".sub"
-          if os.path.exists(p2):
-            os.remove(p2)
-        os.rename(temp, dest)
-
-  if args.restore_ntsc and os.path.exists(dest):
-    cmd = "restore-ntsc \"%s\"" % (dest)
+    mergeTracks(source, dest, args.commentary, args.chapters, lang, args.debug)
+          
+  if args.restore_ntsc and os.path.exists(dest.path):
+    cmd = "restore-ntsc \"%s\"" % (dest.path)
     if args.debug:
       print(cmd)
     viddin.runCommand(cmd)
-    path, ext = os.path.splitext(dest)
-    os.rename(path + "-NTSC" + ext, dest)
+    path, ext = os.path.splitext(dest.path)
+    os.rename(path + "-NTSC" + ext, dest.path)
 
   sys.stdout.flush()
-  alen = viddin.getTitleInfo(dest, debugFlag=args.debug).length
+  alen = dest.getTitleInfo(debugFlag=args.debug).length
 
   encodeEnd = time.time()
   
-  outputStatus(dest, source, args.title,
+  outputStatus(dest.path, source.path, args.title,
                addtl=str(viddin.formatTimecode(alen)) + "  rip: "
                + str(viddin.formatTimecode(encodeEnd - encodeBegin)))
 

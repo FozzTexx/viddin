@@ -44,7 +44,8 @@ def main():
     print("Unable to locate " + args.source)
     sys.exit(1)
 
-  tinfo = viddin.getTitleInfo(args.source, args.title)
+  source = viddin.VideoSpec(args.source, args.title)
+  tinfo = source.getTitleInfo()
   tracks = []
   tracks.extend(tinfo.video)
   tracks.extend(tinfo.audio)

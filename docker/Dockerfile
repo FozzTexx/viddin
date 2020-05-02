@@ -1,5 +1,7 @@
-FROM ubuntu:19.04
+FROM ubuntu:20.04
 LABEL maintainer fozztexx@fozztexx.com
+
+ENV DEBIAN_FRONTEND noninteractive
 
 # Install useful things
 RUN apt-get update && apt-get install -y git wget sudo python3 python3-pip python
@@ -25,7 +27,6 @@ COPY install-ffmpeg.sh ffmpeg.bundle /tmp/
 RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
 
 # Install tools viddin scripts need
-ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
 RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
 RUN pip3 install xmltodict termcolor tvdb_api

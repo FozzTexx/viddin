@@ -12,8 +12,8 @@ def build_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument("dirs", nargs="+", help="input files")
   parser.add_argument("--flags", default=FLAGS, help="flags to pass to rip-video")
-  parser.add_argument("--dryrun", action="store_true",
-                      help="only print actions, don't rip")
+  parser.add_argument("--dryrun", action="store_true", help="only print actions, don't rip")
+  parser.add_argument("--subdirs", action="store_true", help="keep subdirectory organization")
   return parser
 
 def main():
@@ -25,8 +25,12 @@ def main():
       files.extend(glob.glob(os.path.join(dir, ext)))
     for file in sorted(files):
       output = video = os.path.basename(file)
-      if not output.startswith(basedir):
-        output = basedir + "_" + video
+      if not args.subdirs:
+        if not output.startswith(basedir):
+          output = basedir + "_" + video
+      else:
+        output = os.path.join(basedir, video)
+        os.makedirs(basedir, exist_ok=True)
       p, e = os.path.splitext(output)
       output = p + ".mkv"
       log = p + ".log"

@@ -89,16 +89,6 @@ class viddin:
     return "%02i:%02i:%06.3f" % (hours, minutes, seconds - hours * 3600 - minutes * 60)
 
   @staticmethod
-  def loadChapters(filename):
-    chapters = []
-    with os.popen("ffmpeg -i \"" + filename + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
-      for line in f:
-        fields = line.split()
-        begin = float(re.sub(",", "", fields[3]))
-        chapters.append(begin)
-    return chapters
-
-  @staticmethod
   def writeChapters(path, chapters):
     _, ext = os.path.splitext(path)
     if ext == ".mkv":
@@ -356,110 +346,6 @@ class viddin:
     res = res.split('x')
     return (int(res[0]), int(res[1]))
 
-  @staticmethod
-  def getTitleInfoMKV(path, debugFlag=False):
-    cmd = "mkvmerge -i -F json \"%s\"" % (path)
-    if debugFlag:
-      print(cmd)
-    process = os.popen(cmd)
-    jstr = process.read()
-    process.close()
-    jinfo = json.loads(jstr)
-    if 'tracks' not in jinfo:
-      return None
-
-    tracks = []
-    for track in jinfo['tracks']:
-      info = track.copy()
-      info['rv_track_id'] = track['id']
-      if 'properties' in track:
-        info.update(track['properties'])
-      tracks.append(info)
-
-    cmd = "mkvextract tags \"%s\" 2>/dev/null" % (path)
-    if debugFlag:
-      print(cmd)
-    process = os.popen(cmd)
-    xstr = process.read()
-    process.close()
-    xstr = xstr.strip()
-    if len(xstr) and not xstr.startswith("Error:"):
-      xinfo = xmltodict.parse(xstr)['Tags']
-      xlist = []
-      for track in xinfo:
-        xi1 = xinfo[track]
-        for xi2 in xi1:
-          if isinstance(xi2, str):
-            continue
-          xdict = {}
-          if 'Targets' in xi2:
-            xi3 = xi2['Targets']
-            if xi3 and 'TrackUID' in xi3:
-              xdict['TrackUID'] = int(xi3['TrackUID'])
-          if 'Simple' in xi2:
-            xi3 = xi2['Simple']
-            if type(xi3) == list:
-              for xi4 in xi3:
-                xdict[xi4['Name']] = xi4['String']
-            else:
-              xdict[xi3['Name']] = xi3['String']
-          xlist.append(xdict)
-
-      for track in xlist:
-        if 'TrackUID' in track:
-          tt = viddin.trackWithUid(track['TrackUID'], tracks)
-          if tt:
-            tt.update(track)
-
-    info = viddin.TitleInfo(tracks, None)
-    info.chapters = viddin.loadChapters(path)
-
-    tlen = None
-    for track in tracks:
-      if track['type'] == "video" and 'DURATION' in track:
-        alen = viddin.decodeTimecode(track['DURATION'])
-        if not tlen or alen > tlen:
-          tlen = alen
-
-    if not tlen:
-      container = jinfo['container']['properties']
-      if 'duration' in container:
-        tlen = int(container['duration'])
-        tlen /= 1000000000
-    if not tlen:
-      tlen = viddin.getLength(path)
-    info.length = tlen
-    return info
-
-  @staticmethod
-  def isDVD(path):
-    mode = os.stat(path).st_mode
-    if stat.S_ISBLK(mode) or stat.S_ISDIR(mode):
-      return True
-    _, ext = os.path.splitext(path)
-    if ext.lower() == ".iso":
-      return True
-    return False
-    
-  @staticmethod
-  def getTitleInfo(path, title=None, debugFlag=False):
-    if title != None:
-      dvdInfo = viddin.getDVDInfo(path)
-      if not dvdInfo is None:
-        return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
-      print("Failed to get title info", title)
-      return None
-
-    # ffprobe -v quiet -print_format json -show_format -show_streams
-    
-    _, ext = os.path.splitext(path)
-    if True or ext == ".mkv":
-      track = viddin.getTitleInfoMKV(path, debugFlag=debugFlag)
-    else:
-      track = viddin.TitleInfo([], None)
-      track.length = viddin.getLength(path)
-    return track
-
   class EpisodeInfo:
     def __init__(self, airedSeason, airedEpisode, dvdSeason, dvdEpisode,
                  absoluteNum=None, title=None, airDate=None):
@@ -696,3 +582,248 @@ class viddin:
           series.append(epinfo)
           
     return series
+
+  @staticmethod
+  def uniqueFile(path, extension=None):
+    dest, ext = os.path.splitext(path)
+    if not extension:
+      extension = ext
+    if extension[0] != '.':
+      extension = "." + extension
+    counter = None
+    upath = dest + extension
+    while os.path.exists(upath):
+      if not counter:
+        counter = 1
+      counter += 1
+      upath = dest + str(counter) + extension
+    return upath
+
+  class VideoSpec:
+    def __init__(self, path, titleNumber):
+      self.path = path
+      self.titleNumber = titleNumber
+      return
+
+    def isDVD(self):
+      mode = os.stat(self.path).st_mode
+      if stat.S_ISBLK(mode) or stat.S_ISDIR(mode):
+        return True
+      _, ext = os.path.splitext(self.path)
+      if ext.lower() == ".iso":
+        return True
+      return False
+
+    def getTitleInfo(self, title=None, debugFlag=False):
+      if title != None:
+        dvdInfo = viddin.getDVDInfo(self.path)
+        if not dvdInfo is None:
+          return viddin.TitleInfo(dvdInfo['track'][int(title) - 1], "dvd")
+        print("Failed to get title info", title)
+        return None
+
+      # ffprobe -v quiet -print_format json -show_format -show_streams
+
+      _, ext = os.path.splitext(self.path)
+      if True or ext == ".mkv":
+        track = self.getTitleInfoMKV(debugFlag=debugFlag)
+      else:
+        track = viddin.TitleInfo([], None)
+        track.length = self.getLength()
+      return track
+
+    def getTitleInfoMKV(self, debugFlag=False):
+      cmd = "mkvmerge -i -F json \"%s\"" % (self.path)
+      if debugFlag:
+        print(cmd)
+      process = os.popen(cmd)
+      jstr = process.read()
+      process.close()
+      jinfo = json.loads(jstr)
+      if 'tracks' not in jinfo:
+        return None
+
+      tracks = []
+      for track in jinfo['tracks']:
+        info = track.copy()
+        info['rv_track_id'] = track['id']
+        if 'properties' in track:
+          info.update(track['properties'])
+        tracks.append(info)
+
+      cmd = "mkvextract tags \"%s\" 2>/dev/null" % (self.path)
+      if debugFlag:
+        print(cmd)
+      process = os.popen(cmd)
+      xstr = process.read()
+      process.close()
+      xstr = xstr.strip()
+      if len(xstr) and not xstr.startswith("Error:"):
+        xinfo = xmltodict.parse(xstr)['Tags']
+        xlist = []
+        for track in xinfo:
+          xi1 = xinfo[track]
+          for xi2 in xi1:
+            if isinstance(xi2, str):
+              continue
+            xdict = {}
+            if 'Targets' in xi2:
+              xi3 = xi2['Targets']
+              if xi3 and 'TrackUID' in xi3:
+                xdict['TrackUID'] = int(xi3['TrackUID'])
+            if 'Simple' in xi2:
+              xi3 = xi2['Simple']
+              if type(xi3) == list:
+                for xi4 in xi3:
+                  xdict[xi4['Name']] = xi4['String']
+              else:
+                xdict[xi3['Name']] = xi3['String']
+            xlist.append(xdict)
+
+        for track in xlist:
+          if 'TrackUID' in track:
+            tt = viddin.trackWithUid(track['TrackUID'], tracks)
+            if tt:
+              tt.update(track)
+
+      info = viddin.TitleInfo(tracks, None)
+      info.chapters = self.loadChapters()
+
+      tlen = None
+      for track in tracks:
+        if track['type'] == "video" and 'DURATION' in track:
+          alen = viddin.decodeTimecode(track['DURATION'])
+          if not tlen or alen > tlen:
+            tlen = alen
+
+      if not tlen:
+        container = jinfo['container']['properties']
+        if 'duration' in container:
+          tlen = int(container['duration'])
+          tlen /= 1000000000
+      if not tlen:
+        tlen = viddin.getLength(path)
+      info.length = tlen
+      return info
+
+    def loadChapters(self):
+      chapters = []
+      with os.popen("ffmpeg -i \"" + self.path
+                    + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
+        for line in f:
+          fields = line.split()
+          begin = float(re.sub(",", "", fields[3]))
+          chapters.append(begin)
+      return chapters
+
+    def extractDVDSubtitle(self, dest, trackNum, start, end, lang, debugFlag=False):
+      subs = self.getTitleInfo().subtitles
+      if len(subs):
+        path, ext = os.path.splitext(dest)
+        subtemp = path + "-subs.mkv"
+        cmd = "HandBrakeCLI -w 1 --subtitle-lang-list %s --all-subtitles" \
+            " -i \"%s\" --title %i -o \"%s\"" % (lang, source, source.titleNum, subtemp)
+
+        if start is not None:
+          cmd += "--start-at" + "seconds:" + str(start)
+        if end is not None:
+          stop = end
+          if start is not None:
+            stop -= start
+          cmd += "--stop-at" + "seconds:" + str(stop)
+
+        # if args.chapters:
+        #   cmd += " --chapters " + args.chapters
+        if args.debug:
+          print(cmd)
+        viddin.runCommand(cmd)
+
+        if not os.path.exists(subtemp):
+          print("Failed to extract subtitles")
+          exit(1)
+        else:
+          subs = viddin.getTitleInfo(subtemp).subtitles
+          best = None
+          for sub in subs:
+            if sub['language'] == lang and sub['codec_id'] == "S_VOBSUB":
+              best = sub
+              break
+
+          if best:
+            tnum = int(best['rv_track_id'])
+            spath = "%s_%i.idx" % (path, tnum)
+            cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (subtemp, tnum, spath)
+            if args.debug:
+              print(cmd)
+            viddin.runCommand(cmd)
+
+            temp = viddin.uniqueFile(dest, "mkv")
+            cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest)
+            cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s -s 0 \"%s\"" \
+                % (lang, spath)
+            if args.debug:
+              print(cmd)
+            viddin.runCommand(cmd)
+
+            os.remove(spath)
+            path, ext = os.path.splitext(spath)
+            os.remove(path + ".sub")
+            os.rename(temp, dest)
+          os.remove(subtemp)
+      
+    def extractTrack(self, dest, trackNum, start, end, lang, debugFlag=False):
+      # If start/end were specified, the original file has to be
+      # split just to split the subs, otherwise the subs will be
+      # misaligned.
+
+      path, ext = os.path.splitext(dest)
+      trk_source = self.path
+      if start is not None or end is not None:
+        ts_path = path + ".mkv"
+        trk_source = viddin.uniqueFile(ts_path)
+
+        if start is None:
+          start = 0
+        if end is None:
+          end = ""  
+        cmd = "mkvmerge --split parts:%s-%s -o \"%s\" \"%s\"" % \
+            (viddin.formatTimecode(start), viddin.formatTimecode(end), trk_source, self.path)
+        if debugFlag:
+          print(cmd)
+        viddin.runCommand(cmd)
+
+      # FIXME - change extension based on track type/encoding
+      trk_ext = "sub"
+      trk_path = "%s_%i.%s" % (path, trackNum, trk_ext)
+      cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (trk_source, trackNum, trk_path)
+      if debugFlag:
+        print(cmd)
+      viddin.runCommand(cmd)
+      if trk_source != self.path:
+        os.remove(trk_source)
+
+      idx_path = "%s_%i.idx" % (path, trackNum)
+      if os.path.exists(idx_path):
+        trk_path = [idx_path, trk_path]
+        
+      return viddin.TrackSpec(trk_path, None)
+
+  class TrackSpec:
+    def __init__(self, path, trackNumber):
+      self.path = path
+      self.trackNumber = trackNumber
+      return
+
+    def remove(self):
+      if isinstance(self.path, list):
+        for p in self.path:
+          os.remove(p)
+      else:
+        os.remove(self.path)
+      return
+
+    @property
+    def primary(self):
+      if isinstance(self.path, list):
+        return self.path[0]
+      return self.path

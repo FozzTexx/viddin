@@ -742,7 +742,8 @@ class viddin:
           print("Failed to extract subtitles")
           exit(1)
         else:
-          subs = viddin.getTitleInfo(subtemp).subtitles
+          vsubtemp = viddin.VideoSpec(subtemp)
+          subs = vsubtemp.getTitleInfo().subtitles
           best = None
           for sub in subs:
             if sub['language'] == lang and sub['codec_id'] == "S_VOBSUB":

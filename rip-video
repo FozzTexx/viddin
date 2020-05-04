@@ -190,7 +190,7 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
     lang = "eng"
 
   if not tracks is not None:
-    tinfo = source.getTitleInfo()
+    tinfo = source.getTitleInfo(debugFlag=debugFlag)
     subs = tinfo.subtitles
     if len(subs) == 0:
       return
@@ -216,7 +216,7 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
     if longest is None:
       longest = subs[0]
     if subcount > 1:
-      outputStatus(dest.path, source.path, args.title, "WARNING", "yellow",
+      outputStatus(dest.path, source.path, source.titleNumber, "WARNING", "yellow",
                    "multiple matching subtitles. using %i" % (longest['rv_track_id']))
       printSubs(subs, lang)
     tracks = [str(longest['rv_track_id'])]
@@ -450,11 +450,11 @@ def main():
       exit(1)
 
     # Fix flags on any forced subs that were added
-    subs = dest.getTitleInfo(debugFlag=debugFlag).subtitles
+    subs = dest.getTitleInfo(debugFlag=args.debug).subtitles
     if len(subs):
       cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
           (dest.path, int(subs[0]['rv_track_id']) + 1)
-      if debugFlag:
+      if args.debug:
         print(cmd)
       viddin.runCommand(cmd)
       

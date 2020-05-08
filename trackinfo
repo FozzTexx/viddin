@@ -46,11 +46,7 @@ def main():
 
   source = viddin.VideoSpec(args.source, args.title)
   tinfo = source.getTitleInfo()
-  tracks = []
-  tracks.extend(tinfo.video)
-  tracks.extend(tinfo.audio)
-  tracks.extend(tinfo.subtitles)
-  for track in tracks:
+  for track in tinfo.tracks:
     if 'DURATION' not in track:
       track['DURATION'] = str(tinfo.length)
       

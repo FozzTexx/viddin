@@ -76,9 +76,11 @@ def main():
     else:
       splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
+  vfile = viddin.VideoSpec(args.file, None)
+  
   doEdit = False
   if expected:
-    chapters = viddin.loadChapters(args.file)
+    chapters = vfile.loadChapters()
     for offset in expected:
       bdiff = -1
       boffset = None
@@ -102,7 +104,7 @@ def main():
       [dedup.append(x) for x in chapters if x not in dedup]
       if dedup != chapters:
         chapters = dedup
-      viddin.writeChapters(args.file, chapters)
+      vfile.writeChapters(chapters)
   else:
     for row in splits:
       if row >= 0 or args.force:

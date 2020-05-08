@@ -129,19 +129,6 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   print(status)
   return
 
-def parseTrackDescriptors(tracks):
-  parsed = []
-  for trk in tracks:
-    sep = trk.find(':')
-    if sep >= 0:
-      tnum = int(trk[:sep])
-      ttitle = trk[sep+1:]
-    else:
-      tnum = int(trk)
-      ttitle = None
-    parsed.append({'number': tnum, 'title': ttitle})
-  return parsed
-
 def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
   if not os.path.exists(dest.path):
     print("Cannot add commentary: %s does not exist" % dest.path)
@@ -150,8 +137,8 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
   if lang is None:
     lang = "eng"
 
-  ptracks = parseTrackDescriptors(tracks)
-
+  ptracks = source.parseTrackDescriptors(tracks)
+  
   start = end = None
   if not chapters is None:
     if '-' in chapters:
@@ -480,6 +467,10 @@ def main():
     addSubtitles(source, args.chapters, dest, args.lang, args.subtitle, args.debug)
 
   if args.commentary:
+    if not os.path.exists(dest.path):
+      print("Cannot add commentary, no such file:", dest.path)
+      exit(1)
+      
     lang = args.audio_lang
     if lang is None:
       lang = args.lang

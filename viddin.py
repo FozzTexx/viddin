@@ -89,50 +89,6 @@ class viddin:
     return "%02i:%02i:%06.3f" % (hours, minutes, seconds - hours * 3600 - minutes * 60)
 
   @staticmethod
-  def writeChapters(path, chapters):
-    _, ext = os.path.splitext(path)
-    if ext == ".mkv":
-      cfile, cfname = tempfile.mkstemp()
-      for idx in range(len(chapters)):
-        os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1,
-                                                    viddin.formatChapter(chapters[idx])),
-                              'UTF-8'))
-        os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (idx + 1, idx + 1), 'UTF-8'))
-      os.close(cfile)
-
-      cmd = "mkvpropedit -c %s \"%s\"" % (cfname, path.replace("\"", "\\\""))
-      os.system(cmd)
-      os.remove(cfname)
-    else:
-      vlen = viddin.getLength(path)
-      if vlen is not None:
-        if abs(vlen - chapters[-1]) > 1:
-          chapters = chapters.copy()
-          chapters.append(vlen)
-        cfile, cfname = tempfile.mkstemp()
-        os.write(cfile, bytes(";FFMETADATA1\n", 'UTF-8'))
-        for i in range(len(chapters) - 1):
-          os.write(cfile, bytes("[CHAPTER]\n", 'UTF-8'))
-          os.write(cfile, bytes("TIMEBASE=1/1000\n", 'UTF-8'))
-          os.write(cfile, bytes("START=%i\n" % (int(chapters[i] * 1000)), 'UTF-8'))
-          os.write(cfile, bytes("END=%i\n" % (int(chapters[i + 1] * 1000)), 'UTF-8'))
-          os.write(cfile, bytes("title=Chapter %i\n" % (i + 1), 'UTF-8'))
-        os.close(cfile)
-
-        dpath = os.path.dirname(path)
-        tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
-        cmd = "ffmpeg -y -i \"%s\" -i %s -map_metadata 1 -movflags disable_chpl" \
-              " -codec copy -map 0 \"%s\"" % \
-              (path.replace("\"", "\\\""), cfname, tf.name.replace("\"", "\\\""))
-        stat = viddin.runCommand(cmd)
-        if stat == 0:
-          os.rename(tf.name, path)
-        else:
-          os.remove(tf.name)
-        os.remove(cfname)
-    return
-
-  @staticmethod
   def loadChapterFile(filename):
     chapters = []
     with open(filename) as f:
@@ -287,6 +243,14 @@ class viddin:
             self.audio.append(track)
           elif track['type'] == "subtitles":
             self.subtitles.append(track)
+      self.audio.sort(key=lambda x:x['rv_track_id'])
+      self.subtitles.sort(key=lambda x:x['rv_track_id'])
+      self.video.sort(key=lambda x:x['rv_track_id'])
+      self.tracks = []
+      self.tracks.extend(self.video)
+      self.tracks.extend(self.audio)
+      self.tracks.extend(self.subtitles)
+      self.tracks.sort(key=lambda x:x['rv_track_id'])
       return
 
     def __repr__(self):
@@ -716,6 +680,49 @@ class viddin:
           chapters.append(begin)
       return chapters
 
+    def writeChapters(self, chapters):
+      _, ext = os.path.splitext(self.path)
+      if ext == ".mkv":
+        cfile, cfname = tempfile.mkstemp()
+        for idx in range(len(chapters)):
+          os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1,
+                                                      viddin.formatChapter(chapters[idx])),
+                                'UTF-8'))
+          os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (idx + 1, idx + 1), 'UTF-8'))
+        os.close(cfile)
+
+        cmd = "mkvpropedit -c %s \"%s\"" % (cfname, self.path.replace("\"", "\\\""))
+        os.system(cmd)
+        os.remove(cfname)
+      else:
+        vlen = viddin.getLength(self.path)
+        if vlen is not None:
+          if abs(vlen - chapters[-1]) > 1:
+            chapters = chapters.copy()
+            chapters.append(vlen)
+          cfile, cfname = tempfile.mkstemp()
+          os.write(cfile, bytes(";FFMETADATA1\n", 'UTF-8'))
+          for i in range(len(chapters) - 1):
+            os.write(cfile, bytes("[CHAPTER]\n", 'UTF-8'))
+            os.write(cfile, bytes("TIMEBASE=1/1000\n", 'UTF-8'))
+            os.write(cfile, bytes("START=%i\n" % (int(chapters[i] * 1000)), 'UTF-8'))
+            os.write(cfile, bytes("END=%i\n" % (int(chapters[i + 1] * 1000)), 'UTF-8'))
+            os.write(cfile, bytes("title=Chapter %i\n" % (i + 1), 'UTF-8'))
+          os.close(cfile)
+
+          dpath = os.path.dirname(self.path)
+          tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
+          cmd = "ffmpeg -y -i \"%s\" -i %s -map_metadata 1 -movflags disable_chpl" \
+                " -codec copy -map 0 \"%s\"" % \
+                (self.path.replace("\"", "\\\""), cfname, tf.name.replace("\"", "\\\""))
+          stat = viddin.runCommand(cmd)
+          if stat == 0:
+            os.rename(tf.name, self.path)
+          else:
+            os.remove(tf.name)
+          os.remove(cfname)
+      return
+
     def extractDVDSubtitle(self, dest, trackNum, start, end, lang, debugFlag=False):
       subs = self.getTitleInfo().subtitles
       if len(subs):
@@ -771,7 +778,35 @@ class viddin:
             os.remove(path + ".sub")
             os.rename(temp, dest)
           os.remove(subtemp)
-      
+
+    def parseTrackDescriptors(self, tracks):
+      parsed = []
+      for trk in tracks:
+        sep = trk.find(':')
+        if sep >= 0:
+          tnum = trk[:sep]
+          ttitle = trk[sep+1:]
+        else:
+          tnum = trk
+          ttitle = None
+        parsed.append({'number': tnum, 'title': ttitle})
+      tinfo = self.getTitleInfo()
+      for trk in parsed:
+        tnum = trk['number']
+        if tnum[0].isalpha():
+          ttype = tnum[0].lower()
+          tnum = int(tnum[1:])
+          if ttype == 'a':
+            tnum = tinfo.audio[tnum]['rv_track_id']
+          elif ttype == 'v':
+            tnum = tinfo.video[tnum]['rv_track_id']
+          elif ttype == 's':
+            tnum = tinfo.subtitles[tnum]['rv_track_id']
+        else:
+          tnum = int(tnum)
+        trk['number'] = tinfo.tracks[tnum]['rv_track_id']
+      return parsed
+          
     def extractTrack(self, dest, trackNum, start, end, lang, debugFlag=False):
       # If start/end were specified, the original file has to be
       # split just to split the subs, otherwise the subs will be

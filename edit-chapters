@@ -40,10 +40,11 @@ def main():
   args = build_argparser().parse_args()
 
   video, ext = os.path.splitext(args.file)
+  vfile = viddin.VideoSpec(args.file)
   if args.chapters:
     chapters = viddin.loadChapterFile(args.chapters)
   else:
-    chapters = viddin.loadChapters(args.file)
+    chapters = vfile.loadChapters()
 
   doEdit = False
 
@@ -88,7 +89,7 @@ def main():
     doEdit = True
   
   if doEdit:
-    viddin.writeChapters(args.file, chapters)
+    vfile.writeChapters(chapters)
 
   else:
     if len(chapters) == 0:

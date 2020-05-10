@@ -112,7 +112,8 @@ def main():
   tempdir = os.path.dirname(path)
   tempdir = tempfile.mkdtemp(dir=tempdir)
 
-  tinfo = viddin.getTitleInfo(path)
+  vfile = viddin.VideoSpec(path)
+  tinfo = vfile.getTitleInfo()
   vtemp = slowVideo(path, tempdir)
   atemp = slowAudio(path, tempdir)
   if args.normalize:

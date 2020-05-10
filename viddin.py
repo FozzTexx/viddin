@@ -564,7 +564,7 @@ class viddin:
     return upath
 
   class VideoSpec:
-    def __init__(self, path, titleNumber):
+    def __init__(self, path, titleNumber=None):
       self.path = path
       self.titleNumber = titleNumber
       return
@@ -666,7 +666,7 @@ class viddin:
           tlen = int(container['duration'])
           tlen /= 1000000000
       if not tlen:
-        tlen = viddin.getLength(path)
+        tlen = viddin.getLength(self.path)
       info.length = tlen
       return info
 

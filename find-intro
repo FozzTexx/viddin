@@ -60,11 +60,13 @@ def findCredits(filename, pattern, addFlag):
     else:
       splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
+  vfile = viddin.VideoSpec(filename, None)
+      
   for idx in range(len(pattern), len(splits)):
     if matchesPattern(idx, splits, pattern):
       pos = abs(splits[idx])
       print("Setting opening for %s to %0.3f" % (filename, pos))
-      chapters = viddin.loadChapters(filename)
+      chapters = vfile.loadChapters()
       nc = len(chapters)
       chapters.append(pos)
       chapters.sort()
@@ -80,7 +82,7 @@ def findCredits(filename, pattern, addFlag):
       if nc == len(chapters):
         return
       if addFlag:
-        viddin.writeChapters(filename, chapters)
+        vfile.writeChapters(chapters)
       return
 
   print("Couldn't find opening for", filename)

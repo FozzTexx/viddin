@@ -14,6 +14,7 @@ def build_argparser():
   parser.add_argument("--flags", default=FLAGS, help="flags to pass to rip-video")
   parser.add_argument("--dryrun", action="store_true", help="only print actions, don't rip")
   parser.add_argument("--subdirs", action="store_true", help="keep subdirectory organization")
+  parser.add_argument("--debug", action="store_true", help="pass debug flag")
   return parser
 
 def main():
@@ -37,14 +38,15 @@ def main():
 
       doRip = False
       if not os.path.exists(log):
+        print("Not ripped yet")
         doRip = True
       else:
         if os.path.exists(output):
           inlength = viddin.getLength(file)
           outlength = viddin.getLength(output)
           diff = inlength - outlength
-          if diff > 5 or diff / inlength > 0.03:
-            print("Incomplete", diff, diff / inlength)
+          if diff > 20 or diff / inlength > 0.03:
+            print("Short", diff, diff / inlength)
             doRip = True
         else:
           with open(log) as f:
@@ -54,7 +56,10 @@ def main():
               doRip = True
       if doRip:
         print(output)
-        cmd = "rip-video " + args.flags + " \"%s\" \"%s\"" % (file, output)
+        cmd = "rip-video " + args.flags
+        if args.debug:
+          cmd += " --debug"
+        cmd += " \"%s\" \"%s\"" % (file, output)
         print(cmd)
         if not args.dryrun:
           result = os.WEXITSTATUS(os.system(cmd))

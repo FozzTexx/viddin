@@ -72,6 +72,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    FLAGS="${FLAGS} $1"
 	    shift
 	    ;;
+	--norip)
+	    FLAGS="${FLAGS} $1"
+	    shift
+	    ;;
 	*)
 	    echo "Unknown flag:" "$1"
 	    exit 1

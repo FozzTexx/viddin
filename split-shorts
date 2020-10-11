@@ -270,9 +270,10 @@ def main():
     transcode = ""
 
   for filename in videos:
-    video, ext = os.path.splitext(filename)
+    vbase = os.path.basename(filename)
+    video, ext = os.path.splitext(vbase)
 
-    episode = episodes.findEpisode(filename)
+    episode = episodes.findEpisode(video)
     if not episode:
       sys.stderr.write("Unable to find episode for " + filename + "\n")
       continue

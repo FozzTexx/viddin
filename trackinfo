@@ -28,7 +28,7 @@ from viddin import viddin
 def build_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument("source", help="input file")
-  parser.add_argument("--title", help="title number to rip")
+  parser.add_argument("--title", type=int, help="title number to rip")
   parser.add_argument("--lang", help="only use subtitles in specified language")
   return parser
 

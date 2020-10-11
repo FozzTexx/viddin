@@ -119,7 +119,7 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   viddin.initCurses()
   status = dest + ":"
   if title:
-    status += " " + title
+    status += " " + str(title)
   if message:
     status += " " + colored(message, color, attrs=["bold", "blink"])
   if addtl:
@@ -141,22 +141,17 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
   
   start = end = None
   if not chapters is None:
-    if '-' in chapters:
-      chaps = chapters.split("-")
-    else:
-      chaps = [chapters, chapters]
-    chaptimes = source.loadChapters()
-    chaptimes.append(source.getTitleInfo(debugFlag=debugFlag).length)
-    start = chaptimes[int(chaps[0]) - 1]
-    end = chaptimes[int(chaps[1])]
+    start, end = source.startEndForChapters(chapters)
       
   for trk in ptracks:
-    tpath = source.extractTrack(dest.path, trk['number'], start, end, lang, debugFlag)
+    tpath = source.extractTrack(dest.path, int(trk['number']), start, end, lang, debugFlag)
     trk['file'] = tpath
 
   temp = viddin.uniqueFile(dest.path)
   cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest.path)
   for trk in ptracks:
+    if trk['file'] is None:
+      continue
     cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s" % (lang)
     if trk['title'] is not None:
       cmd += " --track-name 0:\"%s\"" % (trk['title']) # FIXME - what if title has quotes?
@@ -166,7 +161,8 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
   stat = viddin.runCommand(cmd)
 
   for trk in ptracks:
-    trk['file'].remove()
+    if trk['file'] is not None:
+      trk['file'].remove()
   if stat == 0:
     os.rename(temp, dest.path)
     return True
@@ -182,33 +178,60 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
     if len(subs) == 0:
       return
 
-    path, ext = os.path.splitext(dest.path)
-    spaths = []
-    longest = None
-    longest_len = None
-    subcount = 0
-    for sub in subs:
-      if 'DURATION' not in sub:
-        sub['DURATION'] = str(tinfo.length)
-      if sub['language'] == lang:
-        subcount += 1
-        sublen = viddin.decodeTimecode(sub['DURATION'])
-        if 'NUMBER_OF_FRAMES' in sub \
-            and (not longest or (sublen - longest_len) / longest_len > 0.10):
-          if longest_len:
-            print(sublen, longest_len, (sublen - longest_len) / longest_len)
-          longest = sub
-          longest_len = sublen
+    # Check for closed captioning
+    foundCC = False
+    if source.isDVD():
+      start = end = None
+      if not chapters is None:
+        start, end = source.startEndForChapters(chapters)
 
-    if longest is None:
-      longest = subs[0]
-    if subcount > 1:
-      outputStatus(dest.path, source.path, source.titleNumber, "WARNING", "yellow",
-                   "multiple matching subtitles. using %i" % (longest['rv_track_id']))
-      printSubs(subs, lang)
-    tracks = [str(longest['rv_track_id'])]
+      spath = source.extractDVDSubtitle(dest.path, None, start, end, lang, debugFlag)
+      sub_track = viddin.VideoSpec(spath)
+      tinfo = sub_track.getTitleInfo()
+      subs = tinfo.subtitles
+      for trk in subs:
+        if trk['language'] == lang and trk['codec'] == "SubStationAlpha":
+          foundCC = True
+          tracks = [trk['rv_track_id']]
+          source = viddin.VideoSpec(spath)
+          chapters = None
+          break
+      if not foundCC:
+        os.remove(spath)
 
-  mergeTracks(source, dest, tracks, chapters, lang, debugFlag)
+    if not foundCC:
+      path, ext = os.path.splitext(dest.path)
+      spaths = []
+      longest = None
+      longest_len = None
+      subcount = 0
+      for sub in subs:
+        if 'DURATION' not in sub:
+          sub['DURATION'] = str(tinfo.length)
+        if sub['language'] == lang:
+          subcount += 1
+          sublen = viddin.decodeTimecode(sub['DURATION'])
+          if 'NUMBER_OF_FRAMES' in sub \
+              and (not longest or (sublen - longest_len) / longest_len > 0.10):
+            if longest_len:
+              print(sublen, longest_len, (sublen - longest_len) / longest_len)
+            longest = sub
+            longest_len = sublen
+
+      if longest is None and (lang is None or subs[0]['language'] == lang):
+        longest = subs[0]
+      if longest is None:
+        print("NO LONGEST", lang, subs[0]['language'])
+        return
+      if subcount > 1:
+        outputStatus(dest.path, source.path, source.titleNumber, "WARNING", "yellow",
+                     "multiple matching subtitles. using %i" % (longest['rv_track_id']))
+        printSubs(subs, lang)
+      tracks = [longest['rv_track_id']]
+
+  if not mergeTracks(source, dest, tracks, chapters, lang, debugFlag):
+    print("Failed to merge")
+    exit(1)
   return
 
 def main():
@@ -378,7 +401,8 @@ def main():
 
   encodeBegin = time.time()
 
-  source = viddin.VideoSpec(path_source, args.title)
+  source = viddin.VideoSpec(path_source,
+                            int(args.title) if args.title is not None else args.title)
   dest = viddin.VideoSpec(path_dest, None)
   
   cmd = "HandBrakeCLI --encoder " + encoder
@@ -401,7 +425,7 @@ def main():
           exit(1)
         olen += tinfo.length
     else:
-      tinfo = source.getTitleInfo(args.title, debugFlag=args.debug)
+      tinfo = source.getTitleInfo(debugFlag=args.debug)
       if not tinfo is not None:
         print("Not found")
         exit(1)
@@ -418,8 +442,6 @@ def main():
       olen = viddin.decodeTimecode(args.stop_at)
     if args.start_at:
       olen -= viddin.decodeTimecode(args.start_at)
-      print("OLEN", olen, viddin.decodeTimecode(args.start_at),
-            viddin.decodeTimecode(args.stop_at))
       
     if os.path.exists(dest.path):
       alen = dest.getTitleInfo(debugFlag=args.debug).length
@@ -474,7 +496,9 @@ def main():
     lang = args.audio_lang
     if lang is None:
       lang = args.lang
-    mergeTracks(source, dest, args.commentary, args.chapters, lang, args.debug)
+    if not mergeTracks(source, dest, args.commentary, args.chapters, lang, args.debug):
+      print("Failed to merge")
+      exit(1)
           
   if args.restore_ntsc and os.path.exists(dest.path):
     cmd = "restore-ntsc \"%s\"" % (dest.path)

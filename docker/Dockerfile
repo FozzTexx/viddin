@@ -26,22 +26,22 @@ RUN apt-get update && apt-get install -y libfreetype6-dev libssl-dev
 COPY install-ffmpeg.sh ffmpeg.bundle /tmp/
 RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
 
-# Install tools viddin scripts need
-RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
-RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
-RUN pip3 install xmltodict termcolor tvdb_api
-
-RUN apt-get update && apt-get install -y lsdvd
-# # Install lsdvd from source because stock one is broken
-# COPY install-lsdvd.sh /tmp/
-# RUN /tmp/install-lsdvd.sh && rm /tmp/install-lsdvd.sh
-
 # Install makemkv
 RUN apt-get update && apt-get install -y qt5-default tesseract-ocr libtesseract-dev libavcodec-dev libavutil-dev
 COPY install-ccextractor.sh /tmp/
 RUN /tmp/install-ccextractor.sh && rm /tmp/install-ccextractor.sh
 COPY install-makemkv.sh /tmp/
 RUN /tmp/install-makemkv.sh && rm /tmp/install-makemkv.sh
+
+# Install tools viddin scripts need
+RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
+RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
+RUN pip3 install xmltodict termcolor tvdb_api==2.0
+
+RUN apt-get update && apt-get install -y lsdvd
+# # Install lsdvd from source because stock one is broken
+# COPY install-lsdvd.sh /tmp/
+# RUN /tmp/install-lsdvd.sh && rm /tmp/install-lsdvd.sh
 
 RUN apt-get update && apt-get install -y libterm-readkey-perl libwww-perl libdbi-perl libdbd-mysql-perl libgd-gd2-perl
 COPY install-tvrenamer.sh /tmp/

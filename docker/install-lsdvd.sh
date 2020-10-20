@@ -2,7 +2,7 @@
 BASE=$(basename $0)
 TMP=/tmp/${BASE}.$$
 
-set -x
+set -e
 
 mkdir ${TMP}
 cd ${TMP}

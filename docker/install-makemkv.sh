@@ -2,7 +2,7 @@
 BASE=$(basename $0)
 TMP=/tmp/${BASE}.$$
 
-set -x
+set -e
 
 echo "Finding current version"
 MAKEMKV_URL="http://www.makemkv.com/download/"

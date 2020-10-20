@@ -6,6 +6,10 @@ WORKSPACE=${WORKSPACE:-/workspace}
 ln -s sr0 /dev/dvd
 ln -s sr0 /dev/cdrom
 
+# Fixup cdrom group
+CDGID=$(stat -c '%g' /dev/sr0)
+groupmod -g ${CDGID} cdrom
+
 if [ -d "${WORKSPACE}" ] ; then
     WSUID=$(stat -c '%u' "${WORKSPACE}")
     WSGID=$(stat -c '%g' "${WORKSPACE}")

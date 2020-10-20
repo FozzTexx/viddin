@@ -17,7 +17,7 @@ RUN /tmp/install-pkg-config.sh && rm /tmp/install-pkg-config.sh
 # Install HandBrake
 RUN apt-get update && apt-get install -y libmp3lame-dev libopus-dev libspeex-dev libvpx-dev \
     libxml2-dev libjansson-dev libx264-dev libass-dev libvorbis-dev libsamplerate-dev \
-    libtheora-dev libbz2-dev liblzma-dev meson libnuma-dev
+    libtheora-dev libbz2-dev liblzma-dev meson libnuma-dev libturbojpeg0-dev
 COPY install-handbrake.sh HandBrake.bundle /tmp/
 RUN /tmp/install-handbrake.sh && rm /tmp/install-handbrake.sh && rm /tmp/HandBrake.bundle
 

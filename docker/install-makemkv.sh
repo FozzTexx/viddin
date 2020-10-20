@@ -2,6 +2,8 @@
 BASE=$(basename $0)
 TMP=/tmp/${BASE}.$$
 
+set -x
+
 echo "Finding current version"
 MAKEMKV_URL="http://www.makemkv.com/download/"
 MAKEMKV_CUR=$(wget --quiet -O - "${MAKEMKV_URL}" | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
@@ -25,17 +27,13 @@ tar xf makemkv-oss-${MAKEMKV_CUR}.tar.gz
 echo "Building makemkv"
 cd makemkv-oss-${MAKEMKV_CUR}
 ./configure && make && make install
-STATUS=$?
+
 cd ..
 
-if [ $STATUS = 0 ] ; then
-    cd makemkv-bin-${MAKEMKV_CUR}
-    mkdir -p tmp
-    echo accepted > tmp/eula_accepted
-    make && make install
-    STATUS=$?
-    cd ..
-fi
+cd makemkv-bin-${MAKEMKV_CUR}
+mkdir -p tmp
+echo accepted > tmp/eula_accepted
+make && make install
 
+cd 
 rm -rf ${TMP}
-exit $STATUS

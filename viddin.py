@@ -123,45 +123,49 @@ class viddin:
     return None
 
   @staticmethod
-  def runCommand(cmd):
-    viddin.initCurses()
-    width = os.get_terminal_size().columns
-    pos = 0
-    err = None
-    master, slave = pty.openpty()
+  def runCommand(cmd, debugFlag=False):
     do_shell = True
     if isinstance(cmd, (list, tuple)):
       do_shell = False
-    with subprocess.Popen(cmd, shell=do_shell, stdin=slave, stdout=slave, stderr=slave,
-                         close_fds=True) as p:
-      m = os.fdopen(master, "rb")
-      os.close(slave)
-      try:
-        while True:
-          c = list(m.read(1))[0]
-          if c > 127:
-            continue
-          if c == 27:
+
+    if debugFlag:
+      err = subprocess.call(cmd)
+    else:
+      viddin.initCurses()
+      width = os.get_terminal_size().columns
+      pos = 0
+      err = None
+      master, slave = pty.openpty()
+      with subprocess.Popen(cmd, shell=do_shell, stdin=slave, stdout=slave, stderr=slave,
+                           close_fds=True) as p:
+        m = os.fdopen(master, "rb")
+        os.close(slave)
+        try:
+          while True:
             c = list(m.read(1))[0]
-            if c == '[':
+            if c > 127:
+              continue
+            if c == 27:
               c = list(m.read(1))[0]
-              if c == 'K':
-                continue
-          if c == 10:
-            c = 13
-          if (c == 13 and pos > 0) or width == 0 or pos < width - 2:
-            if pos == 0:
-              sys.stdout.write(viddin.clearEOL)
-            sys.stdout.write(chr(c))
-            pos += 1
-            if c == 13:
-              pos = 0
-          sys.stdout.flush()
-      except OSError:
-        pass
-      os.close(master)
-      p.wait()
-      err = p.returncode
+              if c == '[':
+                c = list(m.read(1))[0]
+                if c == 'K':
+                  continue
+            if c == 10:
+              c = 13
+            if (c == 13 and pos > 0) or width == 0 or pos < width - 2:
+              if pos == 0:
+                sys.stdout.write(viddin.clearEOL)
+              sys.stdout.write(chr(c))
+              pos += 1
+              if c == 13:
+                pos = 0
+            sys.stdout.flush()
+        except OSError:
+          pass
+        os.close(master)
+        p.wait()
+        err = p.returncode
     return err
 
   @staticmethod
@@ -702,13 +706,13 @@ class viddin:
       info.length = tlen
       return info
 
-    def startEndForChapters(self, chapters):
+    def startEndForChapters(self, chapters, debugFlag=False):
       if '-' in chapters:
         chaps = chapters.split("-")
       else:
         chaps = [chapters, chapters]
       chaptimes = self.loadChapters()
-      chaptimes.append(source.getTitleInfo(debugFlag=debugFlag).length)
+      chaptimes.append(self.getTitleInfo(debugFlag=debugFlag).length)
       start = chaptimes[int(chaps[0]) - 1]
       end = chaptimes[int(chaps[1])]
       return start, end

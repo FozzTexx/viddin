@@ -37,6 +37,7 @@ def build_argparser():
   parser.add_argument("--outtype", help="force split to be this type")
   parser.add_argument("--quality", help="use this quality level when transcoding. Higher numbers are worse quality, default is 20")
   parser.add_argument("--trimend", help="Frames to remove from end")
+  parser.add_argument("--chapters", action="store_true", help="Split a video by chapters")
   parser.add_argument("--debug", action="store_true", help="Turn on debug output")
   return parser
 
@@ -57,13 +58,13 @@ def findNearest(pos, before):
         return frame
     prev = frame
     
-def splitVideo(range, input, output=None, trim=None, quality=None,
+def splitVideo(segrange, input, output=None, trim=None, quality=None,
                transcodeFlag=False, transcodeOptions=None, iframeFlag=False):
   video, ext = os.path.splitext(input)
 
   vlen = viddin.getLength(input)
-  if not range[1]:
-    range[1] = vlen
+  if not segrange[1]:
+    segrange[1] = vlen
 
   if not output:
     output = "%sc%s" % (video, ext)
@@ -78,8 +79,8 @@ def splitVideo(range, input, output=None, trim=None, quality=None,
   if os.path.exists(output):
     os.remove(output)
 
-  start = range[0]
-  end = range[1]
+  start = segrange[0]
+  end = segrange[1]
   if trim:
     end -= trim
 
@@ -164,6 +165,22 @@ def main():
       print("Unrecognized timecode " + offset)
       sys.exit(1)
 
+  if args.chapters:
+    vfile = viddin.VideoSpec(args.filename)
+    chapters = vfile.loadChapters()
+    chapters.sort()
+    if len(chapters) > 0 and chapters[0] < 2:
+      chapters[0] = 0
+    else:
+      chapters.insert(0, 0)
+    dedup = []
+    [dedup.append(x) for x in chapters if x not in dedup]
+    if dedup != chapters:
+      chapters = dedup
+    segments = []
+    for beg, end in zip(chapters, chapters[1:]):
+      segments.append([beg, end])
+    
   append = ""
   if len(segments) > 1 or not args.output:
     digits = int(math.floor(math.log(len(segments), 10)) + 1)
@@ -201,11 +218,11 @@ def main():
   if outtype == ".avi":
     outtype = ".mkv"
 
-  for range in segments:
+  for segrange in segments:
     output = ovid + append + outtype
     if len(append):
-      output = output % (segments.index(range) + 1)
-    splitVideo(range, args.filename, output, args.trimend, quality=args.quality,
+      output = output % (segments.index(segrange) + 1)
+    splitVideo(segrange, args.filename, output, args.trimend, quality=args.quality,
                transcodeFlag=args.transcode, transcodeOptions=args.transcode_flags,
                iframeFlag=args.iframes)
 

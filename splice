@@ -36,6 +36,8 @@ def build_argparser():
   parser.add_argument("dest", help="output file")
   parser.add_argument("--chapters", action="store_true",
                       help="add chapter markers at splice points")
+  parser.add_argument("--debug", action="store_true", help="print debug info")
+  parser.add_argument("--ffmpeg", action="store_true", help="use ffmpeg to concatenate")
   return parser
 
 def main():
@@ -65,28 +67,31 @@ def main():
       tmp, ext = os.path.splitext(vid)
       tmp += "_%i" % (args.files.index(vid)) + ext
       tmp = os.path.join(tmpdir, tmp)
-      cmd = "ffmpeg -i \"%s\" -vf scale=%i:%i -c copy -vcodec libx264 -map 0 %s" % \
-          (vid, dsize[0], dsize[1], tmp)
+      cmd = ["ffmpeg", "-i", vid,
+             "-vf", "scale=%i:%i" % (dsize[0], dsize[1]),
+             "-c", "copy", "-vcodec", "libx264", "-map", "0", tmp];
       print(cmd)
-      viddin.runCommand(cmd)
+      viddin.runCommand(cmd, args.debug)
       inputs.append(tmp)
 
-  # mergetxt = os.path.join(tmpdir, "merge.txt")
-  # f = open(mergetxt, "w")
-  # for vid in inputs:
-  #   f.write("file '%s'\n" % (vid))
-  # f.close()
-  # cmd = "ffmpeg -f concat -i %s -c copy \"%s\"" % (mergetxt, args.dest)
-
-  cmd = "mkvmerge -o \"%s\"" % (args.dest)
-  for vid in inputs:
-    idx = inputs.index(vid)
-    if idx:
-      cmd += " +"
-    cmd += " \"%s\"" % (vid)
+  if args.ffmpeg:
+    mergetxt = os.path.join(tmpdir, "merge.txt")
+    f = open(mergetxt, "w")
+    for vid in inputs:
+      f.write("file '%s'\n" % (vid))
+    f.close()
+    cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", mergetxt,
+           "-c", "copy", args.dest]
+  else:
+    cmd = ["mkvmerge", "-o", args.dest]
+    for vid in inputs:
+      idx = inputs.index(vid)
+      if idx:
+        cmd.append("+")
+      cmd.append(vid)
 
   print(cmd)
-  viddin.runCommand(cmd)
+  viddin.runCommand(cmd, args.debug)
 
   shutil.rmtree(tmpdir)
 

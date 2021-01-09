@@ -38,7 +38,7 @@ RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo m
 RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
 RUN pip3 install xmltodict termcolor tvdb_api==2.0
 
-RUN apt-get update && apt-get install -y lsdvd
+RUN apt-get update && apt-get install -y lsdvd setcd
 # # Install lsdvd from source because stock one is broken
 # COPY install-lsdvd.sh /tmp/
 # RUN /tmp/install-lsdvd.sh && rm /tmp/install-lsdvd.sh

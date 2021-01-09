@@ -25,7 +25,7 @@ tar xf makemkv-bin-${MAKEMKV_CUR}.tar.gz
 tar xf makemkv-oss-${MAKEMKV_CUR}.tar.gz
 
 echo "Building makemkv"
-cd makemkv-oss-${MAKEMKV_CUR}
+cd makemkv-oss-*/
 ./configure && make && make install
 
 cd ..

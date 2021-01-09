@@ -257,7 +257,7 @@ class viddin:
       self.tracks.extend(self.audio)
       self.tracks.extend(self.subtitles)
 
-      if 'rv_track_id' in self.tracks[0]:
+      if len(self.tracks) and 'rv_track_id' in self.tracks[0]:
         self.audio.sort(key=lambda x:x['rv_track_id'])
         self.subtitles.sort(key=lambda x:x['rv_track_id'])
         self.video.sort(key=lambda x:x['rv_track_id'])

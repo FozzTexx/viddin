@@ -11,5 +11,7 @@ git clone https://github.com/CCExtractor/ccextractor.git
 cd ccextractor/linux
 ./build
 
+cp ccextractor /usr/bin
+
 cd
 rm -rf ${TMP}

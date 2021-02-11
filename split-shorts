@@ -255,7 +255,7 @@ def main():
   if os.path.isfile(args.series):
     series = viddin.loadEpisodeInfoCSV(args.series)
   else:
-    series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=args.dvdignore,
+    series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=False,
                                         dvdMissing=args.dvdmissing, quietFlag=args.quiet)
   episodes = viddin.EpisodeList(series, "dvdSeason", "dvdEpisode")
 

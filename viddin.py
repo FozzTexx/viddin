@@ -363,15 +363,15 @@ class viddin:
         episode = episode[0]
       return self.episodes.index(episode)
 
-    def episodeNumbers(self):
+    def episodeNumbers(self, split=False):
       eps = []
       for e in self.episodes:
-        eid = self.formatEpisodeID(e, self.seasonKey, self.episodeKey)
+        eid = self.formatEpisodeID(e, self.seasonKey, self.episodeKey, fractional=split)
         if eid not in eps:
           eps.append(eid)
       return eps
       
-    def formatEpisodeID(self, episode, skey=None, ekey=None):
+    def formatEpisodeID(self, episode, skey=None, ekey=None, fractional=False):
       num = 0
       if not skey:
         skey = self.seasonKey
@@ -392,7 +392,10 @@ class viddin:
       if digits < 2:
         digits = 2
       epid = "%%ix%%0%ii" % digits
-      return epid % (season, epnum)
+      eid_str = epid % (season, epnum)
+      if fractional:
+        eid_str += ".%i" % (epnum * 10 - int(epnum) * 10)
+      return eid_str
 
     def findVideo(self, episode):
       guess = "\\b" + self.formatEpisodeID(episode.dvdSeason, episode.dvdEpisode) + "\\b"
@@ -404,7 +407,7 @@ class viddin:
         return videos[indices[0]]
       return None
 
-    def findEpisode(self, epid, order=None):
+    def findEpisode(self, epid, order=None, fractional=False):
       if type(epid) is int:
         if order == viddin.ORDER_DVD:
           epid = self.formatEpisodeID(self.episodes[epid], "dvdSeason", "dvdEpisode")
@@ -418,9 +421,12 @@ class viddin:
       dvdnum = re.split(" *x *", epid)
       dvdseason = int(re.sub("[^0-9]*", "", dvdnum[0]));
       dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
+      if fractional:
+        dvdepisode = float(re.sub("[^0-9.]*", "", dvdnum[1]));
       for row in self.episodes:
         if dvdseason == getattr(row, self.seasonKey) \
-              and dvdepisode == int(getattr(row, self.episodeKey)):
+              and (dvdepisode == int(getattr(row, self.episodeKey))
+                   or (fractional and dvdepisode == getattr(row, self.episodeKey))):
           if not episode:
             episode = []
           episode.append(row)

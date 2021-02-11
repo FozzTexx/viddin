@@ -347,7 +347,7 @@ class viddin:
       self.airDate = airDate
       return
 
-    def description(self):
+    def __repr__(self):
       return "%i %i %i %0.1f %s %s" % (self.airedSeason, self.airedEpisode, self.dvdSeason,
                                        self.dvdEpisode, self.title, self.airDate)
 

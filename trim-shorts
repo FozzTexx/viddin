@@ -27,17 +27,6 @@ import math
 import csv
 import mimetypes
 
-EPID = 0
-DVDSEASON = 1
-DVDEPISODE = 2
-TITLE = 3
-ORIGDATE = 4
-
-CSV_EPISODE = 0
-CSV_DVDEP = 1
-CSV_ORIGDATE = 2
-CSV_TITLE = 3
-
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from viddin import viddin
 
@@ -49,6 +38,7 @@ def build_argparser():
   parser.add_argument("--dvdignore", action="store_true", help="ignore dvd episode data")
   parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
   parser.add_argument("--transcode", action="store_true", help="Transcode instead of cut")
+  parser.add_argument("--transcode-flags", help="extra flags to pass to transcoder")
   parser.add_argument("--first", default=1, help="Start enumeration at this number")
   parser.add_argument("--minsize", help="Ignore videos smaller than this")
   parser.add_argument("--iframes", action="store_true", help="Split at nearest iframe")
@@ -57,16 +47,12 @@ def build_argparser():
   parser.add_argument("--debug", action="store_true", help="Turn on debug output")
   return parser
 
-def bestMatch(offset, filename):
+def bestMatch(offset, filename, debugFlag=False):
   video, ext = os.path.splitext(filename)
-  if args.debug:
+  if debugFlag:
     print("Finding offset", offset)
   if offset < 0:
-    cmd = "vidinf \"%s\" | grep ID_LENGTH | sed -e 's/ID_LENGTH=//'" % filename
-    process = os.popen(cmd)
-    len = float(process.read())
-    process.close()
-    offset = len + offset
+    offset = viddin.getLength(filename) + offset
     
   best = None
   with open(video + ".blk") as f:
@@ -93,7 +79,7 @@ def bestMatch(offset, filename):
         bestsil = [diff, seconds, begin, end]
 
   if bestsil:
-    if args.debug:
+    if debugFlag:
       print("Silence: ", bestsil[2], bestsil[3], best[2], best[3])
     begin = bestsil[2]
     if begin < best[2]:
@@ -102,29 +88,13 @@ def bestMatch(offset, filename):
     if end > best[3]:
       end = best[3]
     split = begin + (end - begin) / 2
-    if args.debug:
+    if debugFlag:
       print("Splitting at ", split)
     return split
 
   if args.debug:
     print("Black: ", best)
   return best[1]
-
-def episodeTitle(episode):
-  title = re.sub("[:/]", "-", re.sub("[.!?]$", "", episode[TITLE]))
-  eptitle = "%s %s%s" % (episode[EPID], title, ext)
-  return eptitle
-  
-def findEpisode(epid):
-  if args.debug:
-    print(epid)
-  if type(epid) is int:
-    return dvdorder[epid]
-  
-  for row in dvdorder:
-    if epid == row[EPID]:
-      return row
-  return None
 
 def main():
   args = build_argparser().parse_args()
@@ -139,7 +109,7 @@ def main():
     series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=args.dvdignore,
                                         dvdMissing=args.dvdmissing)
 
-  dvdorder = sorted(series, key=itemgetter(1, 2))
+  dvdorder = viddin.EpisodeList(series, "dvdSeason", "dvdEpisode")
 
   if len(series):
     videos = [file for file in glob.glob("[0-9]x[0-9][0-9].mkv")]
@@ -162,12 +132,13 @@ def main():
   if viddin.isint(args.first):
     first = int(args.first)
   else:
-    episode = findEpisode(args.first)
-    first = dvdorder.index(episode) + 1
+    episode = dvdorder.findEpisode(args.first)
+    first = dvdorder.indexOf(episode) + 1
+    print(episode)
 
   # FIXME - do merging of multi chapter segments
   epnum = 0
-  for i in xrange(0, len(videos)):
+  for i in range(0, len(videos)):
     oindex = epnum % len(args.offsets)
     filename = videos[i]
     if minsize:
@@ -181,17 +152,17 @@ def main():
     epid = video
     if args.enumerate:
       epid = epnum + first - 1
-    episode = findEpisode(epid)
+    episode = dvdorder.findEpisode(epid)
     if args.debug:
       print(episode)
 
     if episode:
-      eptitle = episodeTitle(episode)
+      eptitle = "%s %s%s" % (dvdorder.formatEpisodeID(episode), episode.title, ext)
     else:
       eptitle = video + "_1" + ext
 
     if not args.skipexisting or not os.path.exists(eptitle):
-      olen = int(args.offsets[oindex])
+      olen = viddin.decodeTimecode(args.offsets[oindex])
       if olen:
         viddin.findBlack(filename)
         viddin.findSilence(filename)
@@ -205,6 +176,8 @@ def main():
           cmd += " --iframes"
         if args.transcode:
           cmd += " --transcode"
+        if args.transcode_flags:
+          cmd += ' --transcode-flags="' + args.transcode_flags + '"'
         if args.trimend:
           cmd += " --trimend " + args.trimend
         cmd += " \"%s\" %s" % (filename, offset)

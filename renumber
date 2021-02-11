@@ -17,14 +17,13 @@ def main():
   season = int(start[0])
   episode = int(start[1])
 
-  videos = args.files
-  videos.sort()
+  orig_name = args.files
 
-  rename = []
+  new_name = []
   skip = 1
   if args.skip:
     skip = args.skip
-  for idx, old_file in enumerate(videos):
+  for idx, old_file in enumerate(orig_name):
     path = os.path.dirname(old_file)
     base = os.path.basename(old_file)
     if idx % skip != 0:
@@ -32,16 +31,46 @@ def main():
     _, ext = os.path.splitext(base)
     new_file = "%ix%02i" % (season, episode + idx / skip) + ext
     new_path = os.path.join(path, new_file)
-    rename.append(new_path)
+    new_name.append(new_path)
 
-  # FIXME - sort files magically so they don't collide
-  for old_path, new_path in zip(videos, rename):
-    if not os.path.exists(new_path):
-      if not args.dryrun:
-        os.rename(old_path, new_path)
-      print("Renamed " + old_path + " to " + new_path)
-    else:
-      print("ALREADY EXISTS", new_path)
+  # Don't try to rename anything that ended up with the same name
+  old_to_new = list(zip(orig_name, new_name))
+  for row in old_to_new:
+    if row[0] == row[1]:
+      orig_name.remove(row[0])
+      new_name.remove(row[1])
+
+  old_to_new = list(zip(orig_name, new_name))
+  old_set = set(orig_name)
+  new_set = set(new_name)
+
+  if len(old_to_new) > 0:
+    ordered = []
+    while True:
+      no_collision = list(new_set - old_set)
+      if len(no_collision) == 0:
+        print("Naming conflict")
+        return 1
+      no_collision.sort()
+      will_rename = []
+      for p in no_collision:
+        for o in old_to_new:
+          if p == o[1]:
+            will_rename.append(o)
+      old_to_new = [i for i in old_to_new if i not in will_rename]
+      ordered.extend(will_rename)
+      old_set.difference_update(set([i[0] for i in will_rename]))
+      new_set.difference_update(set([i[1] for i in will_rename]))
+      if len(old_to_new) == 0:
+        break
+
+    for old_path, new_path in ordered:
+      if not os.path.exists(new_path):
+        if not args.dryrun:
+          os.rename(old_path, new_path)
+        print("Renamed " + old_path + " to " + new_path)
+      else:
+        print("ALREADY EXISTS", new_path)
   
   return
 

@@ -34,7 +34,7 @@ COPY install-makemkv.sh /tmp/
 RUN /tmp/install-makemkv.sh && rm /tmp/install-makemkv.sh
 
 # Install tools viddin scripts need
-RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo mplayer bc
+RUN apt-get update && apt-get install -y libdvdcss2 mkvtoolnix eject mediainfo mplayer bc sox
 RUN setsid sh -c "yes | dpkg-reconfigure libdvd-pkg"
 RUN pip3 install xmltodict termcolor tvdb_api==2.0
 

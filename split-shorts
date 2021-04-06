@@ -76,10 +76,10 @@ def build_argparser():
   parser.add_argument("--split", action="store_true", help="Split and rename instead of printing")
   parser.add_argument("--transcode-flags", help="extra flags to pass to transcoder")
   parser.add_argument("--notranscode", action="store_true", help="Split video without transcoding")
-  parser.add_argument("--chaptersonly", action="store_true", help="Only look for shorts at chapter markers")
+  parser.add_argument("--chapters-only", action="store_true", help="Only look for shorts at chapter markers")
   parser.add_argument("--keepcredits", action="store_true", help="When splitting create files for opening titles and end credits")
   parser.add_argument("--endonly", action="store_true", help="Quickies only occur at the end of chapter")
-  parser.add_argument("--crosschapters", action="store_true", help="Shorts can cross chapter markers")
+  parser.add_argument("--cross-chapters", action="store_true", help="Shorts can cross chapter markers")
   parser.add_argument("--debug", action="store_true", help="Turn on debug output")
   return parser
 
@@ -281,7 +281,7 @@ def main():
     vlen = viddin.getLength(filename)
 
     chapters = getChapters(filename, vlen, args.split)
-    chaponly = len(chapters) and args.chaptersonly
+    chaponly = len(chapters) and args.chapters_only
 
     if not isinstance(episode, list):
       exit(0)
@@ -413,7 +413,7 @@ def main():
     # If there are chapter markers then quickies/shorts will be at each one
     if len(chapters):
       for seg in segments:
-        if (seg.segChap != None and not args.crosschapters) or segments.index(seg) == 0:
+        if (seg.segChap != None and not args.cross_chapters) or segments.index(seg) == 0:
           if seg.segType == TYPE_TITLE:
             if args.debug:
               print("UNTITLE")
@@ -500,7 +500,7 @@ def main():
     for segment in segments:
       if segment.segChap and segment.segType != TYPE_SHORT and \
             segment.segType != TYPE_QUICKIE and segment.segType != TYPE_TITLE \
-            and segment.segType != TYPE_CREDITS and not args.crosschapters:
+            and segment.segType != TYPE_CREDITS and not args.cross_chapters:
         if args.debug:
           print("NOSHORT", segment)
         nextc = segments[segments.index(segment)]
@@ -535,7 +535,7 @@ def main():
             if nextc:
               if args.debug:
                 print("WANT DOWN", args.minlength / 2, args.minlength - slen)
-              if not nextc.segChap or args.crosschapters:
+              if not nextc.segChap or args.cross_chapters:
                 if args.debug:
                   print("MERGING DOWN")
                 nlen = segmentLength(nextc, segments)
@@ -543,7 +543,7 @@ def main():
                   segment.segType = nextc.segType
                 nextc.segType = TYPE_PREV
                 i -= 1
-            elif not segment.segChap or args.crosschapters:
+            elif not segment.segChap or args.cross_chapters:
               if args.debug:
                 print("SHIFTING UP")
               prevc.segType = TYPE_SHORT
@@ -559,7 +559,7 @@ def main():
               if nextc:
                 nlen = segmentLength(nextc, segments)
               if nlen and plen and nlen < plen and nextc.segType == TYPE_SHORT \
-                 and (not nextc.segChap or args.crosschapters):
+                 and (not nextc.segChap or args.cross_chapters):
                 if abs((plen + segment.length) - (slen - segment.length + nlen)) < 4 \
                    or nextc.segChap:
                   if args.debug:
@@ -669,6 +669,9 @@ def main():
             cmd += ' --transcode-flags="' + args.transcode_flags + '"'
           print(cmd)
           os.system(cmd)
+          if not os.path.exists(temp):
+            print("Failed to split")
+            return 1
           cmd = "adjust-volume --volume -8 \"%s\" \"%s\" > /dev/null 2>&1" % (temp, eptitle)
           print(cmd)
           os.system(cmd)

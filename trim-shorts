@@ -163,6 +163,8 @@ def main():
 
     if not args.skipexisting or not os.path.exists(eptitle):
       olen = viddin.decodeTimecode(args.offsets[oindex])
+
+      offset = None
       if olen:
         viddin.findBlack(filename)
         viddin.findSilence(filename)
@@ -171,19 +173,33 @@ def main():
         if olen < 0:
           offset = "0-"
         offset += str(split)
-        cmd = "split-video"
-        if args.iframes:
-          cmd += " --iframes"
-        if args.transcode:
-          cmd += " --transcode"
-        if args.transcode_flags:
-          cmd += ' --transcode-flags="' + args.transcode_flags + '"'
-        if args.trimend:
-          cmd += " --trimend " + args.trimend
-        cmd += " \"%s\" %s" % (filename, offset)
-        os.system(cmd)
-        filename = video + "_1" + ext
-        os.rename(filename, eptitle)
+
+      output = video + "_1" + ext
+
+      if offset is not None or args.transcode:
+        if offset is not None:
+          cmd = ["split-video"]
+          if args.iframes:
+            cmd.append("--iframes")
+          if args.transcode:
+            cmd.append("--transcode")
+          if args.transcode_flags:
+            cmd.append('--transcode-flags="' + args.transcode_flags + '"')
+          if args.trimend:
+            cmd.extend(["--trimend", args.trimend])
+        else:
+          cmd = ["rip-video"]
+          if args.transcode_flags:
+            cmd.extend(args.transcode_flags.split())
+        cmd.append(filename)
+        if offset is not None:
+          cmd.append(offset)
+        else:
+          cmd.append(output)
+
+        viddin.runCommand(cmd, args.debug)
+        os.rename(output, eptitle)
+        os.remove(video + "_1.log")
       else:
         if os.path.exists(eptitle):
           os.remove(eptitle)

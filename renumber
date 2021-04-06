@@ -53,10 +53,10 @@ def main():
         return 1
       no_collision.sort()
       will_rename = []
-      for p in no_collision:
-        for o in old_to_new:
-          if p == o[1]:
-            will_rename.append(o)
+      p = no_collision[0]
+      for o in old_to_new:
+        if p == o[1]:
+          will_rename.append(o)
       old_to_new = [i for i in old_to_new if i not in will_rename]
       ordered.extend(will_rename)
       old_set.difference_update(set([i[0] for i in will_rename]))

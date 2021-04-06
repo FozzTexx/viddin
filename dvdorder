@@ -114,6 +114,9 @@ def main():
           first = idx + 1
           break
 
+    # FIXME - use magic from renumber to order renaming in best
+    # possible way to avoid conflicts with other files that will be
+    # renamed.
     for filename in videos:
       if minsize:
         size = os.path.getsize(filename)

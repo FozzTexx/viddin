@@ -180,15 +180,20 @@ def main():
     segments = []
     for beg, end in zip(chapters, chapters[1:]):
       segments.append([beg, end])
-    
+
+  if len(segments) < 1:
+    print("Nothing to do")
+    return
+  
   append = ""
-  if len(segments) > 1 or not args.output:
-    digits = int(math.floor(math.log(len(segments), 10)) + 1)
-    append = "_%%0%ii" % digits
+
+  digits = int(math.floor(math.log(len(segments), 10)) + 1)
+  append = "_%%0%ii" % digits
 
   video, ext = os.path.splitext(args.filename)
   if args.output:
     ovid, oext = os.path.splitext(args.output)
+    append = ""
   else:
     ovid = video
     oext = ext

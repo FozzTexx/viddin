@@ -101,7 +101,12 @@ linqir Mitsubishi/0xea28
 
 # Merge all the split dv files
 pv dv* > ${BASE}.dv
-rm dv*
-mv ${BASE}.dv ..
-cd ..
-rmdir ${BASE}
+STATUS=$?
+if [ $STATUS = 0 ] ; then
+    rm dv*
+    mv ${BASE}.dv ..
+    cd ..
+    rmdir ${BASE}
+else
+    rm ${BASE}.dv
+fi

@@ -84,6 +84,7 @@ def build_argparser():
   parser.add_argument("--subtitle", action="append", help="additional subtitle track to add")
   parser.add_argument("--commentary", action="append",
                       help="audio track with commentary to include")
+  parser.add_argument("--mpdecimate", action="store_true", help="use ffmpeg to remove duplicate frames")
   return parser
 
 def printSubs(subs, lang):
@@ -246,7 +247,7 @@ def main():
   add_autosubs = False
 
   if args.animation:
-    flags.extend(["-r", "23.976", "--x264-tune", "animation", "--detelecine", "--decomb"])
+    flags.extend(["-r", "23.976", "--x264-tune", "animation", "--detelecine"])
     add_autosubs = True
 
   if args.pal_animation:
@@ -258,11 +259,12 @@ def main():
     add_autosubs = True
 
   if args.film:
-    flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
+    #flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine", "--decomb"])
+    flags.extend(["-r", "23.976", "--x264-tune", "film", "--detelecine"])
     add_autosubs = True
 
   if args.pal_film:
-    flags.extend(["--x264-tune", "film", "--detelecine", "--decomb"])
+    flags.extend(["--x264-tune", "film", "--decomb", "-r", "25"])
 
   if args.tv:
     flags.extend(["--detelecine", "--decomb"])
@@ -408,6 +410,8 @@ def main():
   source = viddin.VideoSpec(path_source,
                             int(args.title) if args.title is not None else args.title)
   dest = viddin.VideoSpec(path_dest, None)
+
+  os.environ['AV_LOG_FORCE_NOCOLOR'] = "1"
   
   cmd = "HandBrakeCLI --encoder " + encoder
   cmd += " " + " ".join(flags)
@@ -512,6 +516,13 @@ def main():
     path, ext = os.path.splitext(dest.path)
     os.rename(path + "-NTSC" + ext, dest.path)
 
+  if args.mpdecimate and os.path.exists(dest.path):
+    tmp, ext = os.path.splitext(dest.path)
+    tmp += "_mpd" + ext
+    cmd = ["ffmpeg", "-i", dest.path, "-vf", "mpdecimate", "-vsync", "vfr", tmp]
+    viddin.runCommand(cmd)
+    os.rename(tmp, dest.path)
+    
   sys.stdout.flush()
   alen = dest.getTitleInfo(debugFlag=args.debug).length
 

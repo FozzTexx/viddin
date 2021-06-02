@@ -125,7 +125,7 @@ def main():
   subpath, _ = os.path.splitext(os.path.basename(path))
   subpath = os.path.join(tempdir, subpath)
   outpath += "-NTSC" + ext
-  cmd = "mkvmerge -o \"%s\" -A -S \"%s\" \"%s\"" % (outpath, vtemp, atemp)
+  cmd = "mkvmerge -o \"%s\" --no-audio --no-subtitles \"%s\" \"%s\"" % (outpath, vtemp, atemp)
   if len(tinfo.subtitles):
     for track in tinfo.subtitles:
       cmd += " --default-track 0:%i --forced-track 0:%i --language 0:%s \"%s\"" \

@@ -66,7 +66,12 @@ def main():
   if len(args.offsets):
     expected = []
     for offset in args.offsets:
-      expected.append(viddin.decodeTimecode(offset))
+      cidx = offset.find("=")
+      cname = None
+      if cidx > 0:
+        cname = offset[cidx+1:]
+        pos = offset[:cidx]
+      expected.append(viddin.Chapter(viddin.decodeTimecode(pos), cname))
 
   splits = []
   for row in black:
@@ -86,24 +91,39 @@ def main():
       boffset = None
       for row in splits:
         if row >= 0 or args.force:
-          diff = abs(offset - abs(row))
+          diff = abs(offset.position - abs(row))
           if not boffset or diff < bdiff:
             bdiff = diff
             boffset = abs(row)
       if boffset and bdiff < args.distance and boffset not in chapters:
-        chapters.append(boffset)
+        chapters.append(viddin.Chapter(boffset, cname))
         doEdit = True
 
     if doEdit:
       chapters.sort()
-      if len(chapters) > 0 and chapters[0] < 2:
-        chapters[0] = 0
+
+      named = []
+      for idx, chp in enumerate(chapters):
+        if chp.name is None:
+          chp = viddin.Chapter(chp.position, "Chapter %i" % (idx + 1))
+        named.append(chp)
+      chapters = named
+      
+      if len(chapters) > 0 and chapters[0].position < 2:
+        chapters[0] = viddin.Chapter(0, chapters[0].name)
       else:
-        chapters.insert(0, 0)
+        chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
+
       dedup = []
-      [dedup.append(x) for x in chapters if x not in dedup]
-      if dedup != chapters:
-        chapters = dedup
+      [dedup.append(x.position) for x in chapters if x not in dedup]
+      if len(dedup) != len(chapters):
+        cleaned = []
+        for chp in chapters:
+          if chp.position in dedup:
+            cleaned.append(chp)
+            dedup.remove(chp.position)
+        chapters = cleaned
+
       vfile.writeChapters(chapters)
   else:
     for row in splits:

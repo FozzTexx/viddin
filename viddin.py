@@ -31,6 +31,7 @@ import curses
 import stat
 import io
 from dvdlang import dvdLangISO
+from collections import namedtuple
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
@@ -38,6 +39,8 @@ class viddin:
   ORDER_AIRED = 1
   ORDER_DVD = 2
   ORDER_ABSOLUTE = 3
+
+  Chapter = namedtuple("Chapter", ["position", "name"])
   
   didCursesInit = False
   @staticmethod
@@ -734,12 +737,19 @@ class viddin:
           offset += c['length']
           chapters.append(offset)
       else:
-        with os.popen("ffmpeg -i \"" + self.path
-                      + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
-          for line in f:
-            fields = line.split()
-            begin = float(re.sub(",", "", fields[3]))
-            chapters.append(begin)
+        cmd = ["ffprobe", "-i", self.path, "-print_format", "json", "-show_chapters"]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL)
+        pstr = process.stdout.read()
+        process.stdout.close()
+        jinfo = json.loads(pstr)
+
+        for idx, chp in enumerate(jinfo['chapters']):
+          begin = float(chp['start_time'])
+          name = "Chapter %i" % (idx + 1)
+          if 'tags' in chp and 'title' in chp['tags']:
+            name = chp['tags']['title']
+          chapters.append(viddin.Chapter(begin, name))
       return chapters
 
     def writeChapters(self, chapters):
@@ -747,10 +757,15 @@ class viddin:
       if ext == ".mkv":
         cfile, cfname = tempfile.mkstemp()
         for idx in range(len(chapters)):
-          os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1,
-                                                      viddin.formatChapter(chapters[idx])),
+          if isinstance(chapters[idx], (int, float)):
+            pos = chapters[idx]
+            name = "Chapter %i" % (idx + 1)
+          else:
+            pos = chapters[idx].position
+            name = chapters[idx].name
+          os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1, viddin.formatChapter(pos)),
                                 'UTF-8'))
-          os.write(cfile, bytes("CHAPTER%02iNAME=Chapter %i\n" % (idx + 1, idx + 1), 'UTF-8'))
+          os.write(cfile, bytes("CHAPTER%02iNAME=%s\n" % (idx + 1, name), 'UTF-8'))
         os.close(cfile)
 
         cmd = "mkvpropedit -c %s \"%s\"" % (cfname, self.path.replace("\"", "\\\""))
@@ -764,12 +779,21 @@ class viddin:
             chapters.append(vlen)
           cfile, cfname = tempfile.mkstemp()
           os.write(cfile, bytes(";FFMETADATA1\n", 'UTF-8'))
-          for i in range(len(chapters) - 1):
+          for idx in range(len(chapters) - 1):
+            if isinstance(chapters[idx], (int, float)):
+              pos = chapters[idx]
+              npos = chapters[idx+1]
+              name = "Chapter %i" % (idx + 1)
+            else:
+              pos = chapters[idx].position
+              npos = chapters[idx+1].position
+              name = chapters[idx].name
+
             os.write(cfile, bytes("[CHAPTER]\n", 'UTF-8'))
             os.write(cfile, bytes("TIMEBASE=1/1000\n", 'UTF-8'))
-            os.write(cfile, bytes("START=%i\n" % (int(chapters[i] * 1000)), 'UTF-8'))
-            os.write(cfile, bytes("END=%i\n" % (int(chapters[i + 1] * 1000)), 'UTF-8'))
-            os.write(cfile, bytes("title=Chapter %i\n" % (i + 1), 'UTF-8'))
+            os.write(cfile, bytes("START=%i\n" % (int(pos * 1000)), 'UTF-8'))
+            os.write(cfile, bytes("END=%i\n" % (int(npos * 1000)), 'UTF-8'))
+            os.write(cfile, bytes("title=%s\n" % (name), 'UTF-8'))
           os.close(cfile)
 
           dpath = os.path.dirname(self.path)

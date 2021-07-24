@@ -34,6 +34,7 @@ def build_argparser():
   parser.add_argument("--chapters", help="File containing list of chapters to replace existing markers")
   parser.add_argument("--add", nargs="+", help="Positions to add as chapters")
   parser.add_argument("--delete", nargs="+", help="Chapters to delete")
+  parser.add_argument("--rename", nargs="+", help="Chapters to rename")
   return parser
 
 def main():
@@ -50,41 +51,72 @@ def main():
 
   if not args.add is None:
     for pos in args.add:
-      chapters.append(viddin.decodeTimecode(pos))
+      cidx = pos.find("=")
+      cname = None
+      if cidx > 0:
+        cname = pos[cidx+1:]
+        pos = pos[:cidx]
+      pos = viddin.decodeTimecode(pos)
+      chapters.append(viddin.Chapter(pos, cname))
     chapters.sort()
+    named = []
+    for idx, chp in enumerate(chapters):
+      if chp.name is None:
+        chp = viddin.Chapter(chp.position, "Chapter %i" % (idx + 1))
+      named.append(chp)
+    chapters = named
     doEdit = True
 
   if not args.delete is None:
     for pos in args.delete:
       offset = viddin.decodeTimecode(pos)
       for chap in chapters:
-        if abs(chap - offset) < 2:
+        if abs(chap.position - offset) < 2:
           chapters.remove(chap)
           doEdit = True
           break
 
+  if not args.rename is None:
+    for chp in args.rename:
+      cidx = chp.find("=")
+      if cidx < 0:
+        print("Unknown chapter format: \"%s\"" % (chp), file=sys.stderr)
+        exit(1)
+      idx = int(chp[:cidx])
+      name = chp[cidx+1:]
+      if idx < 0 or idx >= len(chapters):
+        print("Invalid chapter index: \"%s\"" % (chp), file=sys.stderr)
+        exit(1)
+      chapters[idx] = viddin.Chapter(chapters[idx].position, name)
+      doEdit = True
+      
   if args.multiplier:
     for idx in range(len(chapters)):
       chapters[idx] *= args.multiplier
     doEdit = True
 
   for idx in range(len(chapters) - 2, -1, -1):
-    chap = chapters[idx]
-    nchap = chapters[idx+1]
+    chap = chapters[idx].position
+    nchap = chapters[idx+1].position
     if abs(chap - nchap) < 1:
       chapters[idx:idx+1] = []
 
   if args.fix or doEdit:
     chapters.sort()
-    if len(chapters) > 0 and chapters[0] < 2:
-      chapters[0] = 0
+    if len(chapters) > 0 and chapters[0].position < 2:
+      chapters[0] = viddin.Chapter(0, chapters[0].name)
     else:
-      chapters.insert(0, 0)
+      chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
 
     dedup = []
-    [dedup.append(x) for x in chapters if x not in dedup]
-    if dedup != chapters:
-      chapters = dedup
+    [dedup.append(x.position) for x in chapters if x not in dedup]
+    if len(dedup) != len(chapters):
+      cleaned = []
+      for chp in chapters:
+        if chp.position in dedup:
+          cleaned.append(chp)
+          dedup.remove(chp.position)
+      chapters = cleaned
 
     doEdit = True
   
@@ -95,7 +127,7 @@ def main():
     if len(chapters) == 0:
       print("No chapter markers")
     for i in range(len(chapters)):
-      print("Chapter %i\t%s" % (i + 1, viddin.formatChapter(chapters[i])))
+      print("%s\t%s" % (chapters[i].name, viddin.formatChapter(chapters[i].position)))
 
   return
 

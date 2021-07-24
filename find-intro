@@ -68,15 +68,15 @@ def findCredits(filename, pattern, addFlag):
       print("Setting opening for %s to %0.3f" % (filename, pos))
       chapters = vfile.loadChapters()
       nc = len(chapters)
-      chapters.append(pos)
-      chapters.sort()
-      if len(chapters) > 0 and chapters[0] < 2:
-        chapters[0] = 0
+      chapters.append(viddin.Chapter(pos, None))
+      chapters = sorted(chapters, key=lambda k: k.position)
+      if len(chapters) > 0 and chapters[0].position < 2:
+        chapters[0] = viddin.Chapter(0, chapters[0].name)
       else:
-        chapters.insert(0, 0)
+        chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
       for idx in range(len(chapters) - 2, -1, -1):
-        chap = chapters[idx]
-        nchap = chapters[idx+1]
+        chap = chapters[idx].position
+        nchap = chapters[idx+1].position
         if abs(chap - nchap) < 1:
           chapters[idx:idx+1] = []
       if nc == len(chapters):

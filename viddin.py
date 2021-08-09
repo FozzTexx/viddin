@@ -65,9 +65,10 @@ class viddin:
 
   @staticmethod
   def decodeTimecode(tc):
+    tc = tc.replace(',', '.')
     fraction = 0
-    if re.match(".*[.,][0-9]+$", tc):
-      parts = re.split("[.,]", tc)
+    if re.match(".*[.][0-9]+$", tc):
+      parts = re.split("[.]", tc)
       fraction = float("."+parts[1])
       tc = parts[0]
 

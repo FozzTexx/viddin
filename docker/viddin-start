@@ -15,6 +15,7 @@ export PWD=`pwd -P`
 ARGS=""
 
 DCKARGS="--privileged --cap-add=SYS_ADMIN --cap-add SYS_PTRACE"
+# Always pass X11
 DCKARGS="${DCKARGS} -e DISPLAY -v ${HOME}/.Xauthority:/home/viddin/.Xauthority --net=host"
 
 # For makemkv

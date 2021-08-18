@@ -21,8 +21,6 @@ import sys
 import argparse
 import json
 import xmltodict
-
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from viddin import viddin
 
 def build_argparser():

@@ -18,8 +18,6 @@
 import argparse
 import os
 import datetime
-
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from viddin import viddin
 
 def build_argparser():

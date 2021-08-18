@@ -21,8 +21,6 @@ import argparse
 import datetime
 import sys
 import re
-
-sys.path.append("/home/fozztexx/source/viddin/")
 from viddin import viddin
 
 #offsets = [386.477, -403.925, -424.919, -427.431, 430.822]

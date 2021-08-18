@@ -2,8 +2,6 @@
 import argparse
 import os, glob
 import sys
-
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from viddin import viddin
 
 FLAGS="--lang=eng --bluray"

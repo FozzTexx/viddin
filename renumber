@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import os, sys
+import tempfile
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -49,8 +50,25 @@ def main():
     while True:
       no_collision = list(new_set - old_set)
       if len(no_collision) == 0:
-        print("Naming conflict")
-        return 1
+        move_name = old_to_new[0][0]
+        _, ext = os.path.splitext(move_name)
+
+        move_abs = os.path.abspath(move_name)
+        dpath = os.path.dirname(move_abs)
+        tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
+        prefix = os.path.commonprefix([move_abs, tf.name])
+        new_name = tf.name[len(prefix):]
+
+        old_to_new[0] = (new_name, old_to_new[0][1])
+        old_set = old_set - set([move_name])
+
+        os.remove(new_name)
+
+        if not args.dryrun:
+          print("Renamed " + move_name + " to " + new_name)
+          os.rename(move_name, new_name)
+        continue
+
       no_collision.sort()
       will_rename = []
       p = no_collision[0]

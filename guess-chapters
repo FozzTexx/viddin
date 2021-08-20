@@ -68,8 +68,8 @@ def main():
       cname = None
       if cidx > 0:
         cname = offset[cidx+1:]
-        pos = offset[:cidx]
-      expected.append(viddin.Chapter(viddin.decodeTimecode(pos), cname))
+        offset = offset[:cidx]
+      expected.append(viddin.Chapter(viddin.decodeTimecode(offset), cname))
 
   splits = []
   for row in black:

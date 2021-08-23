@@ -143,7 +143,8 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
     start, end = source.startEndForChapters(chapters)
       
   for trk in ptracks:
-    tpath = source.extractTrack(dest.path, int(trk['number']), start, end, lang, debugFlag)
+    tpath = source.extractTrack(dest.path, int(trk['number']), start.position, end.position,
+                                lang, debugFlag)
     trk['file'] = tpath
 
   temp = viddin.uniqueFile(dest.path)
@@ -186,7 +187,8 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
       if not chapters is None:
         start, end = source.startEndForChapters(chapters)
 
-      dvd_subs = source.extractDVDSubtitle(dest.path, None, start, end, lang, debugFlag)
+      dvd_subs = source.extractDVDSubtitle(dest.path, None, start.position, end.position,
+                                           lang, debugFlag)
       sub_track = viddin.VideoSpec(dvd_subs)
       tinfo = sub_track.getTitleInfo()
       subs = tinfo.subtitles
@@ -407,6 +409,8 @@ def main():
 
   source = viddin.VideoSpec(path_source,
                             int(args.title) if args.title is not None else args.title)
+  if not source.isDVD():
+    source.titleNumber = None
   dest = viddin.VideoSpec(path_dest, None)
 
   os.environ['AV_LOG_FORCE_NOCOLOR'] = "1"
@@ -436,13 +440,14 @@ def main():
         print("Not found")
         exit(1)
       olen = tinfo.length
-      tinfo.chapters.append(olen)
+      tinfo.chapters.append(viddin.Chapter(olen, "End"))
       if args.chapters:
         if '-' in args.chapters:
           chaps = args.chapters.split("-")
         else:
           chaps = [args.chapters, args.chapters]
-        olen = tinfo.chapters[int(chaps[1])] - tinfo.chapters[int(chaps[0]) - 1]
+        olen = tinfo.chapters[int(chaps[1])].position \
+          - tinfo.chapters[int(chaps[0]) - 1].position
 
     if args.stop_at:
       olen = viddin.decodeTimecode(args.stop_at)

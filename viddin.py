@@ -625,7 +625,7 @@ class viddin:
       return False
 
     def getTitleInfo(self, debugFlag=False):
-      if self.titleNumber != None or self.isDVD():
+      if self.titleNumber is not None or self.isDVD():
         dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
         if not dvdInfo is None:
           return viddin.TitleInfo(dvdInfo['track'][self.titleNumber - 1], "dvd")
@@ -722,7 +722,7 @@ class viddin:
       else:
         chaps = [chapters, chapters]
       chaptimes = self.loadChapters()
-      chaptimes.append(self.getTitleInfo(debugFlag=debugFlag).length)
+      chaptimes.append(viddin.Chapter(self.getTitleInfo(debugFlag=debugFlag).length, "end"))
       start = chaptimes[int(chaps[0]) - 1]
       end = chaptimes[int(chaps[1])]
       return start, end

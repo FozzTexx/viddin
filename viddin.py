@@ -725,7 +725,7 @@ class viddin:
       chaptimes.append(viddin.Chapter(self.getTitleInfo(debugFlag=debugFlag).length, "end"))
       start = chaptimes[int(chaps[0]) - 1]
       end = chaptimes[int(chaps[1])]
-      return start, end
+      return start.position, end.position
 
     def loadChapters(self, debugFlag=False):
       chapters = []

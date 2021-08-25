@@ -143,8 +143,7 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
     start, end = source.startEndForChapters(chapters)
       
   for trk in ptracks:
-    tpath = source.extractTrack(dest.path, int(trk['number']), start.position, end.position,
-                                lang, debugFlag)
+    tpath = source.extractTrack(dest.path, int(trk['number']), start, end, lang, debugFlag)
     trk['file'] = tpath
 
   temp = viddin.uniqueFile(dest.path)
@@ -187,8 +186,7 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
       if not chapters is None:
         start, end = source.startEndForChapters(chapters)
 
-      dvd_subs = source.extractDVDSubtitle(dest.path, None, start.position, end.position,
-                                           lang, debugFlag)
+      dvd_subs = source.extractDVDSubtitle(dest.path, None, start, end, lang, debugFlag)
       sub_track = viddin.VideoSpec(dvd_subs)
       tinfo = sub_track.getTitleInfo()
       subs = tinfo.subtitles

@@ -80,6 +80,8 @@ def build_argparser():
   parser.add_argument("--start-at", help="start position to transcode from")
   parser.add_argument("--stop-at", help="stop position to transcode to")
   parser.add_argument("--subtitle", action="append", help="additional subtitle track to add")
+  parser.add_argument("--nosubtitles", action="store_true",
+                      help="don't include forced subtitles")
   parser.add_argument("--commentary", action="append",
                       help="audio track with commentary to include")
   parser.add_argument("--mpdecimate", action="store_true", help="use ffmpeg to remove duplicate frames")
@@ -128,7 +130,7 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   print(status)
   return
 
-def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
+def mergeTracks(source, dest, tracks, chapters, start, end, lang, debugFlag=False):
   if not os.path.exists(dest.path):
     print("Cannot add commentary: %s does not exist" % dest.path)
     return False
@@ -138,7 +140,6 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
 
   ptracks = source.parseTrackDescriptors(tracks)
   
-  start = end = None
   if not chapters is None:
     start, end = source.startEndForChapters(chapters)
       
@@ -147,17 +148,18 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
     trk['file'] = tpath
 
   temp = viddin.uniqueFile(dest.path)
-  cmd = "mkvmerge -o \"%s\" \"%s\"" % (temp, dest.path)
+  cmd = ["mkvmerge", "-o", temp, dest.path]
   for trk in ptracks:
     if trk['file'] is None:
       continue
-    cmd += " --default-track 0:0 --forced-track 0:0 --language 0:%s" % (lang)
+    cmd.extend(["--default-track", "0:0", "--forced-track", "0:0",
+                "--language", "0:%s" % (lang)])
     if trk['title'] is not None:
-      cmd += " --track-name 0:\"%s\"" % (trk['title']) # FIXME - what if title has quotes?
-    cmd += " \"%s\"" % (trk['file'].primary)
+      cmd.extend(["--track-name", "0:%s" % (trk['title'])])
+    cmd.append(trk['file'].subtitlePrimary)
   if debugFlag:
-    print(cmd)
-  stat = viddin.runCommand(cmd)
+    print(" ".join(cmd))
+  stat = viddin.runCommand(cmd, debugFlag=debugFlag)
 
   for trk in ptracks:
     if trk['file'] is not None:
@@ -167,7 +169,7 @@ def mergeTracks(source, dest, tracks, chapters, lang, debugFlag=False):
     return True
   return False
 
-def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
+def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=False):
   dvd_subs = None
   
   if lang is None:
@@ -182,7 +184,6 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
     # Check for closed captioning
     foundCC = False
     if source.isDVD():
-      start = end = None
       if not chapters is None:
         start, end = source.startEndForChapters(chapters)
 
@@ -191,11 +192,12 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
       tinfo = sub_track.getTitleInfo()
       subs = tinfo.subtitles
       for trk in subs:
-        if trk['language'] == lang and trk['codec'] == "SubStationAlpha":
+        if trk['language'] == lang and trk['codec'] in ("SubStationAlpha", "VobSub"):
           foundCC = True
           tracks = [trk['rv_track_id']]
           source = viddin.VideoSpec(dvd_subs)
           chapters = None
+          start = end = None
           break
 
     if not foundCC:
@@ -228,7 +230,7 @@ def addSubtitles(source, chapters, dest, lang, tracks, debugFlag=False):
         printSubs(subs, lang)
       tracks = [longest['rv_track_id']]
 
-  if not mergeTracks(source, dest, tracks, chapters, lang, debugFlag):
+  if not mergeTracks(source, dest, tracks, chapters, start, end, lang, debugFlag):
     print("Failed to merge")
     exit(1)
 
@@ -381,13 +383,15 @@ def main():
       stop -= viddin.decodeTimecode(args.start_at)
     flags.extend(["--stop-at", "seconds:" + str(stop)])
 
-  # Always include forced subtitles
-  flags.extend(["--subtitle", "scan", "--subtitle-forced"])
+  if not args.nosubtitles:
+    flags.extend(["--subtitle", "scan", "--subtitle-forced"])
 
   if not path_source:
     path_source = path_dest
     path_dest = None
 
+  # FIXME - make sure path_source exists and is online
+  
   if args.extension[0] != '.':
     args.extension = "." + args.extension
     
@@ -413,15 +417,16 @@ def main():
 
   os.environ['AV_LOG_FORCE_NOCOLOR'] = "1"
   
-  cmd = "HandBrakeCLI --encoder " + encoder
-  cmd += " " + " ".join(flags)
-  cmd += " -i \"%s\" -o \"%s\"" % (source.path, dest.path)
-  cmd += " 2>\"" + log + "\""
+  cmd = ["HandBrakeCLI", "--encoder", encoder]
+  cmd.extend(flags)
+  cmd.extend(["-i", source.path, "-o", dest.path])
 
   if args.debug:
-    print(cmd)
+    print(" ".join(cmd))
   if not args.norip:
-    viddin.runCommand(cmd)
+    logf = open(log, "w")
+    viddin.runCommand(cmd, stderr=logf)
+    logf.close()
     # FIXME - title might be a list or a range
     if not args.title is None and '-' in args.title:
       titles = args.title.split("-")
@@ -470,32 +475,38 @@ def main():
     # Fix flags on any forced subs that were added
     subs = dest.getTitleInfo(debugFlag=args.debug).subtitles
     if len(subs):
-      cmd = "mkvpropedit \"%s\" --edit track:%i --set flag-default=1 --set flag-forced=1" % \
-          (dest.path, int(subs[0]['rv_track_id']) + 1)
+      cmd = ["mkvpropedit", dest.path,
+             "--edit", "track:%i" % (int(subs[0]['rv_track_id']) + 1),
+             "--set", "flag-default=1", "--set", "flag-forced=1"]
       if args.debug:
-        print(cmd)
+        print(" ".join(cmd))
       viddin.runCommand(cmd)
       
     if args.normalize:
       tmp, ext = os.path.splitext(dest.path)
       tmp += "_aa" + ext
-      cmd = "adjust-volume --volume -7 \"%s\" \"%s\"" % (dest.path, tmp)
+      cmd = ["adjust-volume", "--volume", "-7", dest.path, tmp]
       if args.debug:
-        print(cmd)
+        print(" ".join(cmd))
       viddin.runCommand(cmd)
       os.rename(tmp, dest.path)
 
     # Keep getting titles in the mkv that are the name of the disk
     path, ext = os.path.splitext(dest.path)
     if ext == ".mkv":
-      cmd = "mkvpropedit \"%s\" -d title" % (dest.path)
+      cmd = ["mkvpropedit", dest.path, "-d", "title"]
       if args.debug:
-        print(cmd)
+        print(" ".join(cmd))
       viddin.runCommand(cmd)
 
   # FIXME - can only do subtitles on mkv dest and mkv or dvd source
   if add_autosubs or args.subtitle:
-    addSubtitles(source, args.chapters, dest, args.lang, args.subtitle, args.debug)
+    start = end = None
+    if args.start_at:
+      start = viddin.decodeTimecode(args.start_at)
+    if args.stop_at:
+      end = viddin.decodeTimecode(args.stop_at)
+    addSubtitles(source, args.chapters, start, end, dest, args.lang, args.subtitle, args.debug)
 
   if args.commentary:
     if not os.path.exists(dest.path):
@@ -510,9 +521,9 @@ def main():
       exit(1)
           
   if args.restore_ntsc and os.path.exists(dest.path):
-    cmd = "restore-ntsc \"%s\"" % (dest.path)
+    cmd = ["restore-ntsc", dest.path]
     if args.debug:
-      print(cmd)
+      print(" ".join(cmd))
     viddin.runCommand(cmd)
     path, ext = os.path.splitext(dest.path)
     os.rename(path + "-NTSC" + ext, dest.path)

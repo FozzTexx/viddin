@@ -127,7 +127,7 @@ class viddin:
     return None
 
   @staticmethod
-  def runCommand(cmd, debugFlag=False):
+  def runCommand(cmd, debugFlag=False, stderr=None):
     do_shell = True
     if isinstance(cmd, (list, tuple)):
       do_shell = False
@@ -140,7 +140,9 @@ class viddin:
       pos = 0
       err = None
       master, slave = pty.openpty()
-      with subprocess.Popen(cmd, shell=do_shell, stdin=slave, stdout=slave, stderr=slave,
+      if stderr is None:
+        stderr = slave
+      with subprocess.Popen(cmd, shell=do_shell, stdin=slave, stdout=slave, stderr=stderr,
                            close_fds=True) as p:
         m = os.fdopen(master, "rb")
         os.close(slave)
@@ -606,7 +608,7 @@ class viddin:
       if not counter:
         counter = 1
       counter += 1
-      upath = dest + str(counter) + extension
+      upath = dest + "_" + str(counter) + extension
     return upath
 
   class VideoSpec:
@@ -639,7 +641,7 @@ class viddin:
         track = self.getTitleInfoMKV(debugFlag=debugFlag)
       else:
         track = viddin.TitleInfo([], None)
-        track.length = self.getLength()
+        track.length = self.length
       return track
 
     def getTitleInfoMKV(self, debugFlag=False):
@@ -712,7 +714,7 @@ class viddin:
           tlen = int(container['duration'])
           tlen /= 1000000000
       if not tlen:
-        tlen = viddin.getLength(self.path)
+        tlen = self.length
       info.length = tlen
       return info
 
@@ -773,7 +775,7 @@ class viddin:
         os.system(cmd)
         os.remove(cfname)
       else:
-        vlen = viddin.getLength(self.path)
+        vlen = self.length
         if vlen is not None:
           if abs(vlen - chapters[-1]) > 1:
             chapters = chapters.copy()
@@ -839,7 +841,6 @@ class viddin:
       #   cmd += " --chapters " + args.chapters
       if debugFlag:
         print(" ".join(cmd))
-        print(cmd)
       err = viddin.runCommand(cmd)
 
       if not os.path.exists(trk_source):
@@ -877,7 +878,6 @@ class viddin:
         else:
           for idx, t2 in enumerate(tinfo.tracks):
             if t2['rv_track_id'] == tnum:
-              #print("FOUND", idx, tnum, t2)
               tnum = idx
               break
         trk['number'] = tnum
@@ -904,20 +904,36 @@ class viddin:
 
           if start is None:
             start = 0
+          start = viddin.formatTimecode(start)
+          if ':' not in start:
+            start = "00:" + start
           if end is None:
-            end = ""  
-          cmd = "mkvmerge --split parts:%s-%s -o \"%s\" \"%s\"" % \
-              (viddin.formatTimecode(start), viddin.formatTimecode(end), trk_source, self.path)
+            end = ""
+          else:
+            end = viddin.formatTimecode(end)
+            if ':' not in end:
+              end = "00:" + end
+          cmd = ["mkvmerge", "--split", "parts:%s-%s" % (start, end),
+                 "-o", trk_source, self.path]
           if debugFlag:
-            print(cmd)
+            print(" ".join(cmd))
           viddin.runCommand(cmd)
 
       # FIXME - change extension based on track type/encoding
       trk_ext = "sub"
       trk_path = "%s_%i.%s" % (path, trackNum, trk_ext)
-      cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (trk_source, trackNum, trk_path)
+
+      sub_track = viddin.VideoSpec(trk_source)
+      tinfo = sub_track.getTitleInfo()
+      subs = tinfo.subtitles
+      for trk in subs:
+        if trk['type'] == "subtitles":
+          trackNum = trk['id']
+          break
+      cmd = ["mkvextract", "tracks", trk_source,
+             "%i:%s" % (trackNum, trk_path)]
       if debugFlag:
-        print(cmd)
+        print(" ".join(cmd))
       err = viddin.runCommand(cmd)
       if err:
         print("Failed to extract")
@@ -925,11 +941,22 @@ class viddin:
       if trk_source != self.path:
         os.remove(trk_source)
 
-      idx_path = "%s_%i.idx" % (path, trackNum)
+      sub_path = trk_path
+      idx_path, ext = os.path.splitext(trk_path)
+      idx_path += ".idx"
       if os.path.exists(idx_path):
         trk_path = [idx_path, trk_path]
+
+      subs = viddin.TrackSpec(trk_path, None)
+      if os.path.getsize(sub_path) == 0:
+        subs.remove()
+        subs = None
         
-      return viddin.TrackSpec(trk_path, None)
+      return subs
+
+    @property
+    def length():
+      return viddin.getLength(self.path)
 
   class TrackSpec:
     def __init__(self, path, trackNumber):
@@ -948,6 +975,16 @@ class viddin:
     @property
     def primary(self):
       if isinstance(self.path, list):
+        return self.path[0]
+      return self.path
+
+    @property
+    def subtitlePrimary(self):
+      if isinstance(self.path, list):
+        for p in self.path:
+          _, ext = os.path.splitext(p)
+          if ext == ".idx":
+            return p
         return self.path[0]
       return self.path
 

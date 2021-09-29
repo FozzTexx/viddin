@@ -777,7 +777,7 @@ class viddin:
       else:
         vlen = self.length
         if vlen is not None:
-          if abs(vlen - chapters[-1]) > 1:
+          if abs(vlen - chapters[-1].position) > 1:
             chapters = chapters.copy()
             chapters.append(vlen)
           cfile, cfname = tempfile.mkstemp()
@@ -789,7 +789,10 @@ class viddin:
               name = "Chapter %i" % (idx + 1)
             else:
               pos = chapters[idx].position
-              npos = chapters[idx+1].position
+              if isinstance(chapters[idx+1], (int, float)):
+                npos = chapters[idx+1]
+              else:
+                npos = chapters[idx+1].position
               name = chapters[idx].name
 
             os.write(cfile, bytes("[CHAPTER]\n", 'UTF-8'))
@@ -801,9 +804,10 @@ class viddin:
 
           dpath = os.path.dirname(self.path)
           tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
-          cmd = "ffmpeg -y -i \"%s\" -i %s -map_metadata 1 -movflags disable_chpl" \
-                " -codec copy -map 0 \"%s\"" % \
-                (self.path.replace("\"", "\\\""), cfname, tf.name.replace("\"", "\\\""))
+          cmd = ["ffmpeg", "-y", "-i", self.path,
+                 "-i", cfname, "-map_metadata", "1", "-map_chapters", "1",
+                 "-movflags", "disable_chpl",
+                 "-codec",  "copy", "-map", "0", tf.name]
           stat = viddin.runCommand(cmd)
           if stat == 0:
             os.rename(tf.name, self.path)
@@ -955,7 +959,7 @@ class viddin:
       return subs
 
     @property
-    def length():
+    def length(self):
       return viddin.getLength(self.path)
 
   class TrackSpec:

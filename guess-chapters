@@ -49,7 +49,17 @@ def closestExpected(best):
   if closest:
     return [closest[2], closest[3]]
   return None
-    
+
+def findNearest(position, chapters):
+  for chap in chapters:
+    if chap.position > position + 2:
+      break
+    diff = abs(chap.position - position)
+    if diff < 0.25:
+      return chap
+
+  return None
+
 def main():
   args = build_argparser().parse_args()
   video, ext = os.path.splitext(args.file)
@@ -80,10 +90,10 @@ def main():
       splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
   vfile = viddin.VideoSpec(args.file, None)
+  chapters = vfile.loadChapters()
   
   doEdit = False
   if expected:
-    chapters = vfile.loadChapters()
     for offset in expected:
       bdiff = -1
       boffset = None
@@ -94,7 +104,7 @@ def main():
             bdiff = diff
             boffset = abs(row)
       if boffset and bdiff < args.distance and boffset not in chapters:
-        chapters.append(viddin.Chapter(boffset, cname))
+        chapters.append(viddin.Chapter(boffset, offset.name))
         doEdit = True
 
     if doEdit:
@@ -112,22 +122,26 @@ def main():
       else:
         chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
 
-      dedup = []
-      [dedup.append(x.position) for x in chapters if x not in dedup]
+      dedup = set([int(x.position * 1000) for x in chapters])
       if len(dedup) != len(chapters):
         cleaned = []
         for chp in chapters:
-          if chp.position in dedup:
+          pos = int(chp.position * 1000)
+          if pos in dedup:
             cleaned.append(chp)
-            dedup.remove(chp.position)
+            dedup.remove(pos)
         chapters = cleaned
 
       vfile.writeChapters(chapters)
   else:
     for row in splits:
       if row >= 0 or args.force:
-        print("%0.3f\t%s" % (row, viddin.formatTimecode(abs(row))))
-
+        print("%0.3f\t%s" % (row, viddin.formatTimecode(abs(row))), end="")
+        chap = findNearest(row, chapters)
+        if chap is not None:
+          print("\t%s" % (viddin.formatTimecode(chap.position)), end="")
+        print()
+        
   return
 
 if __name__ == '__main__':

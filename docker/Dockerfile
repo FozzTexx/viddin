@@ -10,13 +10,11 @@ ENV WSUSER viddin
 RUN set -e \
     ; apt-get update \
     ; apt-get install -y \
-	sudo \
-	wget \
-      	git \
         autoconf \
         bc \
         cmake \
         eject \
+        git \
         libass-dev \
         libavcodec-dev \
         libavutil-dev \
@@ -54,16 +52,20 @@ RUN set -e \
         nasm \
         python \
         python3 \
+        python3-pillow \
         python3-pip \
         qt5-default \
         setcd \
         sox \
+        sudo \
         tesseract-ocr \
+        wget \
     ; rm -rf /var/lib/apt/lists/* \
       \
     ; pip3 install \
         requests-cache==0.5.2 \
         termcolor \
+        tesserocr \
         tvdb_api==2.0 \
         xmltodict \
     ; setsid sh -c "yes | dpkg-reconfigure libdvd-pkg" \

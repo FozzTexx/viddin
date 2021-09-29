@@ -105,14 +105,14 @@ def main():
     else:
       chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
 
-    dedup = []
-    [dedup.append(x.position) for x in chapters if x not in dedup]
+    dedup = set([int(x.position * 1000) for x in chapters])
     if len(dedup) != len(chapters):
       cleaned = []
       for chp in chapters:
-        if chp.position in dedup:
+        pos = int(chp.position * 1000)
+        if pos in dedup:
           cleaned.append(chp)
-          dedup.remove(chp.position)
+          dedup.remove(pos)
       chapters = cleaned
 
     doEdit = True
@@ -124,7 +124,7 @@ def main():
     if len(chapters) == 0:
       print("No chapter markers")
     for i in range(len(chapters)):
-      print("%s\t%s" % (chapters[i].name, viddin.formatChapter(chapters[i].position)))
+      print("%i:%s\t%s" % (i, chapters[i].name, viddin.formatChapter(chapters[i].position)))
 
   return
 

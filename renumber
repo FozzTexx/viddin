@@ -45,6 +45,18 @@ def main():
   old_set = set(orig_name)
   new_set = set(new_name)
 
+  # Sanity check - make sure all the from files exist
+  for path in old_set:
+    if not os.path.exists(path):
+      print(path, "does not exist - aborting", file=sys.stderr)
+      exit(1)
+
+  # Sanity check - make sure that files that exist are ones that will be renamed
+  for path in new_set:
+    if os.path.exists(path) and path not in old_set:
+      print(path, "already exists and is not going to be renamed", file=sys.stderr)
+      exit(1)
+      
   if len(old_to_new) > 0:
     ordered = []
     while True:

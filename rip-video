@@ -200,6 +200,9 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
           start = end = None
           break
 
+    if len(subs) == 0:
+      return
+    
     if not foundCC:
       path, ext = os.path.splitext(dest.path)
       spaths = []

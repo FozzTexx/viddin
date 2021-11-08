@@ -615,6 +615,7 @@ class viddin:
     def __init__(self, path, titleNumber=None):
       self.path = path
       self.titleNumber = titleNumber
+      self._chapters = None
       return
 
     def isDVD(self):
@@ -729,7 +730,7 @@ class viddin:
       end = chaptimes[int(chaps[1])]
       return start.position, end.position
 
-    def loadChapters(self, debugFlag=False):
+    def _loadChapters(self, debugFlag=False):
       chapters = []
       if self.titleNumber != None or self.isDVD():
         dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
@@ -741,6 +742,8 @@ class viddin:
           chapters.append(offset)
       else:
         cmd = ["ffprobe", "-i", self.path, "-print_format", "json", "-show_chapters"]
+        if debugFlag:
+          print(" ".join(cmd))
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL)
         pstr = process.stdout.read()
@@ -755,17 +758,20 @@ class viddin:
           chapters.append(viddin.Chapter(begin, name))
       return chapters
 
-    def writeChapters(self, chapters):
+    def writeChapters(self):
+      if self._chapters is None:
+        return
+      
       _, ext = os.path.splitext(self.path)
       if ext == ".mkv":
         cfile, cfname = tempfile.mkstemp()
-        for idx in range(len(chapters)):
-          if isinstance(chapters[idx], (int, float)):
-            pos = chapters[idx]
+        for idx in range(len(self._chapters)):
+          if isinstance(self._chapters[idx], (int, float)):
+            pos = self._chapters[idx]
             name = "Chapter %i" % (idx + 1)
           else:
-            pos = chapters[idx].position
-            name = chapters[idx].name
+            pos = self._chapters[idx].position
+            name = self._chapters[idx].name
           os.write(cfile, bytes("CHAPTER%02i=%s\n" % (idx + 1, viddin.formatChapter(pos)),
                                 'UTF-8'))
           os.write(cfile, bytes("CHAPTER%02iNAME=%s\n" % (idx + 1, name), 'UTF-8'))
@@ -777,23 +783,23 @@ class viddin:
       else:
         vlen = self.length
         if vlen is not None:
-          if abs(vlen - chapters[-1].position) > 1:
-            chapters = chapters.copy()
-            chapters.append(vlen)
+          if abs(vlen - self._chapters[-1].position) > 1:
+            self._chapters = self._chapters.copy()
+            self._chapters.append(vlen)
           cfile, cfname = tempfile.mkstemp()
           os.write(cfile, bytes(";FFMETADATA1\n", 'UTF-8'))
-          for idx in range(len(chapters) - 1):
-            if isinstance(chapters[idx], (int, float)):
-              pos = chapters[idx]
-              npos = chapters[idx+1]
+          for idx in range(len(self._chapters) - 1):
+            if isinstance(self._chapters[idx], (int, float)):
+              pos = self._chapters[idx]
+              npos = self._chapters[idx+1]
               name = "Chapter %i" % (idx + 1)
             else:
-              pos = chapters[idx].position
-              if isinstance(chapters[idx+1], (int, float)):
-                npos = chapters[idx+1]
+              pos = self._chapters[idx].position
+              if isinstance(self._chapters[idx+1], (int, float)):
+                npos = self._chapters[idx+1]
               else:
-                npos = chapters[idx+1].position
-              name = chapters[idx].name
+                npos = self._chapters[idx+1].position
+              name = self._chapters[idx].name
 
             os.write(cfile, bytes("[CHAPTER]\n", 'UTF-8'))
             os.write(cfile, bytes("TIMEBASE=1/1000\n", 'UTF-8'))
@@ -815,6 +821,133 @@ class viddin:
             os.remove(tf.name)
           os.remove(cfname)
       return
+
+    def addChapters(self, chapters, normalizeFlag=True):
+      # chapters can be a list of any combination of numbers or
+      # Chapter class. If normalizeFlag is false then don't delete
+      # chapters that are close to existing chapters or make sure
+      # there's a chapter at the very beginning.
+
+      if self._chapters is None:
+        self._chapters = self._loadChapters()
+
+      didEdit = False
+      added = []
+      for chap in chapters:
+        if isinstance(chap, viddin.Chapter):
+          added.append(chap)
+        else:
+          added.append(viddin.Chapter(chap, None))
+      if len(added):
+        self._chapters.extend(added)
+        self._chapters.sort()
+        didEdit = True
+
+      for idx, chap in enumerate(self._chapters):
+        if chap.name is None:
+          self._chapters[idx] = viddin.Chapter(chap.position, "Chapter %i" % (idx + 1))
+
+      if normalizeFlag:
+        didEdit = self.normalizeChapters(prefer=added)
+        
+      return didEdit
+
+    def chapterWithID(self, chapID):
+      if self._chapters is None:
+        self._chapters = self._loadChapters()
+
+      chap = chap_idx = None
+      if isinstance(chapID, str):
+        if re.match("^[0-9]+$", chapID):
+          chapID = int(chapID)
+        elif re.match("[:,.]", chapID):
+          chapID = viddin.decodeTimecode(chapID)
+
+      if isinstance(chapID, str):
+        for idx, c in enumerate(self._chapters):
+          if c.name == chapID:
+            chap_idx = idx
+            break
+      elif isinstance(chapID, int):
+        chap_idx = chapID
+      else:
+        if isinstance(chapID, viddin.Chapter):
+          chapID = chap.position
+        for idx, c in enumerate(self._chapters):
+          if abs(c.position - chapID) < 2:
+            chap_idx = idx
+            break
+
+      if chap_idx is not None and chap_idx >= 0 and chap_idx < len(self._chapters):
+        chap = self._chapters[chap_idx]
+      else:
+        chap_idx = None
+      return chap_idx, chap
+    
+    def deleteChapters(self, chapters):
+      # chapters can be a list of any combination of ints, floats,
+      # strings, or Chapter class. ints are treated as index, floats
+      # are a position, strings will look for a matching chapter name.
+
+      if self._chapters is None:
+        self._chapters = self._loadChapters()
+      if len(self._chapters) == 0:
+        return
+
+      didEdit = False
+      for chap in chapters:
+        chap_idx, _ = self.chapterWithID(chap)
+        if chap_idx is not None:
+          del self._chapters[chap_idx]
+          didEdit = True
+      return didEdit
+
+    def setChapters(self, chapters):
+      self._chapters = []
+      self.addChapters(chapters)
+      return
+    
+    def normalizeChapters(self, prefer=None):
+      if self._chapters is None:
+        self._chapters = self._loadChapters()
+        
+      didEdit = False
+      if len(self._chapters) > 0 and self._chapters[0].position < 2:
+        if self._chapters[0].position > 0:
+          self._chapters[0] = viddin.Chapter(0, self._chapters[0].name)
+          didEdit = True
+      else:
+        self._chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
+        didEdit = True
+
+      for idx in range(len(self._chapters) - 2, -1, -1):
+        chap = self._chapters[idx]
+        nchap = self._chapters[idx+1]
+        if abs(chap.position - nchap.position) < 1:
+          if prefer is None or chap not in prefer:
+            del self._chapters[idx]
+          else:
+            del self._chapters[idx+1]
+          didEdit = True
+
+      dedup = set([int(x.position * 1000) for x in self._chapters])
+      if len(dedup) != len(self._chapters):
+        cleaned = []
+        for chp in self._chapters:
+          pos = int(chp.position * 1000)
+          if pos in dedup:
+            cleaned.append(chp)
+            dedup.remove(pos)
+        self._chapters = cleaned
+        didEdit = True
+
+      for idx, chap in enumerate(self._chapters):
+        if re.match("Chapter [0-9]+", chap.name):
+          name = "Chapter %i" % (idx + 1)
+          if name != chap.name:
+            self._chapters[idx] = viddin.Chapter(chap.position, name)
+            didEdit = True
+      return didEdit
 
     def extractDVDSubtitle(self, dest, trackNum, start, end, lang, debugFlag=False):
       path, ext = os.path.splitext(dest)
@@ -961,6 +1094,12 @@ class viddin:
     @property
     def length(self):
       return viddin.getLength(self.path)
+
+    @property
+    def chapters(self):
+      if self._chapters is None:
+        self._chapters = self._loadChapters()
+      return tuple(self._chapters)
 
   class TrackSpec:
     def __init__(self, path, trackNumber):

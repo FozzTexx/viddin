@@ -28,7 +28,7 @@ def build_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument("file", help="Video file to guess")
   parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
-  parser.add_argument("--force", action="store_true", help="Force a chapter at locations even if there's no matching silence")
+  parser.add_argument("-f", "--force", action="store_true", help="Force a chapter at locations even if there's no matching silence")
   parser.add_argument("-a", "--add", action="store_true", help="Add chapters to existing chapters")
   parser.add_argument("--debug", action="store_true", help="Turn on debug output")
   parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
@@ -55,7 +55,7 @@ def findNearest(position, chapters):
     if chap.position > position + 2:
       break
     diff = abs(chap.position - position)
-    if diff < 0.25:
+    if diff < 1:
       return chap
 
   return None
@@ -90,10 +90,10 @@ def main():
       splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
 
   vfile = viddin.VideoSpec(args.file, None)
-  chapters = vfile.loadChapters()
   
   doEdit = False
   if expected:
+    changed = []
     for offset in expected:
       bdiff = -1
       boffset = None
@@ -103,43 +103,24 @@ def main():
           if not boffset or diff < bdiff:
             bdiff = diff
             boffset = abs(row)
-      if boffset and bdiff < args.distance and boffset not in chapters:
-        chapters.append(viddin.Chapter(boffset, offset.name))
-        doEdit = True
+      idx, echap = vfile.chapterWithID(boffset)
+      if boffset and bdiff < args.distance \
+         and (idx is None or echap.name != offset.name):
+        changed.append(viddin.Chapter(boffset, offset.name))
+    if len(changed):
+      vfile.addChapters(changed)
+      doEdit = True
 
     if doEdit:
-      chapters.sort()
-
-      named = []
-      for idx, chp in enumerate(chapters):
-        if chp.name is None:
-          chp = viddin.Chapter(chp.position, "Chapter %i" % (idx + 1))
-        named.append(chp)
-      chapters = named
-      
-      if len(chapters) > 0 and chapters[0].position < 2:
-        chapters[0] = viddin.Chapter(0, chapters[0].name)
-      else:
-        chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
-
-      dedup = set([int(x.position * 1000) for x in chapters])
-      if len(dedup) != len(chapters):
-        cleaned = []
-        for chp in chapters:
-          pos = int(chp.position * 1000)
-          if pos in dedup:
-            cleaned.append(chp)
-            dedup.remove(pos)
-        chapters = cleaned
-
-      vfile.writeChapters(chapters)
+      vfile.writeChapters()
   else:
+    chapters = vfile.chapters
     for row in splits:
       if row >= 0 or args.force:
         print("%0.3f\t%s" % (row, viddin.formatTimecode(abs(row))), end="")
         chap = findNearest(row, chapters)
         if chap is not None:
-          print("\t%s" % (viddin.formatTimecode(chap.position)), end="")
+          print("\t%s\t%s" % (viddin.formatTimecode(chap.position), chap.name), end="")
         print()
         
   return

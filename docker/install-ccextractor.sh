@@ -7,9 +7,10 @@ set -e
 mkdir ${TMP}
 cd ${TMP}
 
-git clone https://github.com/CCExtractor/ccextractor.git
+#git clone https://github.com/CCExtractor/ccextractor.git
+git clone /tmp/ccextractor.bundle
 cd ccextractor/linux
-./build
+./build -without-rust
 
 cp ccextractor /usr/bin
 

@@ -64,7 +64,7 @@ def findCredits(filename, pattern, addFlag):
     if matchesPattern(idx, splits, pattern):
       pos = abs(splits[idx])
       print("Setting opening for %s to %0.3f" % (filename, pos))
-      chapters = vfile.loadChapters()
+      chapters = list(vfile.chapters)
       nc = len(chapters)
       chapters.append(viddin.Chapter(pos, None))
       chapters = sorted(chapters, key=lambda k: k.position)
@@ -80,7 +80,9 @@ def findCredits(filename, pattern, addFlag):
       if nc == len(chapters):
         return
       if addFlag:
-        vfile.writeChapters(chapters)
+        vfile.setChapters(chapters)
+        vfile.normalizeChapters()
+        vfile.writeChapters()
       return
 
   print("Couldn't find opening for", filename)

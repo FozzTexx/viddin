@@ -80,21 +80,33 @@ RUN set -e \
 
 # Install pkg-config from source
 COPY install-pkg-config.sh /tmp/
-RUN /tmp/install-pkg-config.sh && rm /tmp/install-pkg-config.sh
+RUN set -e \
+    ; /tmp/install-pkg-config.sh \
+    ; rm /tmp/install-pkg-config.sh
 
 # Install HandBrake
 COPY install-handbrake.sh HandBrake.bundle /tmp/
-RUN /tmp/install-handbrake.sh && rm /tmp/install-handbrake.sh && rm /tmp/HandBrake.bundle
+RUN set -e \
+    ; /tmp/install-handbrake.sh \
+    ; rm /tmp/install-handbrake.sh /tmp/HandBrake.bundle
 
 # Install ffmpeg
-COPY install-ffmpeg.sh ffmpeg.bundle /tmp/
-RUN /tmp/install-ffmpeg.sh && rm /tmp/install-ffmpeg.sh && rm /tmp/ffmpeg.bundle
+COPY install-ffmpeg.sh FFmpeg.bundle /tmp/
+RUN set -e \
+    ; /tmp/install-ffmpeg.sh \
+    ; rm /tmp/install-ffmpeg.sh /tmp/FFmpeg.bundle
+
+# Install CCExtractor
+COPY install-ccextractor.sh ccextractor.bundle /tmp/
+RUN set -e \
+    ; /tmp/install-ccextractor.sh \
+    ; rm /tmp/install-ccextractor.sh /tmp/ccextractor.bundle
 
 # Install makemkv
-COPY install-ccextractor.sh /tmp/
-RUN /tmp/install-ccextractor.sh && rm /tmp/install-ccextractor.sh
 COPY install-makemkv.sh /tmp/
-RUN /tmp/install-makemkv.sh && rm /tmp/install-makemkv.sh
+RUN set -e \
+    ; /tmp/install-makemkv.sh \
+    ; rm /tmp/install-makemkv.sh
 
 COPY install-tvrenamer.sh /tmp/
 RUN /tmp/install-tvrenamer.sh && rm /tmp/install-tvrenamer.sh

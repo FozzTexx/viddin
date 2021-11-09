@@ -700,7 +700,7 @@ class viddin:
               tt.update(track)
 
       info = viddin.TitleInfo(tracks, None)
-      info.chapters = self.loadChapters()
+      info.chapters = self.chapters
 
       tlen = None
       for track in tracks:
@@ -724,7 +724,7 @@ class viddin:
         chaps = chapters.split("-")
       else:
         chaps = [chapters, chapters]
-      chaptimes = self.loadChapters()
+      chaptimes = list(self.chapters)
       chaptimes.append(viddin.Chapter(self.getTitleInfo(debugFlag=debugFlag).length, "end"))
       start = chaptimes[int(chaps[0]) - 1]
       end = chaptimes[int(chaps[1])]
@@ -860,8 +860,8 @@ class viddin:
       if isinstance(chapID, str):
         if re.match("^[0-9]+$", chapID):
           chapID = int(chapID)
-        elif re.match("[:,.]", chapID):
-          chapID = viddin.decodeTimecode(chapID)
+        elif re.search("[:,.]", chapID):
+          chapID = float(viddin.decodeTimecode(chapID))
 
       if isinstance(chapID, str):
         for idx, c in enumerate(self._chapters):

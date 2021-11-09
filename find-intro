@@ -28,8 +28,8 @@ from viddin import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
-  parser.add_argument("files", nargs="*", help="Video file to guess")
-  parser.add_argument("--pattern", nargs="*", type=float, help="Pattern to look for")
+  parser.add_argument("files", nargs="+", help="Video file to guess")
+  parser.add_argument("--pattern", nargs="+", type=float, help="Pattern to look for")
   parser.add_argument("--add", action="store_true", help="add chapter if pattern found")
   return parser
 
@@ -37,7 +37,7 @@ def matchesPattern(pos, splits, pattern):
   testpattern = []
   for idx in range(len(pattern), 0, -1):
     testpattern.append(abs(splits[pos]) - abs(splits[pos - idx]))
-  for a, b in zip(testpattern, pattern):
+  for idx, (a, b) in enumerate(zip(testpattern, pattern)):
     if abs(a - b) > 2:
       return False
   return True
@@ -64,24 +64,8 @@ def findCredits(filename, pattern, addFlag):
     if matchesPattern(idx, splits, pattern):
       pos = abs(splits[idx])
       print("Setting opening for %s to %0.3f" % (filename, pos))
-      chapters = list(vfile.chapters)
-      nc = len(chapters)
-      chapters.append(viddin.Chapter(pos, None))
-      chapters = sorted(chapters, key=lambda k: k.position)
-      if len(chapters) > 0 and chapters[0].position < 2:
-        chapters[0] = viddin.Chapter(0, chapters[0].name)
-      else:
-        chapters.insert(0, viddin.Chapter(0, "Chapter 1"))
-      for idx in range(len(chapters) - 2, -1, -1):
-        chap = chapters[idx].position
-        nchap = chapters[idx+1].position
-        if abs(chap - nchap) < 1:
-          chapters[idx:idx+1] = []
-      if nc == len(chapters):
-        return
-      if addFlag:
-        vfile.setChapters(chapters)
-        vfile.normalizeChapters()
+      doEdit = vfile.addChapters([viddin.Chapter(pos, "Skip Intro")])
+      if doEdit and addFlag:
         vfile.writeChapters()
       return
 

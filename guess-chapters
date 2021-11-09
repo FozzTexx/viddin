@@ -62,13 +62,9 @@ def findNearest(position, chapters):
 
 def main():
   args = build_argparser().parse_args()
-  video, ext = os.path.splitext(args.file)
 
-  viddin.findBlack(args.file)
-  viddin.findSilence(args.file)
-
-  black = viddin.loadSplits(video + ".blk")
-  silence = viddin.loadSplits(video + ".sil")
+  vfile = viddin.VideoSpec(args.file, None)
+  doEdit = False
 
   expected = None
   if len(args.offsets):
@@ -81,39 +77,58 @@ def main():
         offset = offset[:cidx]
       expected.append(viddin.Chapter(viddin.decodeTimecode(offset), cname))
 
-  splits = []
-  for row in black:
-    match = viddin.bestSilence(row, silence)
-    if match:
-      splits.append((match[1] - match[0]) / 2 + match[0])
-    else:
-      splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
-
-  vfile = viddin.VideoSpec(args.file, None)
-  
-  doEdit = False
-  if expected:
     changed = []
-    for offset in expected:
-      bdiff = -1
-      boffset = None
-      for row in splits:
-        if row >= 0 or args.force:
-          diff = abs(offset.position - abs(row))
-          if not boffset or diff < bdiff:
-            bdiff = diff
-            boffset = abs(row)
-      idx, echap = vfile.chapterWithID(boffset)
-      if boffset and bdiff < args.distance \
-         and (idx is None or echap.name != offset.name):
-        changed.append(viddin.Chapter(boffset, offset.name))
+    found = []
+    for pos in expected:
+      idx, chap = vfile.chapterWithID(pos)
+      if idx is not None:
+        if pos.name is not None and pos.name != chap.name:
+          changed.append(viddin.Chapter(chap.position, pos.name))
+        found.append(pos)
     if len(changed):
       vfile.addChapters(changed)
       doEdit = True
+    if len(found):
+      expected = [x for x in expected if x not in found]
 
-    if doEdit:
-      vfile.writeChapters()
-  else:
+  if expected is None or len(expected):
+    video, ext = os.path.splitext(args.file)
+    viddin.findBlack(args.file)
+    viddin.findSilence(args.file)
+    black = viddin.loadSplits(video + ".blk")
+    silence = viddin.loadSplits(video + ".sil")
+
+    splits = []
+    for row in black:
+      match = viddin.bestSilence(row, silence)
+      if match:
+        splits.append((match[1] - match[0]) / 2 + match[0])
+      else:
+        splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
+
+    if expected:
+      changed = []
+      for offset in expected:
+        bdiff = -1
+        boffset = None
+        for row in splits:
+          if row >= 0 or args.force:
+            diff = abs(offset.position - abs(row))
+            if not boffset or diff < bdiff:
+              bdiff = diff
+              boffset = abs(row)
+        idx, echap = vfile.chapterWithID(boffset)
+        if boffset and bdiff < args.distance \
+           and (idx is None or echap.name != offset.name):
+          changed.append(viddin.Chapter(boffset, offset.name))
+      if len(changed):
+        vfile.addChapters(changed)
+        doEdit = True
+
+  if doEdit:
+    vfile.writeChapters()
+
+  if expected is None:
     chapters = vfile.chapters
     for row in splits:
       if row >= 0 or args.force:

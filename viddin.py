@@ -872,7 +872,7 @@ class viddin:
         chap_idx = chapID
       else:
         if isinstance(chapID, viddin.Chapter):
-          chapID = chap.position
+          chapID = chapID.position
         for idx, c in enumerate(self._chapters):
           if abs(c.position - chapID) < 2:
             chap_idx = idx

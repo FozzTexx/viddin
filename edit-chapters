@@ -68,7 +68,7 @@ def main():
     for pos in args.delete:
       if isinstance(pos, str):
         if re.match("^[0-9]+$", pos):
-          pos = int(str)
+          pos = int(pos)
         elif re.match("[:,.]", pos):
           pos = viddin.decodeTimecode(pos)
       change.append(pos)

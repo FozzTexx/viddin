@@ -15,13 +15,13 @@ rebuild:
 	make REBUILDFLAGS="--no-cache --pull"
 
 HandBrake.bundle:
-	URL=https://github.com/HandBrake && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/osail.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
+	URL=https://github.com/HandBrake && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/viddin.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
 
 FFmpeg.bundle:
-	URL=https://github.com/FozzTexx && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/osail.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
+	URL=https://github.com/FozzTexx && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/viddin.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
 
 ccextractor.bundle:
-	URL=https://github.com/CCExtractor && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/osail.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
+	URL=https://github.com/CCExtractor && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/viddin.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
 
 viddin.tar: $(OSCRIPTS)
 	tar -cf $@ -C .. $(SCRIPTS)

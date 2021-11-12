@@ -443,14 +443,15 @@ def main():
         print("Not found")
         exit(1)
       olen = tinfo.length
-      tinfo.chapters.append(viddin.Chapter(olen, "End"))
+      chapters = list(tinfo.chapters)
+      chapters.append(viddin.Chapter(olen, "End"))
       if args.chapters:
         if '-' in args.chapters:
           chaps = args.chapters.split("-")
         else:
           chaps = [args.chapters, args.chapters]
-        olen = tinfo.chapters[int(chaps[1])].position \
-          - tinfo.chapters[int(chaps[0]) - 1].position
+        olen = chapters[int(chaps[1])].position \
+          - chapters[int(chaps[0]) - 1].position
 
     if args.stop_at:
       olen = viddin.decodeTimecode(args.stop_at)

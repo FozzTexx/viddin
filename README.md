@@ -26,7 +26,25 @@ Most of the tools are written in Python and have a --help option which will list
 * edit-chapters: Used to add, delete, and rename chapter markers.
 * dvdorder: Will rename TV episodes to include titles.
 * split-shorts: Uses episode information in a csv file to split TV episodes into their individual cartoon shorts.
+* dvdls: List the titles on a DVD.
 
+### Examples
+
+To rip from a single title that was originally film (24 fps) and was telecined (29.97 fps interlaced) on a DVD and convert to progressive:
+
+    rip-video --film --title 4 output.mkv
+
+To rip from an NTSC (29.97 fps interlaced) to progressive:
+
+    rip-video --tv --title 4 output.mkv
+
+To rip all the episodes from a single disk:
+
+    dvdls
+    rip-series 3 7 2 3 4 5
+
+Use `dvdls` to get the list of titles on the disk and determine which ones are the actual TV episodes, in this example the titles would be 2 3 4 5. Then use `rip-series` by specifying the season number (3 in the above example) and first episode number (7 in the above example) followed by the list of titles on the DVD. When the rip completes without errors it will eject the disk and you can insert the next one, do the `dvdls` again and then `rip-series` again but updating the episode number, which would be 11 since 7 + 4 titles = 11.
+    
 Chris Osborn
 <fozztexx@fozztexx.com>
 http://insentricity.com

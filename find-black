@@ -50,7 +50,7 @@ if [ -z "${VIDEO}" ] ; then
     exit 1
 fi
 if [ -z "${SPLITS}" ] ; then
-    echo Please specify file to write bloack locations into 1>&2
+    echo Please specify file to write black locations into 1>&2
     exit 1
 fi
 if [ ! -f "${VIDEO}" ] ; then

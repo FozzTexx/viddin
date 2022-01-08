@@ -100,7 +100,8 @@ def main():
     else:
       chapters.insert(0, 0)
     vfile = viddin.VideoSpec(args.dest)
-    vfile.writeChapters(chapters)
+    vfile.addChapters(chapters)
+    vfile.writeChapters()
     
   return
 

@@ -177,20 +177,33 @@ class viddin:
   @staticmethod
   def findBlack(filename):
     video, ext = os.path.splitext(filename)
-    if not os.path.exists("%s.blk" % video):
+    video += ".blk"
+    if not os.path.exists("%s" % (video)):
       print("Finding black")
-      cmd = "find-black --duration 0.05 \"%s\" \"%s.blk\" > /dev/null" \
-            % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
-      os.system(cmd)
+      cmd = ["find-black", "--duration", "0.05", filename, video]
+      subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    return
 
   @staticmethod
   def findSilence(filename):
     video, ext = os.path.splitext(filename)
-    if not os.path.exists("%s.sil" % video):
+    video += ".sil"
+    if not os.path.exists("%s" % (video)):
       print("Finding silence")
-      cmd = "find-silence --threshold 40 --duration 0.01 \"%s\" \"%s.sil\" > /dev/null" \
-            % (filename.replace("\"", "\\\""), video.replace("\"", "\\\""))
-      os.system(cmd)
+      cmd = ["find-silence", "--threshold", "40", "--duration", "0.01",
+             filename, video]
+      subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    return
+
+  @staticmethod
+  def findCuts(filename):
+    video, ext = os.path.splitext(filename)
+    video += ".cut"
+    if not os.path.exists("%s" % (video)):
+      print("Finding cuts")
+      cmd = ["find-cuts", "--threshold", "0.40", filename, video]
+      subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    return
 
   @staticmethod
   def loadSplits(filename):
@@ -198,8 +211,11 @@ class viddin:
     with open(filename) as f:
       for line in f:
         info = line.split()
-        begin = float(info[1])
-        end = float(info[2])
+        if len(info) > 1:
+          begin = float(info[1])
+          end = float(info[2])
+        else:
+          begin = end = float(info[0])
         center = begin + (end - begin) / 2
         splits.append([center, begin, end])
     return splits
@@ -232,12 +248,12 @@ class viddin:
     def __init__(self, info, infoType):
       if infoType == "dvd":
         self.length = info['length']
-        self.chapters = [0]
+        self.chapters = [viddin.Chapter(0, "Chapter 1")]
         for idx in range(len(info['chapter'])):
           chap = info['chapter'][idx]
-          pos = self.chapters[-1]
+          pos = self.chapters[-1].position
           pos += chap['length']
-          self.chapters.append(pos)
+          self.chapters.append(viddin.Chapter(pos, "Chapter " + str(idx + 1)))
         self.audio = info['audio']
         self.subtitles = info['subp']
         self.video = []
@@ -777,8 +793,8 @@ class viddin:
           os.write(cfile, bytes("CHAPTER%02iNAME=%s\n" % (idx + 1, name), 'UTF-8'))
         os.close(cfile)
 
-        cmd = "mkvpropedit -c %s \"%s\"" % (cfname, self.path.replace("\"", "\\\""))
-        os.system(cmd)
+        cmd = ["mkvpropedit", "-c", cfname, self.path]
+        subprocess.call(cmd)
         os.remove(cfname)
       else:
         vlen = self.length
@@ -840,7 +856,7 @@ class viddin:
           added.append(viddin.Chapter(chap, None))
       if len(added):
         self._chapters.extend(added)
-        self._chapters.sort()
+        self._chapters.sort(key=lambda x: x.position)
         didEdit = True
 
       for idx, chap in enumerate(self._chapters):

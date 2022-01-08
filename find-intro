@@ -16,6 +16,10 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
+# FIXME - make this search for theme song:
+# https://dev.to/hiisi13/find-an-audio-within-another-audio-in-10-lines-of-python-1866
+# https://github.com/craigfrancis/audio-detect
+
 import os
 import argparse
 import datetime

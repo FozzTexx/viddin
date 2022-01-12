@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+# -*- python -*-
+#
+# Copyright 2018 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+import argparse
+import os, sys
+import re
+
+sys.path.extend(("/usr/local/bin/", os.path.expanduser("~/source/viddin")))
+from viddin import viddin
+
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("chapter", help="chapter number of intro")
+  parser.add_argument("length", type=float, help="length of intro")
+  parser.add_argument("files", nargs="+", help="Video file to guess")
+  parser.add_argument("-f", "--force", action="store_true",
+                      help="Force skip intro even if there's no matching silence")
+  parser.add_argument("-c", "--cuts", action="store_true",
+                      help="Use scene cuts if there's no black")
+  parser.add_argument("-n", "--names", nargs=2, help="use names as chapter names")
+  return parser
+
+def chapter_with_id(chapters, chap_id):
+  if isinstance(chap_id, int) or re.match("^[0-9]+$", chap_id):
+    return chapters[int(chap_id)]
+
+  if re.search("[:,.]", chap_id):
+    chap_id = float(viddin.decodeTimecode(chap_id))
+  
+  for chap in chapters:
+    if (isinstance(chap_id, float) and abs(chap.position - chap_id) < 2) \
+       or chap.name == chap_id:
+      return chap
+  return None
+  
+def main():
+  args = build_argparser().parse_args()
+
+  names = ["Intro", "Skip Intro"]
+  if args.names:
+    names = args.names
+    
+  for path in args.files:
+    print(path)
+    video, ext = os.path.splitext(path)
+
+    vfile = viddin.VideoSpec(path, None)
+    chapters = vfile.chapters
+
+    if chapter_with_id(chapters, names[0]) and chapter_with_id(chapters, names[1]):
+      continue
+    
+    chap = chapter_with_id(chapters, args.chapter)
+    if chap is None:
+      print("Unable to find specified chapter", path)
+      continue
+    intro = [chap]
+    offset = intro[0].position + args.length
+
+    if offset >= -2:
+      for chap in chapters:
+        if chap.position > offset + 2:
+          break
+        diff = abs(offset - abs(chap.position))
+        if diff < 2:
+          intro.append(viddin.Chapter(abs(chap.position), "Skip Intro"))
+
+      if len(intro) != 2:
+        viddin.findBlack(path)
+        viddin.findSilence(path)
+        black = viddin.loadSplits(video + ".blk")
+        silence = viddin.loadSplits(video + ".sil")
+
+        splits = []
+        for row in black:
+          match = viddin.bestSilence(row, silence)
+          if match:
+            splits.append((match[1] - match[0]) / 2 + match[0])
+          else:
+            splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
+
+        for row in splits:
+          if abs(row) > offset + 2:
+            break
+          if row >= 0 or args.force:
+            diff = abs(offset - abs(row))
+            if diff < 2:
+              intro.append(viddin.Chapter(abs(row), "Skip Intro"))
+              break
+
+      if args.cuts and len(intro) != 2:
+        viddin.findCuts(path)
+        cuts = viddin.loadSplits(video + ".cut")
+
+        cut_limit = [abs(offset - x[0]) for x in cuts if x[0] < offset + 2]
+        if len(cut_limit):
+          cut_best = min(cut_limit)
+          cut_idx = cut_limit.index(cut_best)
+          if cut_best < 0.75:
+            intro.append(viddin.Chapter(cuts[cut_idx][0], "Skip Intro"))
+
+    if len(intro) != 2:
+      print("Unable to find intro", path)
+      continue
+      
+    intro.sort()
+    if intro[0].name != names[0]:
+      intro[0] = viddin.Chapter(intro[0].position, names[0])
+    if intro[1].name != names[1]:
+      intro[1] = viddin.Chapter(intro[1].position, names[1])
+
+    if vfile.addChapters(intro, normalizeFlag=True):
+      vfile.writeChapters()
+
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

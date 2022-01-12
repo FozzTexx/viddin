@@ -48,7 +48,7 @@ def main():
     chapters = viddin.loadChapterFile(args.chapters)
     vfile.setChapters(chapters)
 
-  doEdit = False
+  doEdit = 0
 
   if not args.add is None:
     change = []
@@ -61,7 +61,7 @@ def main():
       pos = viddin.decodeTimecode(pos)
       change.append(viddin.Chapter(pos, cname))
     vfile.addChapters(change)
-    doEdit = True
+    doEdit += 1
 
   if not args.delete is None:
     change = []
@@ -72,7 +72,8 @@ def main():
         elif re.match("[:,.]", pos):
           pos = viddin.decodeTimecode(pos)
       change.append(pos)
-    doEdit = vfile.deleteChapters(change)
+    if vfile.deleteChapters(change):
+      doEdit += 1
 
   if not args.rename is None:
     for chp in args.rename:
@@ -85,15 +86,15 @@ def main():
         print("Invalid chapter index: \"%s\"" % (chp), file=sys.stderr)
         exit(1)
       vfile.addChapters([viddin.Chapter(chap.position, chp[cidx+1:])])
-      doEdit = True
+      doEdit += 1
       
   if args.multiplier:
-    chapters = [viddin.Chapter(x.position * args.multipler, x.name) for x in vfile.chapters]
+    chapters = [viddin.Chapter(x.position * args.multiplier, x.name) for x in vfile.chapters]
     vfile.setChapters(chapters)
-    doEdit = True
+    doEdit += 1
 
-  if args.fix:
-    doEdit = vfile.normalizeChapters()
+  if args.fix and vfile.normalizeChapters():
+    doEdit += 1
   
   if doEdit:
     vfile.writeChapters()

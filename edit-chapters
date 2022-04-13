@@ -102,7 +102,8 @@ def main():
     if len(vfile.chapters) == 0:
       print("No chapter markers")
     for idx, chap in enumerate(vfile.chapters):
-      print("%i:%s\t%s" % (idx, chap.name, viddin.formatChapter(chap.position)))
+      print("%i:%s\t%s\t%0.3f" % (idx, chap.name, viddin.formatChapter(chap.position),
+                                  chap.position))
 
   return
 

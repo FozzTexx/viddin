@@ -52,9 +52,12 @@ def closestExpected(best):
 
 def findNearest(position, chapters):
   for chap in chapters:
-    if chap.position > position + 2:
+    pos = chap
+    if isinstance(chap, viddin.Chapter):
+      pos = chap.position
+    if pos > position + 2:
       break
-    diff = abs(chap.position - position)
+    diff = abs(pos - position)
     if diff < 1:
       return chap
 
@@ -130,6 +133,11 @@ def main():
 
   if expected is None:
     chapters = vfile.chapters
+    for chap in chapters:
+      if findNearest(chap.position, splits) is None:
+        splits.append(chap.position)
+    splits = sorted(splits, key=abs)
+    
     for row in splits:
       if row >= 0 or args.force:
         print("%0.3f\t%s" % (row, viddin.formatTimecode(abs(row))), end="")

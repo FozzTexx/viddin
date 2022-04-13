@@ -349,7 +349,7 @@ def main():
     flags.extend(["--mixdown", args.mixdown])
 
   if args.width:
-    flags.extend(["--w", args.width])
+    flags.extend(["--width", args.width])
 
   if args.pixel_aspect:
     flags.extend(["--pixel-aspect", args.pixel_aspect])

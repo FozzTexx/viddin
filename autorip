@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+# Copyright 2019 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+import argparse
+import os
+from viddin import viddin
+import subprocess
+
+VIDEO_EXT = [".mkv", ".mp4", ".webm"]
+LOCK_DIR = "/var/lock"
+
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("directory", help="directory to scan and rip")
+  parser.add_argument("--check", action="store_true", help="check if there's anything to rip and exit with 0 if there is")
+  # parser.add_argument("--flags", default=FLAGS, help="flags to pass to rip-video")
+  # parser.add_argument("--outtype", default=".mkv", help="file type to rip to")
+  parser.add_argument("--debug", action="store_true", help="pass debug flag")
+  return parser
+
+def create_lock():
+  lock_file = os.path.basename(__file__) + ".pid"
+  lock_path = os.path.join(LOCK_DIR, lock_file)
+  if os.path.exists(lock_path):
+    with open(lock_path, "r") as f:
+      pid = f.readline()
+      try:
+        pid = int(pid)
+      except ValueError:
+        pid = None
+      if pid:
+        try:
+          os.kill(pid, 0)
+        except OSError:
+          pass
+        else:
+          return None
+  with open(lock_path, "w") as f:
+    f.write(str(os.getpid()))
+    f.write("\n")
+  return lock_path
+
+def get_videos(path):
+  ignore = os.path.join(path, "ripped")
+  result = []
+  for root, dirs, files in os.walk(path):
+    if root == ignore:
+      continue
+    for file in files:
+      base, ext = os.path.splitext(file)
+      if ext not in VIDEO_EXT:
+        continue
+      result.append(os.path.join(root, file))
+  return result
+
+def rip_video(path, debugFlag=False):
+  resolution = viddin.getResolution(path)
+  bluray = False
+  if resolution[0] > 1000 or resolution[1] >= 700:
+    bluray = True
+
+  cmd = ["rip-video", "--lang=eng"]
+  if bluray:
+    cmd.extend(["--bluray"])
+  else:
+    # FIXME - detect telecine and choose between --tv and --film
+    cmd.extend(["--tv"])
+
+  if debugFlag:
+    print(cmd)
+  p = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  return p.returncode == 0
+
+def main():
+  args = build_argparser().parse_args()
+
+  lock = create_lock()
+  if not lock:
+    # FIXME - check how long pid has been running and print message if more than several hours
+    return 2
+
+  videos = get_videos(args.directory)
+  exit_code = 0
+  if args.check:
+    exit_code = len(videos) == 0
+  else:
+    for v in videos:
+      ripped = rip_video(v, debugFlag=args.debug)
+      if ripped:
+        print("Ripped", v)
+        # FIXME - delete files after they are ripped successfully
+      else:
+        print("FAILED", v)
+        exit_code += 1
+
+  os.unlink(lock)
+  
+  return exit_code
+
+if __name__ == '__main__':
+  exit(main() or 0)

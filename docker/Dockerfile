@@ -42,6 +42,7 @@ RUN set -e \
         libvpx-dev \
         libwww-perl \
         libx264-dev \
+        libx265-dev \
         libxml2-dev \
         lsdvd \
         m4 \

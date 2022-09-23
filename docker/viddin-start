@@ -23,6 +23,8 @@ DCKARGS="${DCKARGS} -e QT_X11_NO_MITSHM=1 -v ${HOME}/.MakeMKV:/home/viddin/.Make
 
 # For tvrenamer.pl
 DCKARGS="${DCKARGS} -v ${HOME}/.tvrenamerrc:/home/viddin/.tvrenamerrc"
+# For autorip
+DCKARGS="${DCKARGS} -v /var/lock:/var/lock --pid=host"
 
 DAEMON=0
 

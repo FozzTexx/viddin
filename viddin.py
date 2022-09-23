@@ -136,7 +136,10 @@ class viddin:
       err = subprocess.call(cmd)
     else:
       viddin.initCurses()
-      width = os.get_terminal_size().columns
+      try:
+        width = os.get_terminal_size().columns
+      except OSError:
+        width = 80
       pos = 0
       err = None
       master, slave = pty.openpty()

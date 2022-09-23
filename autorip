@@ -15,19 +15,22 @@
 # more details.
 
 import argparse
-import os
+import os, sys
 from viddin import viddin
 import subprocess
 
 VIDEO_EXT = [".mkv", ".mp4", ".webm"]
 LOCK_DIR = "/var/lock"
+RIPPED_DIR = "ripped"
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument("directory", help="directory to scan and rip")
   parser.add_argument("--check", action="store_true", help="check if there's anything to rip and exit with 0 if there is")
   # parser.add_argument("--flags", default=FLAGS, help="flags to pass to rip-video")
-  # parser.add_argument("--outtype", default=".mkv", help="file type to rip to")
+  parser.add_argument("--outtype", default=".mkv", help="file type to rip to")
+  parser.add_argument("--ripdir", default=RIPPED_DIR,
+                      help="directory to put ripped files into")
   parser.add_argument("--debug", action="store_true", help="pass debug flag")
   return parser
 
@@ -53,20 +56,28 @@ def create_lock():
     f.write("\n")
   return lock_path
 
-def get_videos(path):
-  ignore = os.path.join(path, "ripped")
+def get_videos(path, ignore):
   result = []
+  ignore = os.path.commonpath([ignore])
   for root, dirs, files in os.walk(path):
-    if root == ignore:
+    if ignore == os.path.commonpath([ignore, root]):
       continue
     for file in files:
       base, ext = os.path.splitext(file)
       if ext not in VIDEO_EXT:
         continue
       result.append(os.path.join(root, file))
+  result.sort()
   return result
 
-def rip_video(path, debugFlag=False):
+def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
+  subdir = os.path.relpath(os.path.dirname(path), basedir)
+  subdir = os.path.join(basedir, ripdir, subdir)
+  output = os.path.join(subdir, os.path.basename(path))
+  p, e = os.path.splitext(output)
+  output = p + outtype
+  log = p + ".autolog"
+
   resolution = viddin.getResolution(path)
   bluray = False
   if resolution[0] > 1000 or resolution[1] >= 700:
@@ -79,32 +90,57 @@ def rip_video(path, debugFlag=False):
     # FIXME - detect telecine and choose between --tv and --film
     cmd.extend(["--tv"])
 
+  cmd.extend([path, output])
+  os.makedirs(subdir, exist_ok=True)
+    
   if debugFlag:
     print(cmd)
-  p = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  if not sys.stdout.isatty():
+    with open(log, "w") as logf:
+      p = subprocess.run(cmd, stdout=logf, stderr=subprocess.STDOUT)
+  else:
+    print("Ripping", path)
+    p = subprocess.run(cmd)
   return p.returncode == 0
 
 def main():
   args = build_argparser().parse_args()
 
+  exit_code = 0
   lock = create_lock()
   if not lock:
     # FIXME - check how long pid has been running and print message if more than several hours
-    return 2
+    exit_code -1
 
-  videos = get_videos(args.directory)
-  exit_code = 0
-  if args.check:
-    exit_code = len(videos) == 0
-  else:
-    for v in videos:
-      ripped = rip_video(v, debugFlag=args.debug)
-      if ripped:
-        print("Ripped", v)
-        # FIXME - delete files after they are ripped successfully
+  if exit_code == 0:
+    if os.path.isabs(args.ripdir):
+      parent = os.path.abspath(args.directory)
+      if os.path.commonpath([parent]) != os.path.commonpath([parent, args.ripdir]):
+        print("ripdir must be in directory")
+        exit_code = -2
       else:
-        print("FAILED", v)
-        exit_code += 1
+        args.ripdir = os.path.relpath(ripdir, parent)
+
+  if args.outtype[0] != '.':
+    args.outtype = "." + args.outtype
+        
+  if exit_code == 0:
+    videos = get_videos(args.directory, os.path.join(args.directory, args.ripdir))
+    if args.check:
+      exit_code = len(videos) == 0
+    else:
+      for v in videos:
+        ripped = rip_video(v, args.directory, args.ripdir, args.outtype, debugFlag=args.debug)
+        if ripped:
+          print("Ripped", v)
+          os.unlink(v)
+          try:
+            os.rmdir(os.path.dirname(v))
+          except OSError:
+            pass
+        else:
+          print("FAILED", v)
+          exit_code += 1
 
   os.unlink(lock)
   

@@ -864,7 +864,7 @@ class viddin:
           self._chapters[idx] = viddin.Chapter(chap.position, "Chapter %i" % (idx + 1))
 
       if normalizeFlag:
-        didEdit = self.normalizeChapters(prefer=added)
+        didEdit = self.normalizeChapters(prefer=added) or didEdit
         
       return didEdit
 

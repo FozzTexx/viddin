@@ -67,8 +67,8 @@ def findCredits(filename, pattern, addFlag):
   for idx in range(len(pattern), len(splits)):
     if matchesPattern(idx, splits, pattern):
       pos = abs(splits[idx])
-      print("Setting opening for %s to %0.3f" % (filename, pos))
       doEdit = vfile.addChapters([viddin.Chapter(pos, "Skip Intro")])
+      print("Setting opening for %s to %0.3f" % (filename, pos))
       if doEdit and addFlag:
         vfile.writeChapters()
       return

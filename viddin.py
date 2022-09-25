@@ -132,7 +132,7 @@ class viddin:
     if isinstance(cmd, (list, tuple)):
       do_shell = False
 
-    if debugFlag:
+    if debugFlag or not os.getenv("TERM"):
       err = subprocess.call(cmd)
     else:
       viddin.initCurses()

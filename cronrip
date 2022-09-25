@@ -1,0 +1,9 @@
+#!/bin/sh
+PATH=/home/fozztexx/Unix/linux/bin:$PATH
+AUTODIR=/buffet/public/video/BR/auto
+
+# FIXME - check lock age
+if autorip --check ${AUTODIR} ; then
+    cd ${AUTODIR}/..
+    viddin autorip ${AUTODIR}
+fi

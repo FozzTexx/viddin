@@ -44,13 +44,9 @@ def create_lock():
         pid = int(pid)
       except ValueError:
         pid = None
-      if pid:
-        try:
-          os.kill(pid, 0)
-        except OSError:
-          pass
-        else:
-          return None
+      pidpath = '/proc/{}'.format(pid)
+      if pid and os.path.isdir(pidpath):
+        return None
   with open(lock_path, "w") as f:
     f.write(str(os.getpid()))
     f.write("\n")
@@ -110,7 +106,7 @@ def main():
   lock = create_lock()
   if not lock:
     # FIXME - check how long pid has been running and print message if more than several hours
-    exit_code -1
+    exit_code = -1
 
   if exit_code == 0:
     if os.path.isabs(args.ripdir):
@@ -142,7 +138,8 @@ def main():
           print("FAILED", v)
           exit_code += 1
 
-  os.unlink(lock)
+  if lock:
+    os.unlink(lock)
   
   return exit_code
 

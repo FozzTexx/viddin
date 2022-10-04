@@ -24,6 +24,7 @@ import sys
 import tempfile
 import shutil
 from viddin import viddin
+import subprocess
 
 MULTIPLIER = 25 / (24000.0 / 1001)
 
@@ -40,10 +41,8 @@ def subTimecode(tc):
   return ft
 
 def slowVideo(path, tempdir):
-  cmd = "mediainfo '--Inform=Video;%%FrameRate%%' \"%s\"" % (path)
-  process = os.popen(cmd)
-  inrate = process.read().strip()
-  process.close()
+  cmd = ["mediainfo", "--Inform=Video;%FrameRate%", path]
+  inrate = subprocess.check_output(cmd).strip()
   if not len(inrate):
     print("Not a constant frame rate")
     return None
@@ -51,32 +50,35 @@ def slowVideo(path, tempdir):
   outrate = 24000.0 / 25025 * inrate
 
   vtemp = os.path.join(tempdir, os.path.basename(path))
-  cmd = "mkvmerge -o \"%s\" --default-duration 0:%0.3ffps -d 0 \"%s\"" % (vtemp, outrate, path)
-  viddin.runCommand(cmd)
+  cmd = ["mkvmerge", "-o", vtemp,
+         "--default-duration", "0:%0.3ffps" % (outrate),
+         "-d", "0", path]
+  viddin.runCommand(cmd, debugFlag=True)
   return vtemp
 
 def slowAudio(path, tempdir):
   atemp, ext = os.path.splitext(os.path.basename(path))
   atemp += ".ac3"
   atemp = os.path.join(tempdir, atemp)
-  cmd = "ffmpeg -y -i \"%s\" -vn -acodec ac3 -ab 448k -filter:a" \
-      " asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01" \
-      ":comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3 \"%s\"" % (path, atemp)
+  cmd = ["ffmpeg", "-y",
+         "-i", path, "-vn", "-acodec", "ac3", "-ab", "448k",
+         "-filter:a", "asetpts='25025/24000*(PTS-STARTPTS)',aresample=48000:min_comp=0.01" +
+         ":comp_duration=1:max_soft_comp=100000000:min_hard_comp=0.3", atemp]
   viddin.runCommand(cmd)
   return atemp
 
 def normalizeAudio(path, volume):
   atemp, ext = os.path.splitext(path)
   atemp += "-adj" + ext
-  cmd = "adjust-volume"
+  cmd = ["adjust-volume"]
   if not volume is None:
-    cmd += " --volume %s" % (volume)
-  cmd += " \"%s\"" % (path)
+    cmd.extend(["--volume", volume])
+  cmd.append(path)
   viddin.runCommand(cmd)
   return atemp
 
 def expandChapters(path):
-  cmd = "edit-chapters --fix --multiplier %0.3f \"%s\"" % (MULTIPLIER, path)
+  cmd = ["edit-chapters", "--fix", "--multiplier", "%0.3f" % (MULTIPLIER), path]
   viddin.runCommand(cmd)
   return
 
@@ -86,7 +88,7 @@ def expandSubtitles(path, tempdir, tinfo):
   for track in tinfo.subtitles:
     subpath = outpath + "_%i" % (track['rv_track_id'])
     subpath = os.path.join(tempdir, subpath)
-    cmd = "mkvextract tracks \"%s\" %i:\"%s\"" % (path, track['rv_track_id'], subpath + ".sub")
+    cmd = ["mkvextract", "tracks", path, "%i:%s" % (track['rv_track_id'], subpath + ".sub")]
     viddin.runCommand(cmd)
     out_idx = open(subpath + "-exp.idx", "w")
     for line in open(subpath + ".idx", "r"):
@@ -103,7 +105,7 @@ def expandSubtitles(path, tempdir, tinfo):
     subs.append(subpath + ".idx")
     os.rename(subpath + "-exp.idx", subpath + ".idx")
   return subs
-  
+
 def main():
   args = build_argparser().parse_args()
   path = args.file
@@ -123,12 +125,13 @@ def main():
   subpath, _ = os.path.splitext(os.path.basename(path))
   subpath = os.path.join(tempdir, subpath)
   outpath += "-NTSC" + ".mkv"
-  cmd = "mkvmerge -o \"%s\" --no-audio --no-subtitles \"%s\" \"%s\"" % (outpath, vtemp, atemp)
+  cmd = ["mkvmerge", "-o", outpath, "--no-audio", "--no-subtitles", vtemp, atemp]
   if len(tinfo.subtitles):
     for track in tinfo.subtitles:
-      cmd += " --default-track 0:%i --forced-track 0:%i --language 0:%s \"%s\"" \
-          % (int(track['default_track']), int(track['forced_track']), track['language'],
-             subpath + "_%i.idx" % (track['rv_track_id']))
+      cmd.extend(["--default-track", "0:%i" % (int(track['default_track'])),
+                  "--forced-track", "0:%i" % (int(track['forced_track'])),
+                  "--language", "0:%s" % (track['language']),
+                  subpath + "_%i.idx" % (track['rv_track_id'])])
   viddin.runCommand(cmd)
   shutil.rmtree(tempdir)
   return

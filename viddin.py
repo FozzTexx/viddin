@@ -43,17 +43,23 @@ class viddin:
   Chapter = namedtuple("Chapter", ["position", "name"])
   
   didCursesInit = False
+  validTerminal = False
   @staticmethod
   def initCurses():
     if not viddin.didCursesInit:
-      curses.setupterm()
-      viddin.clearEOL = curses.tigetstr("el")
-      if viddin.clearEOL:
-        viddin.clearEOL = viddin.clearEOL.decode()
-      else:
-        viddin.clearEOL = ""
-      viddin.didCursesInit = True
-      return
+      viddin.clearEOL = ""
+      try:
+        curses.setupterm()
+        validTerminal = True
+        viddin.clearEOL = curses.tigetstr("el")
+        if viddin.clearEOL:
+          viddin.clearEOL = viddin.clearEOL.decode()
+        else:
+          viddin.clearEOL = ""
+      except curses.error:
+        pass
+    viddin.didCursesInit = True
+    return
     
   @staticmethod
   def isint(s):
@@ -132,8 +138,8 @@ class viddin:
     if isinstance(cmd, (list, tuple)):
       do_shell = False
 
-    if debugFlag or not os.getenv("TERM"):
-      err = subprocess.call(cmd)
+    if debugFlag or not viddin.validTerminal:
+      err = subprocess.call(cmd, stderr=stderr)
     else:
       viddin.initCurses()
       try:

@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+import argparse
+import cv2
+import numpy as np
+import os, sys
+import tempfile
+import shutil
+import time
+import subprocess
+from viddin import viddin
+
+PLANE_LEFT = [2]
+PLANE_RIGHT = [0, 1]
+
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("input", help="MVC video with left/right")
+  parser.add_argument("--flag", action="store_true", help="flag to do something")
+  return parser
+
+def readYUV(stream, resolution):
+  # Seek to the fourth frame in the file
+  # stream.seek(4 * width * height * 1.5)
+  # Calculate the actual image size in the stream (accounting for rounding
+  # of the resolution)
+
+  width = resolution[0]
+  height = resolution[1]
+
+  #fwidth = (width + 31) // 32 * 32
+  fwidth = width
+  #fheight = (height + 15) // 16 * 16
+  fheight = height
+
+  # Load the Y (luminance) data from the stream
+  Y = np.fromfile(stream, dtype=np.uint8, count=fwidth*fheight).\
+                                         reshape((fheight, fwidth))
+  # Load the UV (chrominance) data from the stream, and double its size
+  U = np.fromfile(stream, dtype=np.uint8, count=(fwidth//2)*(fheight//2)).\
+                                 reshape((fheight//2, fwidth//2))
+  V = np.fromfile(stream, dtype=np.uint8, count=(fwidth//2)*(fheight//2)).\
+                                 reshape((fheight//2, fwidth//2))
+  return [Y, U, V]
+
+def main():
+  args = build_argparser().parse_args()
+
+  base, ext = os.path.splitext(args.input)
+  resolution = viddin.getResolution(args.input)
+  fps = viddin.getFrameRate(args.input)
+
+  tempdir = os.path.dirname(args.input)
+  tempdir = tempfile.mkdtemp(dir=tempdir)
+
+  demux_path = os.path.join(tempdir, base + ".h264")
+  left_path = os.path.join(tempdir, base + "_ViewId0000.yuv")
+  right_path = os.path.join(tempdir, base + "_ViewId0001.yuv")
+  combined_path = os.path.join(tempdir, base + ".yuv")
+
+  print(demux_path)
+  print(left_path)
+  print(right_path)
+  print(combined_path)
+
+  os.mkfifo(demux_path)
+  os.mkfifo(left_path)
+  os.mkfifo(right_path)
+
+  cmd = ["ffmpeg", "-y", "-i", args.input, "-f", "h264", "-c:v", "copy",
+         "-bsf:v", "h264_mp4toannexb", demux_path]
+  demux_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+  # Give demux a chance to create output before trying to read
+  time.sleep(2) 
+
+  cmd = ["ldecod", "-p", "DecodeAllLayers=1", "-p", "InputFile=%s" % (demux_path),
+         "-p", "OutputFile=%s" % (combined_path), "-p", "Silent=1"]
+  split_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+  
+  # Give split a chance to create output before trying to read
+  time.sleep(2) 
+
+  left_yuv = open(left_path, 'rb')
+  right_yuv = open(right_path, 'rb')
+
+  frame = np.zeros((resolution[1], resolution[0], 3), np.uint8)
+  cv2.namedWindow("left", cv2.WINDOW_NORMAL)
+  cv2.namedWindow("right", cv2.WINDOW_NORMAL)
+  cv2.namedWindow("3D", cv2.WINDOW_NORMAL)
+
+  base += "-anaglyph"
+  four_cc = cv2.VideoWriter_fourcc(*"MP4V")
+  output_mp4 = cv2.VideoWriter(base + ".mp4", four_cc, 24000/1001, tuple(res))
+
+  count = 1
+  while True:
+    print("Frame: %i\r" % (count), end="")
+    count += 1
+    lf = readYUV(left_yuv, res)
+    rf = readYUV(right_yuv, res)
+
+    for plane in PLANE_LEFT:
+      frame[:, :, plane] = lf[0]
+    for plane in PLANE_RIGHT:
+      frame[:, :, plane] = rf[0]
+
+    output_mp4.write(frame)
+
+    cv2.imshow("left", lf[0])
+    cv2.imshow("right", rf[0])
+    cv2.imshow("3D", frame)
+    key = cv2.waitKey(1)
+    if key == 27:
+      break
+
+  output_mp4.release()
+
+  shutil.rmtree(tempdir)
+  
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

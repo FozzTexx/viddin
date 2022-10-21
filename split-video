@@ -68,11 +68,8 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
     output = "%sc%s" % (video, ext)
 
   if trim:
-    cmd = "vidinf \"%s\" | grep ID_VIDEO_FPS | sed -e 's/ID_VIDEO_FPS=//'" % input
-    process = os.popen(cmd)
-    fps = float(process.read())
-    process.close()
-    trim = float(trim) * 1.0 / fps
+    fps = viddin.getFrameRate(input)
+    trim = float(trim) / fps
 
   if os.path.exists(output):
     os.remove(output)
@@ -89,7 +86,7 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
       qstr = "-crf %s" % (quality)
     # cmd = "ffmpeg -y -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\"" \
     #     % (input, start, end, qstr, output)
-    cmd = "rip-video --start-at %f --stop-at %f \"%s\" \"%s\"" % (start, end, input, output)
+    cmd = ["rip-video", "--start-at", str(start), "--stop-at", str(end), input, output]
     if transcodeOptions:
       cmd += " " + transcodeOptions
     print(cmd)
@@ -108,9 +105,9 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
           os.remove(temp)
       else:
         temp = output
-      cmd = "mkvmerge --split parts:%s-%s -o \"%s\" \"%s\"" % \
-          (datetime.timedelta(seconds = start), datetime.timedelta(seconds = end),
-           temp, input)
+      cmd = ["mkvmerge", "--split", "parts:%s-%s" %
+             (datetime.timedelta(seconds = start), datetime.timedelta(seconds = end)),
+             "-o", temp, input]
       print(cmd)
       viddin.runCommand(cmd)
     else:
@@ -118,8 +115,8 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
 
     if end < vlen:
       tlen = end - start
-      cmd = "ffmpeg -y -i \"%s\" -t %f -codec copy -map 0 \"%s\"" \
-          % (temp, tlen, output)
+      cmd = ["ffmpeg", "-y", "-i", temp, "-t", str(tlen), "-codec", "copy", "-map", "0",
+             output]
       print(cmd)
       viddin.runCommand(cmd)
       

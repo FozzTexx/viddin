@@ -1,6 +1,6 @@
 IMAGE=viddin
 VERSION=1.0
-BUNDLES=HandBrake.bundle FFmpeg.bundle ccextractor.bundle viddin.tar
+BUNDLES=HandBrake.bundle FFmpeg.bundle ccextractor.bundle h264-tools.bundle viddin.tar
 SCRIPTS=$(shell git ls-tree --full-tree -r --name-only --full-name HEAD | sed -e '/^docker/d')
 OSCRIPTS=$(addprefix ../,$(SCRIPTS))
 
@@ -22,6 +22,9 @@ FFmpeg.bundle:
 
 ccextractor.bundle:
 	URL=https://github.com/CCExtractor && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/viddin.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
+
+h264-tools.bundle:
+	URL=https://github.com/carrardt && PKG=$(basename $@) && CURDIR=$${PWD} && TMP=/tmp/viddin.$$$$ && mkdir $${TMP} && cd $${TMP} && git -c http.sslVerify=false clone $${URL}/$${PKG}.git && cd $${PKG} && git bundle create ../$${PKG}.bundle --all && cd $${CURDIR} && mv $${TMP}/$${PKG}.bundle . && rm -rf $${TMP}
 
 viddin.tar: $(OSCRIPTS)
 	tar -cf $@ -C .. $(SCRIPTS)

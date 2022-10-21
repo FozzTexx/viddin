@@ -64,6 +64,7 @@ RUN set -e \
     ; rm -rf /var/lib/apt/lists/* \
       \
     ; pip3 install \
+        opencv-python \
         requests-cache==0.5.2 \
         termcolor \
         tesserocr \
@@ -108,6 +109,12 @@ COPY install-makemkv.sh /tmp/
 RUN set -e \
     ; /tmp/install-makemkv.sh \
     ; rm /tmp/install-makemkv.sh
+
+# Install h264-tools
+COPY install-h264tools.sh h264-tools.bundle /tmp/
+RUN set -e \
+    ; /tmp/install-h264tools.sh \
+    ; rm /tmp/install-h264tools.sh /tmp/h264-tools.bundle
 
 COPY install-tvrenamer.sh /tmp/
 RUN /tmp/install-tvrenamer.sh && rm /tmp/install-tvrenamer.sh

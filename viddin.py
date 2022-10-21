@@ -329,13 +329,16 @@ class viddin:
 
   @staticmethod
   def getLength(filename, title=None, chapters=None, debugFlag=False):
-    cmd = "ffprobe -v error -show_entries format=duration -of" \
-          " default=noprint_wrappers=1:nokey=1 \"%s\"" % (filename)
+    cmd = ["ffprobe", "-v", "error",
+           "-show_entries", "format=duration",
+           "-of", "default=noprint_wrappers=1:nokey=1",
+           filename]
     if debugFlag:
       print(cmd)
-    process = os.popen(cmd)
-    jstr = process.read()
-    process.close()
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    jstr = process.stdout.read()
+    process.stdout.close()
     try:
       tlen = float(jstr)
     except ValueError:
@@ -356,15 +359,40 @@ class viddin:
 
   @staticmethod
   def getResolution(filename, debugFlag=False):
-    cmd = "ffprobe -v error -select_streams v:0 -show_entries stream=width,height" \
-          " -of csv=s=x:p=0 \"%s\"" % (filename)
+    cmd = ["ffprobe", "-v", "error",
+           "-select_streams", "v:0",
+           "-show_entries", "stream=width,height",
+           "-of", "csv=s=x:p=0",
+           filename]
     if debugFlag:
       print(cmd)
-    process = os.popen(cmd)
-    res = process.read()
-    process.close()
-    res = res.split('x')
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    res = process.stdout.read()
+    process.stdout.close()
+    res = res.decode("UTF-8").split('x')
     return (int(res[0]), int(res[1]))
+
+  @staticmethod
+  def getFrameRate(filename, debugFlag=False):
+    cmd = ["ffprobe", "-v", "error",
+           "-select_streams", "v:0",
+           "-show_entries", "stream=r_frame_rate",
+           "-of", "default=noprint_wrappers=1:nokey=1",
+           filename]
+    if debugFlag:
+      print(cmd)
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    fps = process.stdout.read()
+    process.stdout.close()
+    fps = fps.decode("UTF-8").strip()
+    if '/' in fps:
+      rates = fps.split('/')
+      fps = float(rates[0]) / float(rates[1])
+    else:
+      fps = float(fps)
+    return fps
 
   class EpisodeInfo:
     def __init__(self, airedSeason, airedEpisode, dvdSeason, dvdEpisode,
@@ -671,12 +699,13 @@ class viddin:
       return track
 
     def getTitleInfoMKV(self, debugFlag=False):
-      cmd = "mkvmerge -i -F json \"%s\"" % (self.path)
+      cmd = ["mkvmerge", "-i", "-F", "json", self.path]
       if debugFlag:
         print(cmd)
-      process = os.popen(cmd)
-      jstr = process.read()
-      process.close()
+      process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL)
+      jstr = process.stdout.read()
+      process.stdout.close()
       jinfo = json.loads(jstr)
       if 'tracks' not in jinfo:
         return None
@@ -689,13 +718,14 @@ class viddin:
           info.update(track['properties'])
         tracks.append(info)
 
-      cmd = "mkvextract tags \"%s\" 2>/dev/null" % (self.path)
+      cmd = ["mkvextract", "tags", self.path]
       if debugFlag:
         print(cmd)
-      process = os.popen(cmd)
-      xstr = process.read()
-      process.close()
-      xstr = xstr.strip()
+      process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL)
+      xstr = process.stdout.read()
+      process.stdout.close()
+      xstr = xstr.decode("UTF-8").strip()
       if len(xstr) and not xstr.startswith("Error:"):
         xinfo = xmltodict.parse(xstr)['Tags']
         xlist = []

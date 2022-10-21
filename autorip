@@ -22,6 +22,7 @@ import subprocess
 VIDEO_EXT = [".mkv", ".mp4", ".webm"]
 LOCK_DIR = "/var/lock"
 RIPPED_DIR = "ripped"
+AUTOFLAGS = "autorip-flags"
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -66,6 +67,16 @@ def get_videos(path, ignore):
   result.sort()
   return result
 
+def find_flags(path, basedir):
+  pathdir = os.path.dirname(path)
+  check_dirs = os.path.split(os.path.relpath(pathdir, basedir))
+  for idx in range(len(check_dirs), 0, -1):
+    subdir = os.path.join(*check_dirs[:idx])
+    flags_path = os.path.join(basedir, subdir, AUTOFLAGS)
+    if os.path.isfile(flags_path) and os.access(flags_path, os.R_OK):
+      return flags_path
+  return None
+
 def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
   subdir = os.path.relpath(os.path.dirname(path), basedir)
   subdir = os.path.join(basedir, ripdir, subdir)
@@ -79,12 +90,21 @@ def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
   if resolution[0] > 1000 or resolution[1] >= 700:
     bluray = True
 
-  cmd = ["rip-video", "--lang=eng"]
-  if bluray:
-    cmd.extend(["--bluray"])
+  flags_path = find_flags(path, basedir)
+  if flags_path is not None:
+    # FIXME - read in flags
+    with open(flags_path) as f:
+      flags = f.read()
+      flags = flags.split()
   else:
-    # FIXME - detect telecine and choose between --tv and --film
-    cmd.extend(["--tv"])
+    flags = ["--lang=eng"]
+    if bluray:
+      cmd.extend(["--bluray"])
+    else:
+      # FIXME - detect telecine and choose between --tv and --film
+      cmd.extend(["--tv"])
+    
+  cmd = ["rip-video"] + flags
 
   cmd.extend([path, output])
   os.makedirs(subdir, exist_ok=True)
@@ -96,8 +116,22 @@ def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
       p = subprocess.run(cmd, stdout=logf, stderr=subprocess.STDOUT)
   else:
     print("Ripping", path)
+    print("Flags", flags)
     p = subprocess.run(cmd)
   return p.returncode == 0
+
+def delete_empty_dirs(path):
+  folders = list(os.walk(path))
+  for d, b, c in folders[::-1]:
+    flags = os.path.join(d, AUTOFLAGS)
+    existing = os.listdir(d)
+    if len(existing) == 1 and AUTOFLAGS in existing:
+      os.path.unlink(os.path.join(d, AUTOFLAGS))
+      existing.remove(AUTOFLAGS)
+    if len(existing) == 0:
+      os.rmdir(d)
+
+  return
 
 def main():
   args = build_argparser().parse_args()
@@ -130,14 +164,12 @@ def main():
         if ripped:
           print("Ripped", v)
           os.unlink(v)
-          try:
-            os.rmdir(os.path.dirname(v))
-          except OSError:
-            pass
         else:
           print("FAILED", v)
           exit_code += 1
 
+  delete_empty_dirs(args.directory)
+          
   if lock:
     os.unlink(lock)
   

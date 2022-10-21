@@ -1,4 +1,23 @@
 #!/usr/bin/env python3
+# -*- python -*-
+#
+# Copyright 2022 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+# FIXME - use this: https://pypi.org/project/stereoscopy/
+
 import argparse
 import cv2
 import numpy as np
@@ -7,6 +26,8 @@ import tempfile
 import shutil
 import time
 import subprocess
+import queue
+import threading
 from viddin import viddin
 
 PLANE_LEFT = [2]
@@ -15,36 +36,78 @@ PLANE_RIGHT = [0, 1]
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument("input", help="MVC video with left/right")
+  parser.add_argument("--start", help="start offset")
   parser.add_argument("--flag", action="store_true", help="flag to do something")
   return parser
 
-def readYUV(stream, resolution):
-  # Seek to the fourth frame in the file
-  # stream.seek(4 * width * height * 1.5)
-  # Calculate the actual image size in the stream (accounting for rounding
-  # of the resolution)
+class QueueStream:
+  def __init__(self):
+    self.queue = queue.SimpleQueue()
+    self.done = False
+    return
 
+  # FIXME - add read() method which reads n number of bytes
+  
+  def empty(self):
+    return self.queue.empty()
+
+  def get(self):
+    return self.queue.get()
+
+  def put(self, item):
+    self.queue.put(item)
+    return
+  
+def fromfifo(qs, dtype, count):
+  blen = np.dtype(dtype).itemsize * count
+  buf = bytearray()
+  while not qs.done and len(buf) < blen:
+    buf += qs.get()
+  if len(buf) < blen:
+    return None
+  return np.frombuffer(buf, dtype=dtype, count=count)
+
+def readYUV(qs, resolution):
   width = resolution[0]
   height = resolution[1]
 
-  #fwidth = (width + 31) // 32 * 32
   fwidth = width
-  #fheight = (height + 15) // 16 * 16
   fheight = height
 
   # Load the Y (luminance) data from the stream
-  Y = np.fromfile(stream, dtype=np.uint8, count=fwidth*fheight).\
-                                         reshape((fheight, fwidth))
+  Y = fromfifo(qs, dtype=np.uint8, count=fwidth*fheight)
+  if Y is None:
+    return None
+  Y = Y.reshape((fheight, fwidth))
+  
   # Load the UV (chrominance) data from the stream, and double its size
-  U = np.fromfile(stream, dtype=np.uint8, count=(fwidth//2)*(fheight//2)).\
+  U = fromfifo(qs, dtype=np.uint8, count=(fwidth//2)*(fheight//2)).\
                                  reshape((fheight//2, fwidth//2))
-  V = np.fromfile(stream, dtype=np.uint8, count=(fwidth//2)*(fheight//2)).\
+  V = fromfifo(qs, dtype=np.uint8, count=(fwidth//2)*(fheight//2)).\
                                  reshape((fheight//2, fwidth//2))
   return [Y, U, V]
 
+def appendqueue(stream, qs, bufsize=256):
+  while True:
+    buf = stream.read(bufsize)
+    if not buf:
+      break
+    qs.put(buf)
+  qs.done = True
+  stream.close()
+  return
+
+def openThread(path, bufsize=256):
+  f = open(path, 'rb')
+  qs = QueueStream()
+  t = threading.Thread(target=appendqueue, args=(f, qs, bufsize))
+  t.daemon = True
+  t.start()
+  return qs
+
 def main():
   args = build_argparser().parse_args()
-
+  
   base, ext = os.path.splitext(args.input)
   resolution = viddin.getResolution(args.input)
   fps = viddin.getFrameRate(args.input)
@@ -66,22 +129,29 @@ def main():
   os.mkfifo(left_path)
   os.mkfifo(right_path)
 
-  cmd = ["ffmpeg", "-y", "-i", args.input, "-f", "h264", "-c:v", "copy",
-         "-bsf:v", "h264_mp4toannexb", demux_path]
-  demux_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+  print("Starting demux")
+  cmd = ["ffmpeg", "-y", "-i", args.input]
+  if args.start:
+    cmd.extend(["-ss", str(viddin.decodeTimecode(args.start))])
+  cmd.extend(["-f", "h264", "-c:v", "copy",
+         "-bsf:v", "h264_mp4toannexb", demux_path])
+  demux_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
   # Give demux a chance to create output before trying to read
   time.sleep(2) 
 
+  print("Starting split")
   cmd = ["ldecod", "-p", "DecodeAllLayers=1", "-p", "InputFile=%s" % (demux_path),
          "-p", "OutputFile=%s" % (combined_path), "-p", "Silent=1"]
-  split_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+  split_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   
   # Give split a chance to create output before trying to read
-  time.sleep(2) 
+  time.sleep(2)
 
-  left_yuv = open(left_path, 'rb')
-  right_yuv = open(right_path, 'rb')
+  print("Creating anaglyph")
+  # FIXME - make bufsize a multiple of YUV components
+  left_yuv = openThread(left_path)
+  right_yuv = openThread(right_path)
 
   frame = np.zeros((resolution[1], resolution[0], 3), np.uint8)
   cv2.namedWindow("left", cv2.WINDOW_NORMAL)
@@ -89,15 +159,19 @@ def main():
   cv2.namedWindow("3D", cv2.WINDOW_NORMAL)
 
   base += "-anaglyph"
-  four_cc = cv2.VideoWriter_fourcc(*"MP4V")
-  output_mp4 = cv2.VideoWriter(base + ".mp4", four_cc, 24000/1001, tuple(res))
+  four_cc = cv2.VideoWriter_fourcc(*"mp4v")
+  output_mp4 = cv2.VideoWriter(base + ".mp4", four_cc, fps, tuple(resolution))
 
   count = 1
   while True:
+    # FIXME - print timecode and percent complete
     print("Frame: %i\r" % (count), end="")
+    sys.stdout.flush()
     count += 1
-    lf = readYUV(left_yuv, res)
-    rf = readYUV(right_yuv, res)
+    lf = readYUV(left_yuv, resolution)
+    if lf is None:
+      break
+    rf = readYUV(right_yuv, resolution)
 
     for plane in PLANE_LEFT:
       frame[:, :, plane] = lf[0]
@@ -114,8 +188,9 @@ def main():
       break
 
   output_mp4.release()
-
   shutil.rmtree(tempdir)
+
+  # FIXME - recombine audio and subtitles, taking into account start time
   
   return
 

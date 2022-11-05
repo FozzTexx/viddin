@@ -30,6 +30,7 @@ import csv
 import curses
 import stat
 import io
+import shlex
 from dvdlang import dvdLangISO
 from collections import namedtuple
 
@@ -184,6 +185,10 @@ class viddin:
     return err
 
   @staticmethod
+  def listToShell(cmd):
+    return " ".join([shlex.quote(x) for x in cmd])
+  
+  @staticmethod
   def findBlack(filename):
     video, ext = os.path.splitext(filename)
     video += ".blk"
@@ -302,7 +307,7 @@ class viddin:
   def getDVDInfo(path, debugFlag=False):
     cmd = ["lsdvd", "-asc", "-Oy", path]
     if debugFlag:
-      print(cmd)
+      print(viddin.listToShell(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     pstr = process.stdout.read()
@@ -334,7 +339,7 @@ class viddin:
            "-of", "default=noprint_wrappers=1:nokey=1",
            filename]
     if debugFlag:
-      print(cmd)
+      print(viddin.listToShell(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     jstr = process.stdout.read()
@@ -365,7 +370,7 @@ class viddin:
            "-of", "csv=s=x:p=0",
            filename]
     if debugFlag:
-      print(cmd)
+      print(viddin.listToShell(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     res = process.stdout.read()
@@ -381,7 +386,7 @@ class viddin:
            "-of", "default=noprint_wrappers=1:nokey=1",
            filename]
     if debugFlag:
-      print(cmd)
+      print(viddin.listToShell(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     fps = process.stdout.read()
@@ -683,7 +688,7 @@ class viddin:
     def getTitleInfo(self, debugFlag=False):
       if self.titleNumber is not None or self.isDVD():
         dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
-        if not dvdInfo is None:
+        if dvdInfo is not None:
           return viddin.TitleInfo(dvdInfo['track'][self.titleNumber - 1], "dvd")
         print("Failed to get title info", self.titleNumber)
         return None
@@ -701,7 +706,7 @@ class viddin:
     def getTitleInfoMKV(self, debugFlag=False):
       cmd = ["mkvmerge", "-i", "-F", "json", self.path]
       if debugFlag:
-        print(cmd)
+        print(viddin.listToShell(cmd))
       process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                  stderr=subprocess.DEVNULL)
       jstr = process.stdout.read()
@@ -720,7 +725,7 @@ class viddin:
 
       cmd = ["mkvextract", "tags", self.path]
       if debugFlag:
-        print(cmd)
+        print(viddin.listToShell(cmd))
       process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                  stderr=subprocess.DEVNULL)
       xstr = process.stdout.read()
@@ -798,7 +803,7 @@ class viddin:
       else:
         cmd = ["ffprobe", "-i", self.path, "-print_format", "json", "-show_chapters"]
         if debugFlag:
-          print(" ".join(cmd))
+          print(viddin.listToShell(cmd))
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL)
         pstr = process.stdout.read()
@@ -1032,7 +1037,7 @@ class viddin:
       # if args.chapters:
       #   cmd += " --chapters " + args.chapters
       if debugFlag:
-        print(" ".join(cmd))
+        print(viddin.listToShell(cmd))
       err = viddin.runCommand(cmd)
 
       if not os.path.exists(trk_source):
@@ -1108,7 +1113,7 @@ class viddin:
           cmd = ["mkvmerge", "--split", "parts:%s-%s" % (start, end),
                  "-o", trk_source, self.path]
           if debugFlag:
-            print(" ".join(cmd))
+            print(viddin.listToShell(cmd))
           viddin.runCommand(cmd)
 
       # FIXME - change extension based on track type/encoding
@@ -1125,7 +1130,7 @@ class viddin:
       cmd = ["mkvextract", "tracks", trk_source,
              "%i:%s" % (trackNum, trk_path)]
       if debugFlag:
-        print(" ".join(cmd))
+        print(viddin.listToShell(cmd))
       err = viddin.runCommand(cmd)
       if err:
         print("Failed to extract")

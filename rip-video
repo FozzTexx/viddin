@@ -140,7 +140,7 @@ def mergeTracks(source, dest, tracks, chapters, start, end, lang, debugFlag=Fals
 
   ptracks = source.parseTrackDescriptors(tracks)
   
-  if not chapters is None:
+  if chapters is not None:
     start, end = source.startEndForChapters(chapters)
       
   for trk in ptracks:
@@ -158,7 +158,7 @@ def mergeTracks(source, dest, tracks, chapters, start, end, lang, debugFlag=Fals
       cmd.extend(["--track-name", "0:%s" % (trk['title'])])
     cmd.append(trk['file'].subtitlePrimary)
   if debugFlag:
-    print(" ".join(cmd))
+    print(viddin.listToShell(cmd))
   stat = viddin.runCommand(cmd, debugFlag=debugFlag)
 
   for trk in ptracks:
@@ -175,7 +175,7 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
   if lang is None:
     lang = "eng"
 
-  if not tracks is not None:
+  if tracks is None:
     tinfo = source.getTitleInfo(debugFlag=debugFlag)
     subs = tinfo.subtitles
     if len(subs) == 0:
@@ -184,7 +184,7 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
     # Check for closed captioning
     foundCC = False
     if source.isDVD():
-      if not chapters is None:
+      if chapters is not None:
         start, end = source.startEndForChapters(chapters)
 
       dvd_subs = source.extractDVDSubtitle(dest.path, None, start, end, lang, debugFlag)
@@ -422,55 +422,57 @@ def main():
   cmd.extend(["-i", source.path, "-o", dest.path])
 
   if args.debug:
-    print(" ".join(cmd))
+    print(viddin.listToShell(cmd))
   if not args.norip:
     logf = open(log, "w")
-    viddin.runCommand(cmd, stderr=logf)
+    err = viddin.runCommand(cmd, stderr=logf)
     logf.close()
-    # FIXME - title might be a list or a range
-    if not args.title is None and '-' in args.title:
+
+    if args.title is not None and '-' in args.title:
       titles = args.title.split("-")
-      olen = 0
+      expect_len = 0
       for t in range(int(titles[0]), int(titles[1]) + 1):
         tinfo = source.getTitleInfo(t, debugFlag=args.debug)
-        if not tinfo is not None:
+        if tinfo is None:
           print("Not found")
           exit(1)
-        olen += tinfo.length
+        expect_len += tinfo.length
     else:
       tinfo = source.getTitleInfo(debugFlag=args.debug)
-      if not tinfo is not None:
+      if tinfo is None:
         print("Not found")
         exit(1)
-      olen = tinfo.length
+      expect_len = tinfo.length
       chapters = list(tinfo.chapters)
-      chapters.append(viddin.Chapter(olen, "End"))
+      chapters.append(viddin.Chapter(expect_len, "End"))
       if args.chapters:
         if '-' in args.chapters:
           chaps = args.chapters.split("-")
         else:
           chaps = [args.chapters, args.chapters]
-        olen = chapters[int(chaps[1])].position \
+        expect_len = chapters[int(chaps[1])].position \
           - chapters[int(chaps[0]) - 1].position
 
     if args.stop_at:
-      olen = viddin.decodeTimecode(args.stop_at)
+      expect_len = viddin.decodeTimecode(args.stop_at)
     if args.start_at:
-      olen -= viddin.decodeTimecode(args.start_at)
+      expect_len -= viddin.decodeTimecode(args.start_at)
       
     if os.path.exists(dest.path):
-      alen = dest.getTitleInfo(debugFlag=args.debug).length
+      actual_len = dest.getTitleInfo(debugFlag=args.debug).length
     else:
-      alen = -1
+      actual_len = -1
     percent = 1
-    if olen != 0.0:
-      percent = abs(alen - olen) / olen
-    if alen < olen and abs(alen - olen) > 0.5 and percent > 0.0014:
-      if alen < 0:
-        alen = 0
+    if expect_len != 0.0:
+      percent = abs(actual_len - expect_len) / expect_len
+    if err or \
+       (actual_len < expect_len and abs(actual_len - expect_len) > 0.5 and percent > 0.0014):
+      if actual_len < 0:
+        actual_len = 0
       outputStatus(dest.path, source.path, args.title, "FAILED TO RIP", "red",
                    "Expect %s  Got %s  Percent %.5f" %
-                   (viddin.formatTimecode(olen), viddin.formatTimecode(alen), percent))
+                   (viddin.formatTimecode(expect_len), viddin.formatTimecode(actual_len),
+                    percent))
       exit(1)
 
     # Fix flags on any forced subs that were added
@@ -480,7 +482,7 @@ def main():
              "--edit", "track:%i" % (int(subs[0]['rv_track_id']) + 1),
              "--set", "flag-default=1", "--set", "flag-forced=1"]
       if args.debug:
-        print(" ".join(cmd))
+        print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)
       
     if args.normalize:
@@ -488,7 +490,7 @@ def main():
       tmp += "_aa" + ext
       cmd = ["adjust-volume", "--volume", "-7", dest.path, tmp]
       if args.debug:
-        print(" ".join(cmd))
+        print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)
       os.rename(tmp, dest.path)
 
@@ -497,7 +499,7 @@ def main():
     if ext == ".mkv":
       cmd = ["mkvpropedit", dest.path, "-d", "title"]
       if args.debug:
-        print(" ".join(cmd))
+        print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)
 
   # FIXME - can only do subtitles on mkv dest and mkv or dvd source
@@ -524,7 +526,7 @@ def main():
   if args.restore_ntsc and os.path.exists(dest.path):
     cmd = ["restore-ntsc", dest.path]
     if args.debug:
-      print(" ".join(cmd))
+      print(viddin.listToShell(cmd))
     viddin.runCommand(cmd)
     path, ext = os.path.splitext(dest.path)
     os.rename(path + "-NTSC" + ext, dest.path)
@@ -537,12 +539,12 @@ def main():
     os.rename(tmp, dest.path)
     
   sys.stdout.flush()
-  alen = dest.getTitleInfo(debugFlag=args.debug).length
+  actual_len = dest.getTitleInfo(debugFlag=args.debug).length
 
   encodeEnd = time.time()
   
   outputStatus(dest.path, source.path, args.title,
-               addtl=str(viddin.formatTimecode(alen)) + "  rip: "
+               addtl=str(viddin.formatTimecode(actual_len)) + "  rip: "
                + str(viddin.formatTimecode(encodeEnd - encodeBegin)))
 
   return

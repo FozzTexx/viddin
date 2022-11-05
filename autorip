@@ -99,10 +99,10 @@ def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
   else:
     flags = ["--lang=eng"]
     if bluray:
-      cmd.extend(["--bluray"])
+      flags.extend(["--bluray"])
     else:
       # FIXME - detect telecine and choose between --tv and --film
-      cmd.extend(["--tv"])
+      flags.extend(["--tv"])
     
   cmd = ["rip-video"] + flags
 

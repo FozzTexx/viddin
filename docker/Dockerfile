@@ -55,6 +55,7 @@ RUN set -e \
         python3 \
         python3-pillow \
         python3-pip \
+        python3-pytimeparse \
         qt5-default \
         setcd \
         sox \

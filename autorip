@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2019 by Chris Osborn <fozztexx@fozztexx.com>
+# Copyright 2022 by Chris Osborn <fozztexx@fozztexx.com>
 #
 # This file is part of viddin.
 #
@@ -18,6 +18,8 @@ import argparse
 import os, sys
 from viddin import viddin
 import subprocess
+import time
+from pytimeparse.timeparse import timeparse
 
 VIDEO_EXT = [".mkv", ".mp4", ".webm"]
 LOCK_DIR = "/var/lock"
@@ -32,6 +34,7 @@ def build_argparser():
   parser.add_argument("--outtype", default=".mkv", help="file type to rip to")
   parser.add_argument("--ripdir", default=RIPPED_DIR,
                       help="directory to put ripped files into")
+  parser.add_argument("--minage", help="file must be at least this old to rip")
   parser.add_argument("--debug", action="store_true", help="pass debug flag")
   return parser
 
@@ -53,8 +56,9 @@ def create_lock():
     f.write("\n")
   return lock_path
 
-def get_videos(path, ignore):
+def get_videos(path, minage, ignore):
   result = []
+  now = time.time()
   ignore = os.path.commonpath([ignore])
   for root, dirs, files in os.walk(path):
     if ignore == os.path.commonpath([ignore, root]):
@@ -63,7 +67,11 @@ def get_videos(path, ignore):
       base, ext = os.path.splitext(file)
       if ext not in VIDEO_EXT:
         continue
-      result.append(os.path.join(root, file))
+      fpath = os.path.join(root, file)
+      st = os.stat(fpath)
+      if now - st.st_mtime < minage:
+        continue
+      result.append(fpath)
   result.sort()
   return result
 
@@ -136,6 +144,10 @@ def delete_empty_dirs(path):
 def main():
   args = build_argparser().parse_args()
 
+  minage = 0
+  if args.minage:
+    minage = timeparse(args.minage)
+    
   exit_code = 0
   lock = create_lock()
   if not lock:
@@ -155,7 +167,7 @@ def main():
     args.outtype = "." + args.outtype
         
   if exit_code == 0:
-    videos = get_videos(args.directory, os.path.join(args.directory, args.ripdir))
+    videos = get_videos(args.directory, minage, os.path.join(args.directory, args.ripdir))
     if args.check:
       exit_code = len(videos) == 0
     else:

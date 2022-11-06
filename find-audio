@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+# Copyright 2022 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+import argparse
+import os
+import librosa
+from scipy import signal
+import numpy as np
+import warnings
+
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("sample", help="audio to search for")
+  parser.add_argument("files", nargs="+", help="Video file(s) to scan")
+  parser.add_argument("--flag", action="store_true", help="flag to do something")
+  return parser
+
+def main():
+  args = build_argparser().parse_args()
+
+  # Disable librosa complaining about having to use audioread
+  warnings.filterwarnings('ignore')
+
+  sample_rate = 22050
+  sample, _ = librosa.load(args.sample, sr=sample_rate, mono=True)
+
+  zeros = np.zeros(len(sample))
+  silent = np.isclose(sample, zeros, atol=0.001)
+  trim = np.where(silent == False)[0]
+  sample = sample[trim[0]:trim[-1]]
+  sample_len = len(sample) / sample_rate
+  
+  for path in args.files:
+    within, _ = librosa.load(path, sr=sample_rate, mono=True)
+    c = signal.correlate(within, sample, mode="valid", method="fft")
+    peak = np.argmax(c)
+    offset = round(peak / sample_rate, 2)
+    base, ext = os.path.splitext(path)
+    with open(base + ".aud", "w") as f:
+      print("%0.3f,%0.3f" % (offset, offset + sample_len), file=f)
+    
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

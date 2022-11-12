@@ -35,7 +35,10 @@ def build_argparser():
   parser.add_argument("--audio", help="File with theme song to search for")
   parser.add_argument("--pattern", nargs="+", type=float, help="Pattern to look for")
   parser.add_argument("--add", action="store_true", help="add chapter if pattern found")
-  parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
+  parser.add_argument("--chapter-only", action="store_true",
+                      help="one end of audio must align with existing chapter")
+  parser.add_argument("--distance", default=10,
+                      help="Maximum number of seconds away from specified offset")
   return parser
 
 def matchesPattern(pos, splits, pattern):
@@ -66,7 +69,7 @@ def loadSplits(filename):
 
 def findCredits(filename, pattern, addFlag):
   splits, _ = loadSplits(filename)
-  
+
   vfile = viddin.VideoSpec(filename, None)
 
   for idx in range(len(pattern), len(splits)):
@@ -92,21 +95,28 @@ def bestSplit(position, splits):
   if boffset and bdiff < DISTANCE:
     return boffset, bdiff
   return None
-  
-def findAudio(filename, theme, addFlag):
+
+def findAudio(filename, theme, addFlag, chapterFlag):
   splits, silence = loadSplits(filename)
 
   video, ext = os.path.splitext(filename)
-  if not os.path.exists(video + ".aud"):
+  aud = video + ".aud"
+
+  # FIXME - need to keep track of which audio file was used to create .aud, not just timestamp
+  if os.path.exists(aud) and os.path.getmtime(aud) < os.path.getmtime(theme):
+    os.unlink(aud)
+
+  if not os.path.exists(aud):
     cmd = ["find-audio", theme, filename]
     viddin.runCommand(cmd)
   audio = viddin.loadSplits(video + ".aud")
-  
+
   vfile = viddin.VideoSpec(filename, None)
   chapters = vfile.chapters
 
   _, begin, end = audio[0]
   audio_chaps = [None, None]
+  was_chaps = [None, None]
 
   offset = None
   for chap in chapters:
@@ -114,9 +124,11 @@ def findAudio(filename, theme, addFlag):
     e_diff = abs(chap.position - end)
     if e_diff < DISTANCE:
       offset = begin - end
+      was_chaps[1] = chap
       break
     elif b_diff < DISTANCE:
       offset = end - begin
+      was_chaps[0] = chap
       break
 
   if offset:
@@ -129,6 +141,9 @@ def findAudio(filename, theme, addFlag):
       audio_chaps[1] = best[0]
     else:
       audio_chaps[1] = pos
+  elif chapterFlag:
+    print("Unable to find audio", filename)
+    return
   else:
     # No matching chapter
     best = bestSplit(end, splits)
@@ -150,12 +165,29 @@ def findAudio(filename, theme, addFlag):
   audio_chaps.sort()
   chaps = [viddin.Chapter(audio_chaps[0], "Intro"),
            viddin.Chapter(audio_chaps[1], "Skip Intro")]
-  doEdit = vfile.addChapters(chaps)
-  if doEdit:
-    print(chaps)
-    
-  if doEdit and addFlag:
-    vfile.writeChapters()
+  identical = []
+  for idx in range(len(chaps)):
+    c = chaps[idx]
+    for vc in chapters:
+      if c.name == vc.name and abs(c.position - vc.position) < DISTANCE:
+        identical.append(idx)
+        break
+
+  for idx in reversed(identical):
+    del chaps[idx]
+    del was_chaps[idx]
+
+  if chaps:
+    doEdit = vfile.addChapters(chaps)
+    if doEdit:
+      for c, w in zip(chaps, was_chaps):
+        print("  %s: %0.3f" % (c.name, c.position), end="")
+        if w:
+          print(" (was %s)" % (w.name), end="")
+        print()
+
+    if doEdit and addFlag:
+      vfile.writeChapters()
 
   return
 
@@ -167,7 +199,8 @@ def main():
       if not os.path.exists(path):
         print("No such file", path)
         exit(1)
-      findAudio(path, args.audio, args.add)
+      print(path)
+      findAudio(path, args.audio, args.add, args.chapter_only)
   else:
     pattern = []
     for idx in range(len(args.pattern)-1):

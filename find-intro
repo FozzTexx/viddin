@@ -27,14 +27,15 @@ import sys
 import re
 from viddin import viddin
 
-#offsets = [386.477, -403.925, -424.919, -427.431, 430.822]
-#offsets = [-128.583, 175.652]
+DISTANCE = 2
 
 def build_argparser():
   parser = argparse.ArgumentParser()
   parser.add_argument("files", nargs="+", help="Video file to guess")
+  parser.add_argument("--audio", help="File with theme song to search for")
   parser.add_argument("--pattern", nargs="+", type=float, help="Pattern to look for")
   parser.add_argument("--add", action="store_true", help="add chapter if pattern found")
+  parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
   return parser
 
 def matchesPattern(pos, splits, pattern):
@@ -42,11 +43,11 @@ def matchesPattern(pos, splits, pattern):
   for idx in range(len(pattern), 0, -1):
     testpattern.append(abs(splits[pos]) - abs(splits[pos - idx]))
   for idx, (a, b) in enumerate(zip(testpattern, pattern)):
-    if abs(a - b) > 2:
+    if abs(a - b) > DISTANCE:
       return False
   return True
 
-def findCredits(filename, pattern, addFlag):
+def loadSplits(filename):
   video, ext = os.path.splitext(filename)
 
   viddin.findBlack(filename)
@@ -61,9 +62,13 @@ def findCredits(filename, pattern, addFlag):
       splits.append((match[1] - match[0]) / 2 + match[0])
     else:
       splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
+  return splits, silence
 
+def findCredits(filename, pattern, addFlag):
+  splits, _ = loadSplits(filename)
+  
   vfile = viddin.VideoSpec(filename, None)
-      
+
   for idx in range(len(pattern), len(splits)):
     if matchesPattern(idx, splits, pattern):
       pos = abs(splits[idx])
@@ -75,19 +80,104 @@ def findCredits(filename, pattern, addFlag):
 
   print("Couldn't find opening for", filename)
   return
+
+def bestSplit(position, splits):
+  bdiff = -1
+  boffset = None
+  for row in splits:
+    diff = abs(position - abs(row))
+    if not boffset or diff < bdiff:
+      bdiff = diff
+      boffset = abs(row)
+  if boffset and bdiff < DISTANCE:
+    return boffset, bdiff
+  return None
+  
+def findAudio(filename, theme, addFlag):
+  splits, silence = loadSplits(filename)
+
+  video, ext = os.path.splitext(filename)
+  if not os.path.exists(video + ".aud"):
+    cmd = ["find-audio", theme, filename]
+    viddin.runCommand(cmd)
+  audio = viddin.loadSplits(video + ".aud")
+  
+  vfile = viddin.VideoSpec(filename, None)
+  chapters = vfile.chapters
+
+  _, begin, end = audio[0]
+  audio_chaps = [None, None]
+
+  offset = None
+  for chap in chapters:
+    b_diff = abs(chap.position - begin)
+    e_diff = abs(chap.position - end)
+    if e_diff < DISTANCE:
+      offset = begin - end
+      break
+    elif b_diff < DISTANCE:
+      offset = end - begin
+      break
+
+  if offset:
+    audio_chaps[0] = chap.position
+    pos = chap.position + offset
+    best = bestSplit(pos, splits)
+    if not best:
+      best = bestSplit(pos, [x[0] for x in silence])
+    if best:
+      audio_chaps[1] = best[0]
+    else:
+      audio_chaps[1] = pos
+  else:
+    # No matching chapter
+    best = bestSplit(end, splits)
+    if not best:
+      best = bestSplit(end, [x[0] for x in silence])
+    if best:
+      audio_chaps[1] = best[0]
+    else:
+      audio_chaps[1] = end
+
+    best = bestSplit(begin, splits)
+    if not best:
+      best = bestSplit(begin, [x[0] for x in silence])
+    if best:
+      audio_chaps[0] = best[0]
+    else:
+      audio_chaps[0] = audio_chaps[1] - (end - begin)
+
+  audio_chaps.sort()
+  chaps = [viddin.Chapter(audio_chaps[0], "Intro"),
+           viddin.Chapter(audio_chaps[1], "Skip Intro")]
+  doEdit = vfile.addChapters(chaps)
+  if doEdit:
+    print(chaps)
     
+  if doEdit and addFlag:
+    vfile.writeChapters()
+
+  return
+
 def main():
   args = build_argparser().parse_args()
 
-  pattern = []
-  for idx in range(len(args.pattern)-1):
-    pattern.append(abs(args.pattern[-1]) - abs(args.pattern[idx]))
+  if args.audio:
+    for path in args.files:
+      if not os.path.exists(path):
+        print("No such file", path)
+        exit(1)
+      findAudio(path, args.audio, args.add)
+  else:
+    pattern = []
+    for idx in range(len(args.pattern)-1):
+      pattern.append(abs(args.pattern[-1]) - abs(args.pattern[idx]))
 
-  for path in args.files:
-    if not os.path.exists(path):
-      print("No such file", path)
-      exit(1)
-    findCredits(path, pattern, args.add)
+    for path in args.files:
+      if not os.path.exists(path):
+        print("No such file", path)
+        exit(1)
+      findCredits(path, pattern, args.add)
   return
 
 if __name__ == '__main__':

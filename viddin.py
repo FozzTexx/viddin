@@ -225,9 +225,12 @@ class viddin:
     with open(filename) as f:
       for line in f:
         info = line.split()
-        if len(info) > 1:
+        if len(info) >= 3:
           begin = float(info[1])
           end = float(info[2])
+        elif len(info) == 2:
+          begin = float(info[0])
+          end = float(info[1])
         else:
           begin = end = float(info[0])
         center = begin + (end - begin) / 2

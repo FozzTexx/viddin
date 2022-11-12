@@ -50,7 +50,7 @@ def main():
     offset = round(peak / sample_rate, 2)
     base, ext = os.path.splitext(path)
     with open(base + ".aud", "w") as f:
-      print("%0.3f,%0.3f" % (offset, offset + sample_len), file=f)
+      print("%0.3f %0.3f" % (offset, offset + sample_len), file=f)
     
   return
 

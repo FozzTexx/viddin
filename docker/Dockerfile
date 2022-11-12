@@ -65,10 +65,12 @@ RUN set -e \
     ; rm -rf /var/lib/apt/lists/* \
       \
     ; pip3 install \
+        tesserocr \
+    ; pip3 install \
+        librosa \
         opencv-python \
         requests-cache==0.5.2 \
         termcolor \
-        tesserocr \
         tvdb_api==2.0 \
         xmltodict \
     ; setsid sh -c "yes | dpkg-reconfigure libdvd-pkg" \

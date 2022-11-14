@@ -122,6 +122,23 @@ RUN set -e \
 COPY install-tvrenamer.sh /tmp/
 RUN /tmp/install-tvrenamer.sh && rm /tmp/install-tvrenamer.sh
 
+# Openvino - FIXME - move to top
+RUN set -e \
+    ; pip3 install --upgrade pip \
+    ; hash -r \
+    ; pip3 install \
+        onnx \
+        openvino-dev \
+        torchvision \
+    ; omz_downloader --name horizontal-text-detection-0001,text-recognition-resnet-fc \
+                     --output_dir /home/viddin/open_model_zoo_models \
+                     --cache_dir /home/viddin/open_model_zoo_cache \
+                     --precision FP16 \
+    ; omz_converter --name text-recognition-resnet-fc \
+                    --precisions FP16 \
+                    --download_dir /home/viddin/open_model_zoo_models \
+                    --output_dir /home/viddin/open_model_zoo_models
+
 # Copy init script
 COPY viddin-init /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/viddin-init"]

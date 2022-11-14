@@ -921,7 +921,7 @@ class viddin:
 
       chap = chap_idx = None
       if isinstance(chapID, str):
-        if re.match("^[0-9]+$", chapID):
+        if re.match("^-?[0-9]+$", chapID):
           chapID = int(chapID)
         elif re.search("[:,.]", chapID):
           chapID = float(viddin.decodeTimecode(chapID))
@@ -1193,4 +1193,3 @@ class viddin:
             return p
         return self.path[0]
       return self.path
-

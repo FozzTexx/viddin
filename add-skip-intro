@@ -35,19 +35,6 @@ def build_argparser():
   parser.add_argument("-n", "--names", nargs=2, help="use names as chapter names")
   return parser
 
-def chapter_with_id(chapters, chap_id):
-  if isinstance(chap_id, int) or re.match("^[0-9]+$", chap_id):
-    return chapters[int(chap_id)]
-
-  if re.search("[:,.]", chap_id):
-    chap_id = float(viddin.decodeTimecode(chap_id))
-  
-  for chap in chapters:
-    if (isinstance(chap_id, float) and abs(chap.position - chap_id) < 2) \
-       or chap.name == chap_id:
-      return chap
-  return None
-  
 def main():
   args = build_argparser().parse_args()
 
@@ -62,10 +49,12 @@ def main():
     vfile = viddin.VideoSpec(path, None)
     chapters = vfile.chapters
 
-    if chapter_with_id(chapters, names[0]) and chapter_with_id(chapters, names[1]):
+    _, c1 = vfile.chapterWithID(names[0])
+    _, c2 = vfile.chapterWithID(names[1])
+    if c1 and c2:
       continue
     
-    chap = chapter_with_id(chapters, args.chapter)
+    _, chap = vfile.chapterWithID(args.chapter)
     if chap is None:
       print("Unable to find specified chapter", path)
       continue

@@ -1,5 +1,6 @@
 from pathlib import Path
 from openvino.runtime import Core
+import tesserocr
 import cv2
 import numpy as np
 
@@ -70,6 +71,22 @@ class OCROpenVINO:
 
     return annotations
 
+@dataclass
+class OCRWord:
+  text: str
+  alphanum: str
+  confidence: int
+  bounds: list
+  letters: list
+  frame: int
+  index: int
+
+@dataclass
+class OCRBlock:
+  text: str
+  words: list
+
+  
 class OCRTesser:
   def recognizeText(frame):
     with tesserocr.PyTessBaseAPI(lang=lang) as api:
@@ -211,4 +228,88 @@ class OCRTesser:
 
     return m_text
 
+
+# def split_subs(subs):
+#   res = subs.split("\n")
+#   idx = 0
+#   parsed = []
+#   while idx < len(res):
+#     end_idx = res[idx:].index("")
+#     timecode = res[idx+1].split(" ")
+#     if len(timecode) != 3 or timecode[1] != "-->":
+#       break
+#     start = viddin.decodeTimecode(timecode[0])
+#     end = viddin.decodeTimecode(timecode[2])
+#     text = " ".join(res[idx+2:end_idx]).strip()
+#     parsed.append([start, end, text])
+#     idx = end_idx + 1
+#     while idx < len(res) and res[idx] == "":
+#       idx += 1
+#   return parsed
+
+# def rect_intersection(rect1, rect2):
+#   x1 = max(rect1[0], rect2[0])
+#   y1 = max(rect1[1], rect2[1])
+#   x2 = min(rect1[0] + rect1[2], rect2[0] + rect2[2])
+#   y2 = min(rect1[1] + rect1[3], rect2[1] + rect2[3])
+#   if x1 <= x2 and y1 <= y2:
+#     return (x1, y1, x2 - x1, y2 - y1)
+#   return None
+
+# def group_blocks(blocks):
+#   remaining = []
+#   for b in blocks:
+#     remaining.extend(b.words)
+
+#   merged = []
+#   merging = [remaining.pop(0)]
+#   m_bb = merging[0].bounds
+#   while len(remaining):
+#     idx = 0
+#     found = False
+#     while idx < len(remaining):
+#       word = remaining[idx]
+#       w_bb = word.bounds
+#       ri = rect_intersection(m_bb, w_bb)
+#       if ri is not None:
+#         if word.text not in [w.text for w in merging]:
+#           merging.append(word)
+#           left = min(m_bb[0], w_bb[0])
+#           top = min(m_bb[1], w_bb[1])
+#           width = max(m_bb[0] + m_bb[2], w_bb[0] + w_bb[2]) - left
+#           height = max(m_bb[1] + m_bb[3], w_bb[1] + w_bb[3]) - top
+#           m_bb = [left, top, width, height]
+#         remaining.pop(idx)
+#         found = True
+#         break
+#       idx += 1
+#     if not found:
+#       merged.append(merging)
+#       merging = [remaining.pop(0)]
+#       m_bb = merging[0].bounds
+#   if len(merging):
+#     merged.append(merging)
+#   # for m in merged:
+#   #   print()
+#   #   print(m)
+
+#   # print()
+#   # for idx, f in enumerate(blocks):
+#   #   print(idx, f.text, [[w.text, w.bounds[0], w.bounds[1]] for w in f.words])
+#   # exit(1)
+#   return merged
+
+# def get_subtitles(video_path, lang='eng', start, end, engine):
+#   video = cv2.VideoCapture(video_path)
+#   start = viddin.decodeTimecode(time_start)
+#   end = viddin.decodeTimecode(time_end)
+
+#   print("Jumping to", start)
+#   video.set(cv2.CAP_PROP_POS_MSEC, start * 1000)
+  
+#   ret, frame = video.read()
+#   if not frame is not None:
+#     return []
+
+#   return engine.recognizeText(frame)
 

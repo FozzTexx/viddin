@@ -6,13 +6,19 @@ from dataclasses import dataclass
 import math
 import csv
 import cv2
-import tesserocr
+from pathlib import Path
+from openvino.runtime import Core
+import cv2
+import numpy as np
 
 sys.path.append("/usr/local/bin/")
 from viddin import viddin
-import ocr
 
 PAST_TITLE = ["producer", "guest", "starring", "directed", "produced", "written"]
+
+ # Words less than 3 letters will be discarded automatically and don't
+ # need to be listed here
+COMMON_WORDS = ["the", "and", "that"]
 
 CSV_EPISODE = 0
 CSV_DVDEP = 1
@@ -28,23 +34,76 @@ def build_argparser():
                       help="Position within chapter to start searching for title")
   parser.add_argument("--within", type=float, default=3 * 60.0,
                       help="Title is within this many seconds of beginnng of chapter")
-  parser.add_argument("--flag", action="store_true", help="flag to do something")
+  parser.add_argument("--skip-matched", action="store_true",
+                      help="Skip any files that already have a match in order file")
   return parser
 
-@dataclass
-class OCRWord:
-  text: str
-  alphanum: str
-  confidence: int
-  bounds: list
-  letters: list
-  frame: int
-  index: int
+class TextResnet:
+  MODEL_DIR = "~/open_model_zoo_models"
+  MODEL_PRECISION = "FP16"
+  MODELS = {
+    "bounds": ["intel", "horizontal-text-detection-0001"],
+    "recognize": ["public", "text-recognition-resnet-fc"],
+  }
 
-@dataclass
-class OCRBlock:
-  text: str
-  words: list
+  def __init__(self):
+    super().__init__()
+    self.engine = Core()
+    self.detectors = {}
+
+    model_dir = Path(self.MODEL_DIR).expanduser()
+    for model in self.MODELS:
+      mp = self.MODELS[model]
+      path = (model_dir / mp[0] / mp[1] / self.MODEL_PRECISION / mp[1]).with_suffix(".xml")
+      loaded = self.engine.read_model(model=path, weights=path.with_suffix(".bin"))
+      compiled = self.engine.compile_model(model=loaded, device_name="CPU")
+      self.detectors[model] = compiled
+    return
+
+  def multiplyByRatio(self, ratio_x, ratio_y, box):
+    return [max(shape * ratio_y, 10) if idx % 2 else shape * ratio_x
+            for idx, shape in enumerate(box[:-1])]
+
+  def runPreprocesingOnCrop(self, crop, net_shape):
+    temp_img = cv2.resize(crop, net_shape)
+    temp_img = temp_img.reshape((1,) * 2 + temp_img.shape)
+    return temp_img
+
+  def recognizeText(self, frame):
+    grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    N, C, H, W = self.detectors['bounds'].input(0).shape
+    resized_image = cv2.resize(frame, (W, H))
+    input_image = np.expand_dims(resized_image.transpose(2, 0, 1), 0)
+
+    output_key = self.detectors['bounds'].output("boxes")
+    boxes = self.detectors['bounds']([input_image])[output_key]
+    boxes = boxes[~np.all(boxes == 0, axis=1)]
+
+    _, _, H, W = self.detectors['recognize'].input(0).shape
+    (real_y, real_x), (resized_y, resized_x) = grayscale.shape[:2], resized_image.shape[:2]
+    ratio_x, ratio_y = real_x / resized_x, real_y / resized_y
+
+    letters = "~0123456789abcdefghijklmnopqrstuvwxyz"
+
+    annotations = []
+    for i, crop in enumerate(boxes):
+      (x_min, y_min, x_max, y_max) = map(int, self.multiplyByRatio(ratio_x, ratio_y, crop))
+      image_crop = self.runPreprocesingOnCrop(grayscale[y_min:y_max, x_min:x_max], (W, H))
+      result = self.detectors['recognize']([image_crop]) \
+               [self.detectors['recognize'].output(0)]
+      recognition_results_test = np.squeeze(result)
+
+      annotation = []
+      for letter in recognition_results_test:
+        parsed_letter = letters[letter.argmax()]
+
+        # Returning 0 index from `argmax` signalizes an end of a string.
+        if parsed_letter == letters[0]:
+            break
+        annotation.append(parsed_letter)
+      annotations.append("".join(annotation))
+
+    return annotations
 
 def bisect(end):
   array = list(range(end))
@@ -67,25 +126,43 @@ def bisect(end):
   return b_array
 
 def find_episode(text, titles):
-  ocr_words = [x for x in text.lower().split() if len(x) >= 3]
+  ocr_words = [x for x in text.lower().split() if len(x) >= 3 and x not in COMMON_WORDS]
+  if not ocr_words:
+    return None
+  
   matches = []
   for row in titles:
     tstr = row[CSV_TITLE]
-    lt = tstr.lower()
-    if not len(lt):
+    ep_title = tstr.lower()
+    if not len(ep_title):
       continue
-    t_words = lt.split()
+    t_words = []
+    for word in ep_title.split():
+      if word in COMMON_WORDS or len(word) < 3:
+        continue
+      t_words.append("^" + re.sub("[^0-9a-z]+", ".?", word) + "$")
     m_words = []
+
     for w in ocr_words:
-      if w in lt:
-        m_words.append(w)
+      for tw in t_words:
+        if re.match(tw, w):
+          m_words.append(w)
     pct_words = len(m_words) / len(t_words)
+    pct_title = len(t_words) / len(m_words) if len(m_words) else 0
     m_text = " ".join(m_words)
     pct_length = len(m_text) / len(tstr)
     pct_used = len(m_text) / len(text)
     # if len(m_words):
-    #   print("POSSIBLE MATCH", pct_words, pct_length, pct_used, m_words, row)
-    if pct_length > 0.50 and (pct_used > 0.50 or tstr[0] == '#'):
+    #   print("POSSIBLE MATCH",
+    #         "  Pct words:", pct_words,
+    #         "  Pct title:", pct_title,
+    #         "  Pct length:", pct_length,
+    #         "  Pct used:", pct_used,
+    #         "  m_words:", m_words,
+    #         "  row:", row,
+    #         "  m_text:", m_text,
+    #         "  text:", text)
+    if pct_length > 0.50 and (pct_title > 0.95 or pct_used > 0.50 or tstr[0] == '#'):
       # print("DID MATCH")
       matches.append([row, len(m_words), pct_words, pct_length, pct_used])
     # else:
@@ -118,90 +195,6 @@ def append_order(path, epnum, text, position):
 
   return
 
-# def split_subs(subs):
-#   res = subs.split("\n")
-#   idx = 0
-#   parsed = []
-#   while idx < len(res):
-#     end_idx = res[idx:].index("")
-#     timecode = res[idx+1].split(" ")
-#     if len(timecode) != 3 or timecode[1] != "-->":
-#       break
-#     start = viddin.decodeTimecode(timecode[0])
-#     end = viddin.decodeTimecode(timecode[2])
-#     text = " ".join(res[idx+2:end_idx]).strip()
-#     parsed.append([start, end, text])
-#     idx = end_idx + 1
-#     while idx < len(res) and res[idx] == "":
-#       idx += 1
-#   return parsed
-
-# def rect_intersection(rect1, rect2):
-#   x1 = max(rect1[0], rect2[0])
-#   y1 = max(rect1[1], rect2[1])
-#   x2 = min(rect1[0] + rect1[2], rect2[0] + rect2[2])
-#   y2 = min(rect1[1] + rect1[3], rect2[1] + rect2[3])
-#   if x1 <= x2 and y1 <= y2:
-#     return (x1, y1, x2 - x1, y2 - y1)
-#   return None
-
-# def group_blocks(blocks):
-#   remaining = []
-#   for b in blocks:
-#     remaining.extend(b.words)
-
-#   merged = []
-#   merging = [remaining.pop(0)]
-#   m_bb = merging[0].bounds
-#   while len(remaining):
-#     idx = 0
-#     found = False
-#     while idx < len(remaining):
-#       word = remaining[idx]
-#       w_bb = word.bounds
-#       ri = rect_intersection(m_bb, w_bb)
-#       if ri is not None:
-#         if word.text not in [w.text for w in merging]:
-#           merging.append(word)
-#           left = min(m_bb[0], w_bb[0])
-#           top = min(m_bb[1], w_bb[1])
-#           width = max(m_bb[0] + m_bb[2], w_bb[0] + w_bb[2]) - left
-#           height = max(m_bb[1] + m_bb[3], w_bb[1] + w_bb[3]) - top
-#           m_bb = [left, top, width, height]
-#         remaining.pop(idx)
-#         found = True
-#         break
-#       idx += 1
-#     if not found:
-#       merged.append(merging)
-#       merging = [remaining.pop(0)]
-#       m_bb = merging[0].bounds
-#   if len(merging):
-#     merged.append(merging)
-#   # for m in merged:
-#   #   print()
-#   #   print(m)
-
-#   # print()
-#   # for idx, f in enumerate(blocks):
-#   #   print(idx, f.text, [[w.text, w.bounds[0], w.bounds[1]] for w in f.words])
-#   # exit(1)
-#   return merged
-
-# def get_subtitles(video_path, lang='eng', start, end, engine):
-#   video = cv2.VideoCapture(video_path)
-#   start = viddin.decodeTimecode(time_start)
-#   end = viddin.decodeTimecode(time_end)
-
-#   print("Jumping to", start)
-#   video.set(cv2.CAP_PROP_POS_MSEC, start * 1000)
-  
-#   ret, frame = video.read()
-#   if not frame is not None:
-#     return []
-
-#   return engine.recognizeText(frame)
-
 def filter_order(order, after, start, dur, between):
   between = sorted(between)
   order_after = order[after:]
@@ -212,18 +205,72 @@ def filter_order(order, after, start, dur, between):
     print(file=sys.stderr)
     print("Narrowing search %0.3f-%0.3f" % (between[0], between[1]), file=sys.stderr)
   return order
-  
+
+def show_status(offset, message=None):
+  buf = "Searching %0.3f " % (offset)
+  if message:
+    buf += message
+
+  width = 80
+  viddin.initCurses()
+  if not viddin.validTerminal:
+    print("INVALID TERMINAL")
+    exit(1)
+    
+  if viddin.validTerminal:
+    try:
+      width = os.get_terminal_size().columns
+    except OSError:
+      pass
+    buf = buf[:width - 1]
+    if message:
+      buf += viddin.clearEOL
+  print(buf + "\r", end="", file=sys.stderr)
+  return
+    
 def main():
   args = build_argparser().parse_args()
 
   with open(args.titles, newline='') as f:
     reader = csv.reader(f)
     titles = list(reader)
+    # FIXME - generate list of words of all titles to quickly discard OCR words not in titles
+    season_titles = {}
+    for title in titles:
+      ep_id = title[0]
+      if 'x' in ep_id:
+        ep_parts = ep_id.split('x')
+        season = int(ep_parts[0])
+        if season not in season_titles:
+          season_titles[season] = []
+        season_titles[season].append(title)
 
   ep_match = []
-  engine = ocr.OCROpenVINO()
+  ocr_engine = TextResnet()
   
   for path in args.files:
+    season = None
+    base, ext = os.path.splitext(os.path.basename(path))
+    if 'x' in base:
+      start = base.split('x')
+      season = int(start[0])
+
+    if args.skip_matched and season is not None:
+      log_dir = os.path.dirname(os.path.abspath(path))
+      log_path = os.path.join(log_dir, str(season) + "order.txt")
+      if os.path.exists(log_path):
+        with open(log_path, newline='') as f:
+          reader = csv.reader(f)
+          matches = list(reader)
+          matched = False
+          for row in matches:
+            if path == row[0] and row[1] != ".mkv":
+              matched = True
+              break
+          if matched:
+            # Skip this video file
+            continue
+    
     print()
     print("Working on", path)
     vfile = viddin.VideoSpec(path, None)
@@ -278,17 +325,17 @@ def main():
         continue
       if skip_after is not None and offset > skip_after:
         continue
-      
-      print("Searching %0.3f " % (offset), end="", file=sys.stderr)
+
+      show_status(offset)
       video.set(cv2.CAP_PROP_POS_MSEC, offset * 1000)
       ret, frame = video.read()
       if not frame is not None:
         continue
       
-      text = engine.recognizeText(frame)
+      text = ocr_engine.recognizeText(frame)
       if len(text):
         timecode = viddin.formatTimecode(offset)
-        print(timecode, text, end="", file=sys.stderr)
+        show_status(offset, timecode + " " + str(text))
         
         l_text = " ".join(text).lower()
         did_filter = False
@@ -300,7 +347,10 @@ def main():
             did_filter = True
             break
 
-        episode = find_episode(l_text, titles)
+        check_titles = titles
+        if season is not None:
+          check_titles = season_titles[season]
+        episode = find_episode(l_text, check_titles)
         if episode is not None:
           print(file=sys.stderr)
           print(path, "is", episode, "-- Title card at", timecode,
@@ -317,10 +367,10 @@ def main():
           found = True
           break
 
-        # Found a large block of text, search in this area immediately
-        if not did_filter and len(text) >= 10:
-          check_order = filter_order(check_order, idx,
-                                     start, check_dur, (offset, offset - 15))
+        # # Found a large block of text, search in this area immediately
+        # if not did_filter and len(text) >= 10:
+        #   check_order = filter_order(check_order, idx,
+        #                              start, check_dur, (offset, offset - 15))
 
       print("\r", end="", file=sys.stderr)
 

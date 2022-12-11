@@ -25,6 +25,7 @@ VIDEO_EXT = [".mkv", ".mp4", ".webm"]
 LOCK_DIR = "/var/lock"
 RIPPED_DIR = "ripped"
 AUTOFLAGS = "autorip-flags"
+AUTOCMD = "autorip-cmd"
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -75,12 +76,12 @@ def get_videos(path, minage, ignore):
   result.sort()
   return result
 
-def find_flags(path, basedir):
+def find_flags(path, basedir, flags_file=AUTOFLAGS):
   pathdir = os.path.dirname(path)
   check_dirs = os.path.split(os.path.relpath(pathdir, basedir))
   for idx in range(len(check_dirs), 0, -1):
     subdir = os.path.join(*check_dirs[:idx])
-    flags_path = os.path.join(basedir, subdir, AUTOFLAGS)
+    flags_path = os.path.join(basedir, subdir, flags_file)
     if os.path.isfile(flags_path) and os.access(flags_path, os.R_OK):
       return flags_path
   return None
@@ -100,7 +101,6 @@ def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
 
   flags_path = find_flags(path, basedir)
   if flags_path is not None:
-    # FIXME - read in flags
     with open(flags_path) as f:
       flags = f.read()
       flags = flags.split()
@@ -111,9 +111,16 @@ def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
     else:
       # FIXME - detect telecine and choose between --tv and --film
       flags.extend(["--tv"])
-    
-  cmd = ["rip-video"] + flags
 
+  cmd = ["rip-video"]
+      
+  cmd_file = find_flags(path, basedir, flags_file=AUTOCMD)
+  if cmd_file is not None:
+    with open(cmd_file) as f:
+      cmd = f.read()
+      cmd = cmd.split()
+
+  cmd.extend(flags)
   cmd.extend([path, output])
   os.makedirs(subdir, exist_ok=True)
     

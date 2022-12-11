@@ -68,8 +68,9 @@ def main():
         move_abs = os.path.abspath(move_name)
         dpath = os.path.dirname(move_abs)
         tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
-        prefix = os.path.commonprefix([move_abs, tf.name])
-        new_name = tf.name[len(prefix):]
+        cwd = os.getcwd()
+        prefix = os.path.commonprefix([cwd, tf.name])
+        new_name = os.path.relpath(tf.name, prefix)
 
         old_to_new[0] = (new_name, old_to_new[0][1])
         old_set = old_set - set([move_name])

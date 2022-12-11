@@ -51,13 +51,13 @@ class viddin:
       viddin.clearEOL = ""
       try:
         curses.setupterm()
-        validTerminal = True
+        viddin.validTerminal = True
         viddin.clearEOL = curses.tigetstr("el")
         if viddin.clearEOL:
           viddin.clearEOL = viddin.clearEOL.decode()
         else:
           viddin.clearEOL = ""
-      except curses.error:
+      except curses.error as e:
         pass
     viddin.didCursesInit = True
     return

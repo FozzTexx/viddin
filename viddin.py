@@ -139,10 +139,10 @@ class viddin:
     if isinstance(cmd, (list, tuple)):
       do_shell = False
 
+    viddin.initCurses()
     if debugFlag or not viddin.validTerminal:
       err = subprocess.call(cmd, stderr=stderr)
     else:
-      viddin.initCurses()
       try:
         width = os.get_terminal_size().columns
       except OSError:

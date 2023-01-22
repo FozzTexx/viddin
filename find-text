@@ -36,6 +36,8 @@ def build_argparser():
                       help="Title is within this many seconds of beginnng of chapter")
   parser.add_argument("--skip-matched", action="store_true",
                       help="Skip any files that already have a match in order file")
+  parser.add_argument("--past-title",
+                      help="comma separated list of words that occur after the title")
   return parser
 
 class TextResnet:
@@ -122,14 +124,14 @@ def bisect(end):
       divisions *= 2
       step = len(array) // divisions
       idx = step
-    
+
   return b_array
 
 def find_episode(text, titles):
   ocr_words = [x for x in text.lower().split() if len(x) >= 3 and x not in COMMON_WORDS]
   if not ocr_words:
     return None
-  
+
   matches = []
   for row in titles:
     tstr = row[CSV_TITLE]
@@ -216,7 +218,7 @@ def show_status(offset, message=None):
   if not viddin.validTerminal:
     print("INVALID TERMINAL")
     exit(1)
-    
+
   if viddin.validTerminal:
     try:
       width = os.get_terminal_size().columns
@@ -227,7 +229,7 @@ def show_status(offset, message=None):
       buf += viddin.clearEOL
   print(buf + "\r", end="", file=sys.stderr)
   return
-    
+
 def main():
   args = build_argparser().parse_args()
 
@@ -247,7 +249,10 @@ def main():
 
   ep_match = []
   ocr_engine = TextResnet()
-  
+
+  if args.past_title:
+    PAST_TITLE = [x.strip() for x in args.past_title.split(",")]
+
   for path in args.files:
     season = None
     base, ext = os.path.splitext(os.path.basename(path))
@@ -270,7 +275,7 @@ def main():
           if matched:
             # Skip this video file
             continue
-    
+
     print()
     print("Working on", path)
     vfile = viddin.VideoSpec(path, None)
@@ -285,7 +290,7 @@ def main():
       if usechap < 0:
         usechap -= 1
     usechap, _ = vfile.chapterWithID(usechap)
-    
+
     start = chapters[usechap][0]
     end = chapters[usechap+1][0]
     if args.offset is not None:
@@ -320,7 +325,7 @@ def main():
     while idx < len(check_order):
       offset = start + check_order[idx] * check_dur
       idx += 1
-      
+
       if skip_before is not None and offset < skip_before:
         continue
       if skip_after is not None and offset > skip_after:
@@ -331,12 +336,12 @@ def main():
       ret, frame = video.read()
       if not frame is not None:
         continue
-      
+
       text = ocr_engine.recognizeText(frame)
       if len(text):
         timecode = viddin.formatTimecode(offset)
         show_status(offset, timecode + " " + str(text))
-        
+
         l_text = " ".join(text).lower()
         did_filter = False
         for word in PAST_TITLE:
@@ -347,6 +352,7 @@ def main():
             did_filter = True
             break
 
+        all_subs.append(l_text)
         check_titles = titles
         if season is not None:
           check_titles = season_titles[season]

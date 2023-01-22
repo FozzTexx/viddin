@@ -66,7 +66,7 @@ def get_videos(path, minage, ignore):
       continue
     for file in files:
       base, ext = os.path.splitext(file)
-      if ext not in VIDEO_EXT:
+      if base[0] == '.' or ext not in VIDEO_EXT:
         continue
       fpath = os.path.join(root, file)
       st = os.stat(fpath)
@@ -94,7 +94,7 @@ def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
   output = p + outtype
   log = p + ".autolog"
 
-  resolution = viddin.getResolution(path)
+  resolution = viddin.getResolution(path, debugFlag)
   bluray = False
   if resolution[0] > 1000 or resolution[1] >= 700:
     bluray = True

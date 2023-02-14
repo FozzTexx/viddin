@@ -121,6 +121,8 @@ def rip_video(path, basedir, ripdir, outtype, debugFlag=False):
       cmd = cmd.split()
 
   cmd.extend(flags)
+  if debugFlag:
+    flags.append("--debug")
   cmd.extend([path, output])
   os.makedirs(subdir, exist_ok=True)
     

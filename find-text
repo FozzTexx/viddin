@@ -231,6 +231,8 @@ def show_status(offset, message=None):
   return
 
 def main():
+  global PAST_TITLE
+
   args = build_argparser().parse_args()
 
   with open(args.titles, newline='') as f:

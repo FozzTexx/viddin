@@ -112,7 +112,7 @@ def printSubs(subs, lang):
 
       if 'NUMBER_OF_FRAMES' in sub:
         info += " Frames=%s" % (sub['NUMBER_OF_FRAMES'])
-  
+
       print(info)
   return
 
@@ -134,15 +134,15 @@ def mergeTracks(source, dest, tracks, chapters, start, end, lang, debugFlag=Fals
   if not os.path.exists(dest.path):
     print("Cannot add commentary: %s does not exist" % dest.path)
     return False
-    
+
   if lang is None:
     lang = "eng"
 
   ptracks = source.parseTrackDescriptors(tracks)
-  
+
   if chapters is not None:
     start, end = source.startEndForChapters(chapters)
-      
+
   for trk in ptracks:
     tpath = source.extractTrack(dest.path, int(trk['number']), start, end, lang, debugFlag)
     trk['file'] = tpath
@@ -171,7 +171,7 @@ def mergeTracks(source, dest, tracks, chapters, start, end, lang, debugFlag=Fals
 
 def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=False):
   dvd_subs = None
-  
+
   if lang is None:
     lang = "eng"
 
@@ -236,7 +236,7 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
 
   if dvd_subs is not None:
     os.remove(dvd_subs)
-    
+
   return
 
 def main():
@@ -245,6 +245,9 @@ def main():
   flags = []
   encoder = "x264"
   add_autosubs = False
+
+  if args.quality:
+    flags.extend(["-q", args.quality])
 
   if args.animation:
     flags.extend(["-r", "23.976", "--x264-tune", "animation", "--detelecine"])
@@ -376,7 +379,7 @@ def main():
 
   if args.start_at:
     flags.extend(["--start-at", "seconds:" + str(viddin.decodeTimecode(args.start_at))])
-      
+
   if args.stop_at:
     stop = viddin.decodeTimecode(args.stop_at)
     if args.start_at:
@@ -391,10 +394,10 @@ def main():
     path_dest = None
 
   # FIXME - make sure path_source exists and is online
-  
+
   if args.extension[0] != '.':
     args.extension = "." + args.extension
-    
+
   if not path_dest:
     path_dest = viddin.uniqueFile(path_source, args.extension)
 
@@ -416,7 +419,7 @@ def main():
   dest = viddin.VideoSpec(path_dest, None)
 
   os.environ['AV_LOG_FORCE_NOCOLOR'] = "1"
-  
+
   cmd = ["HandBrakeCLI", "--encoder", encoder]
   cmd.extend(flags)
   cmd.extend(["-i", source.path, "-o", dest.path])
@@ -450,6 +453,8 @@ def main():
           chaps = args.chapters.split("-")
         else:
           chaps = [args.chapters, args.chapters]
+        if len(chaps) < 2:
+          chaps.append(len(chapters) - 1)
         expect_len = chapters[int(chaps[1])].position \
           - chapters[int(chaps[0]) - 1].position
 
@@ -457,7 +462,7 @@ def main():
       expect_len = viddin.decodeTimecode(args.stop_at)
     if args.start_at:
       expect_len -= viddin.decodeTimecode(args.start_at)
-      
+
     if os.path.exists(dest.path):
       actual_len = dest.getTitleInfo(debugFlag=args.debug).length
     else:
@@ -484,7 +489,7 @@ def main():
       if args.debug:
         print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)
-      
+
     if args.normalize:
       tmp, ext = os.path.splitext(dest.path)
       tmp += "_aa" + ext
@@ -515,14 +520,14 @@ def main():
     if not os.path.exists(dest.path):
       print("Cannot add commentary, no such file:", dest.path)
       exit(1)
-      
+
     lang = args.audio_lang
     if lang is None:
       lang = args.lang
     if not mergeTracks(source, dest, args.commentary, args.chapters, lang, args.debug):
       print("Failed to merge")
       exit(1)
-          
+
   if args.restore_ntsc and os.path.exists(dest.path):
     cmd = ["restore-ntsc", dest.path]
     if args.debug:
@@ -537,12 +542,12 @@ def main():
     cmd = ["ffmpeg", "-i", dest.path, "-vf", "mpdecimate", "-vsync", "vfr", tmp]
     viddin.runCommand(cmd)
     os.rename(tmp, dest.path)
-    
+
   sys.stdout.flush()
   actual_len = dest.getTitleInfo(debugFlag=args.debug).length
 
   encodeEnd = time.time()
-  
+
   outputStatus(dest.path, source.path, args.title,
                addtl=str(viddin.formatTimecode(actual_len)) + "  rip: "
                + str(viddin.formatTimecode(encodeEnd - encodeBegin)))

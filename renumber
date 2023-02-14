@@ -96,7 +96,7 @@ def main():
         break
 
     for old_path, new_path in ordered:
-      if not os.path.exists(new_path):
+      if not os.path.exists(new_path) or args.dryrun:
         if not args.dryrun:
           os.rename(old_path, new_path)
         print("Renamed " + old_path + " to " + new_path)

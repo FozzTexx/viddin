@@ -798,11 +798,11 @@ class viddin:
       if self.titleNumber != None or self.isDVD():
         dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
         chaps = dvdInfo['track'][self.titleNumber - 1]['chapter']
-        chapters.append(0)
+        chapters.append(viddin.Chapter(0, None))
         offset = 0
         for c in chaps:
           offset += c['length']
-          chapters.append(offset)
+          chapters.append(viddin.Chapter(offset, None))
       else:
         cmd = ["ffprobe", "-i", self.path, "-print_format", "json", "-show_chapters"]
         if debugFlag:
@@ -941,7 +941,7 @@ class viddin:
             chap_idx = idx
             break
 
-      if chap_idx is not None and chap_idx >= 0 and chap_idx < len(self._chapters):
+      if chap_idx is not None and -len(self.chapters) <= chap_idx < len(self._chapters):
         chap = self._chapters[chap_idx]
       else:
         chap_idx = None

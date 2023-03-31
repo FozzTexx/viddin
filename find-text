@@ -292,6 +292,8 @@ def main():
       if usechap < 0:
         usechap -= 1
     usechap, _ = vfile.chapterWithID(usechap)
+    if usechap is None:
+      continue
 
     start = chapters[usechap][0]
     end = chapters[usechap+1][0]
@@ -363,8 +365,8 @@ def main():
           print(file=sys.stderr)
           print(path, "is", episode, "-- Title card at", timecode,
                 "within", offset - start, file=sys.stderr)
-          ep_match.append([path, episode[0]])
-          append_order(path, episode[0], text, timecode)
+          ep_match.append([path, episode[CSV_DVDEP]])
+          append_order(path, episode[CSV_DVDEP], text, timecode)
           found = True
           break
         elif "copyright" in l_text or "universal" in l_text:

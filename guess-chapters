@@ -114,9 +114,12 @@ def main():
       for offset in expected:
         bdiff = -1
         boffset = None
+        pos = offset.position
+        if pos < 0:
+          pos = vfile.length + pos
         for row in splits:
           if row >= 0 or args.force:
-            diff = abs(offset.position - abs(row))
+            diff = abs(pos - abs(row))
             if not boffset or diff < bdiff:
               bdiff = diff
               boffset = abs(row)

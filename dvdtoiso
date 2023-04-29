@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+import argparse
+import os, sys
+import subprocess
+
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("dvd", nargs="?", default="/dev/dvd", help="dvd device")
+  parser.add_argument("output", help="file to write iso to")
+  parser.add_argument("--flag", action="store_true", help="flag to do something")
+  return parser
+
+def main():
+  args = build_argparser().parse_args()
+  cmd = ["isoinfo", "-d", "-i", args.dvd]
+  process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL)
+  pstr = process.stdout.read()
+  process.stdout.close()
+  pstr = pstr.decode("utf-8")
+  rows = pstr.split("\n")
+
+  for row in rows:
+    if row.startswith("Logical block size is:"):
+      block_size = int(row.split()[-1])
+    elif row.startswith("Volume size is:"):
+      block_count = int(row.split()[-1])
+
+  print("Copying %i blocks of size %i from %s to %s" %
+        (block_count, block_size, args.dvd, args.output))
+
+  # Put dvd drive into decrypt mode:
+  cmd = ["cvlc", "--run-time", "6", "--start-time", "16", args.dvd, "vlc://quit"]
+  subprocess.call(cmd)
+
+  base, ext = os.path.splitext(args.output)
+  # cmd = ["dd", "if=" + args.dvd, "of=" + args.output,
+  #        "bs=" + str(block_size), "count=" + str(block_count)]
+  cmd = ["ddrescue",
+         "--sector-size=" + str(block_size),
+         "--size=" + str(block_count * block_size),
+         args.dvd, args.output, base + ".ddlog"]
+  subprocess.call(cmd)
+  
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

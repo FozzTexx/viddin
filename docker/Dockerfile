@@ -1,6 +1,6 @@
 # -*- mode: Fundamental; indent-tabs-mode: nil -*-
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 LABEL maintainer fozztexx@fozztexx.com
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -51,12 +51,11 @@ RUN set -e \
         mkvtoolnix \
         mplayer \
         nasm \
-        python \
         python3 \
         python3-pillow \
         python3-pip \
         python3-pytimeparse \
-        qt5-default \
+        qtbase5-dev \
         setcd \
         sox \
         sudo \
@@ -69,6 +68,7 @@ RUN set -e \
     ; pip3 install \
         librosa \
         opencv-python \
+        openvino \
         requests-cache==0.5.2 \
         termcolor \
         tvdb_api==2.0 \
@@ -83,11 +83,25 @@ RUN set -e \
     ; echo "$WSUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
     ;
 
-# Install pkg-config from source
-COPY install-pkg-config.sh /tmp/
-RUN set -e \
-    ; /tmp/install-pkg-config.sh \
-    ; rm /tmp/install-pkg-config.sh
+# # Install OCR models
+# RUN set -e \
+#     ; omz_downloader \
+#                      --name horizontal-text-detection-0001,text-recognition-resnet-fc \
+#                      --output_dir /home/viddin/open_model_zoo_models \
+#                      --cache_dir /home/viddin/open_model_zoo_cache \
+#                      --precision FP16 \
+#     # ; omz_converter \
+#     #                 --name text-recognition-resnet-fc \
+#     #                 --precisions FP16 \
+#     #                 --download_dir /home/viddin/open_model_zoo_models \
+#     #                 --output_dir /home/viddin/open_model_zoo_models \
+#     ;
+
+# # Install pkg-config from source
+# COPY install-pkg-config.sh /tmp/
+# RUN set -e \
+#     ; /tmp/install-pkg-config.sh \
+#     ; rm /tmp/install-pkg-config.sh
 
 # Install HandBrake
 COPY install-handbrake.sh HandBrake.bundle /tmp/
@@ -121,23 +135,6 @@ RUN set -e \
 
 COPY install-tvrenamer.sh /tmp/
 RUN /tmp/install-tvrenamer.sh && rm /tmp/install-tvrenamer.sh
-
-# Openvino - FIXME - move to top
-RUN set -e \
-    ; pip3 install --upgrade pip \
-    ; hash -r \
-    ; pip3 install \
-        onnx \
-        openvino-dev \
-        torchvision \
-    ; omz_downloader --name horizontal-text-detection-0001,text-recognition-resnet-fc \
-                     --output_dir /home/viddin/open_model_zoo_models \
-                     --cache_dir /home/viddin/open_model_zoo_cache \
-                     --precision FP16 \
-    ; omz_converter --name text-recognition-resnet-fc \
-                    --precisions FP16 \
-                    --download_dir /home/viddin/open_model_zoo_models \
-                    --output_dir /home/viddin/open_model_zoo_models
 
 # Copy init script
 COPY viddin-init /usr/local/bin/

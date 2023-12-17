@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+import argparse
+import os, sys
+import glob
+import re
+
+sys.path.append("/usr/local/bin/")
+from viddin import viddin
+
+FLAGS="--film"
+
+class EpisodePosition:
+  def __init__(self, title, chapter=None, start=None, end=None):
+    self.title = title
+    if isinstance(str, title) and re.match(r"^[0-9]+$", title):
+      self.title = int(title)
+    self.chapter = chapter
+    self.start = start
+    self.end = end
+    return
+
+  @property
+  def isFile(self):
+    if isinstance(self.title, str) and os.path.exists(self.title):
+      return True
+    return False
+  
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("episode", help="episode number as SSxEE (2x05)")
+  parser.add_argument("titles", nargs="+", help="title numbers on DVD or files")
+  parser.add_argument("--dvd", help="DVD device")
+  parser.add_argument("--before", type=float, default=30,
+                      help="Universal vanity card is before")
+  parser.add_argument("--extension", default="mkv",
+                      help="extension to use for output, default is mkv")
+  parser.add_argument("--flags", default=FLAGS, help="flags to pass to rip-video")
+  parser.add_argument("--split-chapters", action="store_true",
+                      help="each chapter is an episode")
+  return parser
+
+def main():
+  args = build_argparser().parse_args()
+
+  if args.extension[0] != '.':
+    args.extension = "." + args.extension
+
+  m = re.match("([0-9]+)x([0-9]+)", args.episode)
+  if not m:
+    print("Invalid episode id:", args.episode)
+    exit(1)
+  season = int(m.group(1))
+  episode = int(m.group(2))
+  
+  dvd = "/dev/dvd"
+  if args.dvd:
+    dvd = args.dvd
+
+  to_rip = []
+  for title in args.titles:
+    if not args.split_chapters:
+      to_rip.append(EpisodePosition(title=title))
+    else:
+      source = viddin.VideoSpec(dvd, int(title))
+      chapters = source.chapters + (viddin.Chapter(source.length, None), )
+      for idx, (chap, chap_next) in enumerate(zip(chapters, chapters[1:])):
+        to_rip.append(EpisodePosition(title=title, chapter=idx+1,
+                             start=chap.position, end=chap_next.position))
+
+  for idx, title in enumerate(to_rip):
+    epid = "%ix%02i" % (season, episode + idx)
+
+    outpath = epid + args.extension
+
+    if not title.isFile:
+      temp = viddin.uniqueFile(outpath)
+      flags = ["--nosubtitles", "--title", str(title.title)]
+      if title.chapter:
+        flags.extend(["--start-at", str(title.start),
+                      "--stop-at", str(title.start + args.before)])
+      else:
+        flags.extend(["--stop-at", str(args.before)])
+      cmd = ["rip-video", *flags, dvd, temp]
+
+      print(viddin.listToShell(cmd))
+      stat = viddin.runCommand(cmd, debugFlag=True)
+      if stat != 0:
+        print("Rip failed", file=sys.stderr)
+        exit(1)
+
+    viddin.findBlack(temp, args.before if title.isFile else None)
+    path, ext = os.path.splitext(temp)
+    black = viddin.loadSplits(path + ".blk")
+
+    for filename in glob.glob(os.path.join(".", path) + ".*"):
+      os.remove(filename)
+      
+    offset = black[-1][0]
+
+    cmd = ["rip-video"]
+    cmd.extend(args.flags.split())
+    cmd.extend(["--title", str(title.title)])
+    if title.chapter:
+      cmd.extend(["--start-at", str(title.start + offset),
+                  "--stop-at", str(title.end)])
+    else:
+      cmd.extend(["--start-at", str(offset)])
+    if not title.isFile:
+      cmd.extend([dvd, outpath])
+    else:
+      cmd.extend([title.title, outpath])
+    print(viddin.listToShell(cmd))
+    stat = viddin.runCommand(cmd, debugFlag=True)
+    if stat != 0:
+      print("Rip failed", file=sys.stderr)
+      exit(1)
+
+  cmd = ["eject", dvd]
+  viddin.runCommand(cmd)
+  
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

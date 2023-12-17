@@ -189,12 +189,15 @@ class viddin:
     return " ".join([shlex.quote(x) for x in cmd])
   
   @staticmethod
-  def findBlack(filename):
+  def findBlack(filename, stop=None):
     video, ext = os.path.splitext(filename)
     video += ".blk"
     if not os.path.exists("%s" % (video)):
       print("Finding black")
-      cmd = ["find-black", "--duration", "0.05", filename, video]
+      cmd = ["find-black", "--duration", "0.05"]
+      if stop is not None:
+        cmd.extend("--stop-at", str(stop)]
+      cmd.extend([filename, video]
       subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     return
 
@@ -240,24 +243,17 @@ class viddin:
   @staticmethod
   def bestSilence(best, silence):
     bestsil = None
-    for info in silence:
-      begin = float(info[1])
-      end = float(info[2])
-      center = begin + (end - begin) / 2
-      diff = abs(center - best[0])
-      if ((begin >= best[1] and begin <= best[2]) or (end >= best[1] and end <= best[2]) or \
-            (best[1] >= begin and best[1] <= end) or (best[2] >= begin and best[2] <= end)) \
-            and (not bestsil or diff < bestsil[0]):
-        bestsil = [diff, center, begin, end]
+    for row in silence:
+      begin = max(best[1], row[1])
+      end = min(best[2], row[2])
+      if begin <= end:
+        overlap = end - begin
+        center = begin + (end - begin) / 2
+        if not bestsil or overlap > bestsil[0]:
+          bestsil = [overlap, center, begin, end]
 
     if bestsil:
-      begin = bestsil[2]
-      if begin < best[1]:
-        begin = best[1]
-      end = bestsil[3]
-      if end > best[2]:
-        end = best[2]
-      return [begin, end]
+      return [bestsil[2], bestsil[3]]
 
     return None
 

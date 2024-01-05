@@ -88,7 +88,7 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
     #     % (input, start, end, qstr, output)
     cmd = ["rip-video", "--start-at", str(start), "--stop-at", str(end), input, output]
     if transcodeOptions:
-      cmd += " " + transcodeOptions
+      cmd.extend(transcodeOptions.split(" "))
     print(cmd)
     viddin.runCommand(cmd)
   else:

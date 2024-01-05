@@ -70,12 +70,14 @@ def build_argparser():
   parser.add_argument("--audio", help="use specified audio codec")
   parser.add_argument("--mixdown", help="mix channels into specified format")
   parser.add_argument("--width", help="output width")
+  parser.add_argument("--height", help="output height")
   parser.add_argument("--pixel-aspect", help="output aspect ratio")
   parser.add_argument("--bluray", action="store_true", help="set defaults for ripping Blu-Ray")
   parser.add_argument("--movie", action="store_true", help="set defaults for movies")
   parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
   parser.add_argument("--norip", action="store_true", help="use existing file, don't rip")
-  parser.add_argument("--normalize", action="store_true", help="normalize audio")
+  parser.add_argument("--normalize", nargs="?", const=-7, default=None, type=float,
+                      help="normalize audio")
   parser.add_argument("--debug", action="store_true", help="print debug info")
   parser.add_argument("--start-at", help="start position to transcode from")
   parser.add_argument("--stop-at", help="stop position to transcode to")
@@ -85,6 +87,8 @@ def build_argparser():
   parser.add_argument("--commentary", action="append",
                       help="audio track with commentary to include")
   parser.add_argument("--mpdecimate", action="store_true", help="use ffmpeg to remove duplicate frames")
+  parser.add_argument("--trim-vanity", type=float,
+                      help="Strip off vanity card which occurs before this time")
   return parser
 
 def printSubs(subs, lang):
@@ -239,6 +243,44 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
 
   return
 
+def vanity_offset(source, dest, start_at, stop_at, before):
+  outpath = epid + args.extension
+  temp = viddin.uniqueFile(outpath)
+  if title.chapter:
+    flags.extend(["--start-at", str(title.start),
+                  "--stop-at", str(title.start + before)])
+  else:
+    flags.extend(["--stop-at", str(before)])
+
+  if args.start_at:
+    flags.extend(["--start-at", "seconds:" + str(viddin.decodeTimecode(args.start_at))])
+
+  if args.stop_at:
+    stop = viddin.decodeTimecode(args.stop_at)
+    if args.start_at:
+      stop -= viddin.decodeTimecode(args.start_at)
+    flags.extend(["--stop-at", "seconds:" + str(stop)])
+
+  cmd = ["HandBrakeCLI", "--encoder", encoder]
+  cmd.extend(flags)
+  cmd.extend(["-i", source.path, "-o", dest.path])
+
+  cmd = ["rip-video", *flags, dvd, temp]
+  print(viddin.listToShell(cmd))
+  stat = viddin.runCommand(cmd, debugFlag=True)
+  if stat != 0:
+    print("Rip failed", file=sys.stderr)
+    exit(1)
+
+  viddin.findBlack(temp)
+  path, ext = os.path.splitext(temp)
+  black = viddin.loadSplits(path + ".blk")
+
+  for filename in glob.glob(os.path.join(".", path) + ".*"):
+    os.remove(filename)
+
+  return black[-1][0]
+
 def main():
   args = build_argparser().parse_args()
 
@@ -352,7 +394,9 @@ def main():
     flags.extend(["--mixdown", args.mixdown])
 
   if args.width:
-    flags.extend(["--width", args.width])
+    flags.extend(["-X", args.width])
+  if args.height:
+    flags.extend(["-Y", args.height])
 
   if args.pixel_aspect:
     flags.extend(["--pixel-aspect", args.pixel_aspect])
@@ -388,6 +432,10 @@ def main():
 
   if not args.nosubtitles:
     flags.extend(["--subtitle", "scan", "--subtitle-forced"])
+
+  if args.normalize is not None and args.normalize >= 0:
+    print("normalize value must be negative")
+    exit(1)
 
   if not path_source:
     path_source = path_dest
@@ -490,10 +538,10 @@ def main():
         print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)
 
-    if args.normalize:
+    if args.normalize is not None:
       tmp, ext = os.path.splitext(dest.path)
       tmp += "_aa" + ext
-      cmd = ["adjust-volume", "--volume", "-7", dest.path, tmp]
+      cmd = ["adjust-volume", "--volume", str(args.normalize), dest.path, tmp]
       if args.debug:
         print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)

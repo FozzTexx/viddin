@@ -21,6 +21,8 @@ import argparse
 import datetime
 import sys
 import re
+from dataclasses import dataclass
+from enum import Enum, auto
 from viddin import viddin
 
 def build_argparser():
@@ -35,6 +37,16 @@ def build_argparser():
   parser.add_argument("--debug", action="store_true", help="print debug info")
   return parser
 
+class Operation(Enum):
+  DELETE = auto()
+  ADD = auto()
+  RENAME = auto()
+
+@dataclass
+class Change:
+  chap: viddin.Chapter
+  op: Operation
+
 def main():
   args = build_argparser().parse_args()
 
@@ -48,10 +60,9 @@ def main():
     chapters = viddin.loadChapterFile(args.chapters)
     vfile.setChapters(chapters)
 
-  doEdit = 0
+  changes = []
 
-  if not args.add is None:
-    change = []
+  if args.add is not None:
     for pos in args.add:
       cidx = pos.find("=")
       cname = None
@@ -59,23 +70,22 @@ def main():
         cname = pos[cidx+1:]
         pos = pos[:cidx]
       pos = viddin.decodeTimecode(pos)
-      change.append(viddin.Chapter(pos, cname))
-    vfile.addChapters(change)
-    doEdit += 1
+      changes.append(Change(chap=viddin.Chapter(pos, cname), op=Operation.ADD))
 
-  if not args.delete is None:
-    change = []
+  if args.delete is not None:
     for pos in args.delete:
       if isinstance(pos, str):
         if re.match("^[0-9]+$", pos):
           pos = int(pos)
         elif re.match("[:,.]", pos):
           pos = viddin.decodeTimecode(pos)
-      change.append(pos)
-    if vfile.deleteChapters(change):
-      doEdit += 1
+      idx, chap = vfile.chapterWithID(pos)
+      if idx is None:
+        print("Invalid chapter index: \"%s\"" % (chp), file=sys.stderr)
+        exit(1)
+      changes.append(Change(chap=chap, op=Operation.DELETE))
 
-  if not args.rename is None:
+  if args.rename is not None:
     for chp in args.rename:
       cidx = chp.find("=")
       if cidx < 0:
@@ -85,9 +95,19 @@ def main():
       if idx is None:
         print("Invalid chapter index: \"%s\"" % (chp), file=sys.stderr)
         exit(1)
-      vfile.addChapters([viddin.Chapter(chap.position, chp[cidx+1:])])
+      changes.append(Change(viddin.Chapter(position=chap.position, name=chp[1+cidx:]),
+                            op=Operation.RENAME))
+
+  doEdit = 0
+  if changes:
+    change = [x.chap for x in changes if x.op == Operation.DELETE]
+    if change and vfile.deleteChapters(change):
       doEdit += 1
-      
+    change = [x.chap for x in changes if (x.op == Operation.ADD or x.op == Operation.RENAME)]
+    if change:
+      vfile.addChapters(change)
+      doEdit += 1
+    
   if args.multiplier:
     chapters = [viddin.Chapter(x.position * args.multiplier, x.name) for x in vfile.chapters]
     vfile.setChapters(chapters)

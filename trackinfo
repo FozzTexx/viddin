@@ -58,6 +58,12 @@ def main():
     else:
       info += "No"
 
+    info += " Default="
+    if 'default_track' in track and track['default_track']:
+      info += "Yes"
+    else:
+      info += "No"
+
     if 'uid' in track:
       info += " UID=%i" % (track['uid'])
 

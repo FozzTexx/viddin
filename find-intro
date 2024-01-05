@@ -39,6 +39,7 @@ def build_argparser():
                       help="one end of audio must align with existing chapter")
   parser.add_argument("--distance", default=10,
                       help="Maximum number of seconds away from specified offset")
+  parser.add_argument("--margin", default=DISTANCE, type=float, help="allowed margin away")
   return parser
 
 def matchesPattern(pos, splits, pattern):
@@ -84,7 +85,7 @@ def findCredits(filename, pattern, addFlag):
   print("Couldn't find opening for", filename)
   return
 
-def bestSplit(position, splits):
+def bestSplit(position, splits, margin=DISTANCE):
   bdiff = -1
   boffset = None
   for row in splits:
@@ -92,11 +93,11 @@ def bestSplit(position, splits):
     if not boffset or diff < bdiff:
       bdiff = diff
       boffset = abs(row)
-  if boffset and bdiff < DISTANCE:
+  if boffset and bdiff < margin:
     return boffset, bdiff
   return None
 
-def findAudio(filename, theme, addFlag, chapterFlag):
+def findAudio(filename, theme, addFlag, chapterFlag, margin):
   splits, silence = loadSplits(filename)
 
   video, ext = os.path.splitext(filename)
@@ -122,11 +123,11 @@ def findAudio(filename, theme, addFlag, chapterFlag):
   for chap in chapters:
     b_diff = abs(chap.position - begin)
     e_diff = abs(chap.position - end)
-    if e_diff < DISTANCE:
+    if e_diff < margin:
       offset = begin - end
       was_chaps[1] = chap
       break
-    elif b_diff < DISTANCE:
+    elif b_diff < margin:
       offset = end - begin
       was_chaps[0] = chap
       break
@@ -134,9 +135,9 @@ def findAudio(filename, theme, addFlag, chapterFlag):
   if offset:
     audio_chaps[0] = chap.position
     pos = chap.position + offset
-    best = bestSplit(pos, splits)
+    best = bestSplit(pos, splits, margin)
     if not best:
-      best = bestSplit(pos, [x[0] for x in silence])
+      best = bestSplit(pos, [x[0] for x in silence], margin)
     if best:
       audio_chaps[1] = best[0]
     else:
@@ -169,7 +170,7 @@ def findAudio(filename, theme, addFlag, chapterFlag):
   for idx in range(len(chaps)):
     c = chaps[idx]
     for vc in chapters:
-      if c.name == vc.name and abs(c.position - vc.position) < DISTANCE:
+      if c.name == vc.name and abs(c.position - vc.position) < margin:
         identical.append(idx)
         break
 
@@ -200,7 +201,7 @@ def main():
         print("No such file", path)
         exit(1)
       print(path)
-      findAudio(path, args.audio, args.add, args.chapter_only)
+      findAudio(path, args.audio, args.add, args.chapter_only, args.margin)
   else:
     pattern = []
     for idx in range(len(args.pattern)-1):

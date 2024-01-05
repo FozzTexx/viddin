@@ -13,7 +13,6 @@ def build_argparser():
 def main():
   args = build_argparser().parse_args()
   cmd = ["isoinfo", "-d", "-i", args.dvd]
-  print(cmd)
   process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                              stderr=subprocess.DEVNULL)
   pstr = process.stdout.read()
@@ -25,7 +24,6 @@ def main():
     print("Failed to get DVD info")
     exit(1)
     
-  print(len(pstr), pstr)
   for row in rows:
     if row.startswith("Logical block size is:"):
       block_size = int(row.split()[-1])
@@ -36,11 +34,13 @@ def main():
         (block_count, block_size, args.dvd, args.output))
 
   # Put dvd drive into decrypt mode:
-  cmd = ["cvlc", "--run-time", "6", "--start-time", "16", args.dvd, "vlc://quit"]
+  cmd = ["cvlc", "--run-time", "6", "--start-time", "16", "dvd://" + args.dvd + "#4",
+         "vlc://quit"]
   res = subprocess.call(cmd)
-  if res:
-    print("Failed to run cvlc", res)
-    exit(1)
+  # if res:
+  #   print("Unable to run cvlc", res)
+  #   exit(1)
+  os.system("reset")
 
   base, ext = os.path.splitext(args.output)
   # cmd = ["dd", "if=" + args.dvd, "of=" + args.output,

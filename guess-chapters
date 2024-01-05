@@ -69,6 +69,9 @@ def main():
   vfile = viddin.VideoSpec(args.file, None)
   doEdit = False
 
+  viddin.findBlack(args.file)
+  viddin.findSilence(args.file)
+
   expected = None
   if len(args.offsets):
     expected = []
@@ -96,8 +99,6 @@ def main():
 
   if expected is None or len(expected):
     video, ext = os.path.splitext(args.file)
-    viddin.findBlack(args.file)
-    viddin.findSilence(args.file)
     black = viddin.loadSplits(video + ".blk")
     silence = viddin.loadSplits(video + ".sil")
 

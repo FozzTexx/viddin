@@ -2,7 +2,6 @@
 import argparse
 import os, sys
 import re
-from dataclasses import dataclass
 import math
 import csv
 import cv2
@@ -10,6 +9,8 @@ from pathlib import Path
 from openvino.runtime import Core
 import cv2
 import numpy as np
+import json
+from difflib import SequenceMatcher
 
 sys.path.append("/usr/local/bin/")
 from viddin import viddin
@@ -38,6 +39,7 @@ def build_argparser():
                       help="Skip any files that already have a match in order file")
   parser.add_argument("--past-title",
                       help="comma separated list of words that occur after the title")
+  parser.add_argument("--crop", help="bounding box to crop to [x,y,w,h]")
   return parser
 
 class TextResnet:
@@ -142,12 +144,13 @@ def find_episode(text, titles):
     for word in ep_title.split():
       if word in COMMON_WORDS or len(word) < 3:
         continue
-      t_words.append("^" + re.sub("[^0-9a-z]+", ".?", word) + "$")
+      t_words.append(re.sub("[^0-9a-z]+", "", word))
     m_words = []
 
     for w in ocr_words:
       for tw in t_words:
-        if re.match(tw, w):
+        pct_match = SequenceMatcher(None, tw, w).ratio()
+        if pct_match > 0.9 or (tw in w and pct_match > 0.80):
           m_words.append(w)
     pct_words = len(m_words) / len(t_words)
     pct_title = len(t_words) / len(m_words) if len(m_words) else 0
@@ -164,7 +167,8 @@ def find_episode(text, titles):
     #         "  row:", row,
     #         "  m_text:", m_text,
     #         "  text:", text)
-    if pct_length > 0.50 and (pct_title > 0.95 or pct_used > 0.50 or tstr[0] == '#'):
+    if (pct_length > 0.50 or pct_words == 1.0) \
+       and (pct_title > 0.95 or pct_used > 0.50 or tstr[0] == '#'):
       # print("DID MATCH")
       matches.append([row, len(m_words), pct_words, pct_length, pct_used])
     # else:
@@ -255,6 +259,10 @@ def main():
   if args.past_title:
     PAST_TITLE = [x.strip() for x in args.past_title.split(",")]
 
+  bounds = None
+  if args.crop:
+    bounds = json.loads(args.crop)
+
   for path in args.files:
     season = None
     base, ext = os.path.splitext(os.path.basename(path))
@@ -271,7 +279,7 @@ def main():
           matches = list(reader)
           matched = False
           for row in matches:
-            if path == row[0] and row[1] != ".mkv":
+            if len(row) >= 2 and path == row[0] and row[1] != ".mkv":
               matched = True
               break
           if matched:
@@ -293,6 +301,7 @@ def main():
         usechap -= 1
     usechap, _ = vfile.chapterWithID(usechap)
     if usechap is None:
+      print("Chapter not found")
       continue
 
     start = chapters[usechap][0]
@@ -338,8 +347,11 @@ def main():
       show_status(offset)
       video.set(cv2.CAP_PROP_POS_MSEC, offset * 1000)
       ret, frame = video.read()
-      if not frame is not None:
+      if frame is None:
         continue
+
+      if bounds:
+        frame = frame[bounds[1]:bounds[1]+bounds[3], bounds[0]:bounds[0]+bounds[2]]
 
       text = ocr_engine.recognizeText(frame)
       if len(text):
@@ -369,13 +381,13 @@ def main():
           append_order(path, episode[CSV_DVDEP], text, timecode)
           found = True
           break
-        elif "copyright" in l_text or "universal" in l_text:
-          print(file=sys.stderr)
-          print("Found title card but unable to read it", file=sys.stderr)
-          print(timecode, file=sys.stderr)
-          append_order(path, "", text, timecode)
-          found = True
-          break
+        # elif "copyright" in l_text or "universal" in l_text:
+        #   print(file=sys.stderr)
+        #   print("Found title card but unable to read it", file=sys.stderr)
+        #   print(timecode, file=sys.stderr)
+        #   append_order(path, "", text, timecode)
+        #   found = True
+        #   break
 
         # # Found a large block of text, search in this area immediately
         # if not did_filter and len(text) >= 10:

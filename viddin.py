@@ -36,13 +36,13 @@ from collections import namedtuple
 
 # This class is mostly just used to put all the functions in their own namespace
 class viddin:
-  
+
   ORDER_AIRED = 1
   ORDER_DVD = 2
   ORDER_ABSOLUTE = 3
 
   Chapter = namedtuple("Chapter", ["position", "name"])
-  
+
   didCursesInit = False
   validTerminal = False
   @staticmethod
@@ -61,7 +61,7 @@ class viddin:
         pass
     viddin.didCursesInit = True
     return
-    
+
   @staticmethod
   def isint(s):
     try:
@@ -85,14 +85,15 @@ class viddin:
 
   @staticmethod
   def formatTimecode(tc):
-    ft = str(datetime.timedelta(seconds = tc))
-    p = re.compile(r'^[0:]+')
-    m = p.search(ft)
-    if m:
-      ft = ft[m.span()[1]:]
-    dp = ft.rfind(".")
-    if dp >= 0 and dp < len(ft) - 4:
-      ft = ft[:dp+4]
+    ft = str(datetime.timedelta(seconds=tc))
+    if tc:
+      p = re.compile(r"^[0:]+")
+      m = p.search(ft)
+      if m:
+        ft = ft[m.span()[1]:]
+      dp = ft.rfind(".")
+      if dp >= 0 and dp < len(ft) - 4:
+        ft = ft[:dp+4]
     return ft
 
   @staticmethod
@@ -187,7 +188,7 @@ class viddin:
   @staticmethod
   def listToShell(cmd):
     return " ".join([shlex.quote(x) for x in cmd])
-  
+
   @staticmethod
   def findBlack(filename):
     video, ext = os.path.splitext(filename)
@@ -240,24 +241,17 @@ class viddin:
   @staticmethod
   def bestSilence(best, silence):
     bestsil = None
-    for info in silence:
-      begin = float(info[1])
-      end = float(info[2])
-      center = begin + (end - begin) / 2
-      diff = abs(center - best[0])
-      if ((begin >= best[1] and begin <= best[2]) or (end >= best[1] and end <= best[2]) or \
-            (best[1] >= begin and best[1] <= end) or (best[2] >= begin and best[2] <= end)) \
-            and (not bestsil or diff < bestsil[0]):
-        bestsil = [diff, center, begin, end]
+    for row in silence:
+      begin = max(best[1], row[1])
+      end = min(best[2], row[2])
+      if begin <= end:
+        overlap = end - begin
+        center = begin + (end - begin) / 2
+        if not bestsil or overlap > bestsil[0]:
+          bestsil = [overlap, center, begin, end]
 
     if bestsil:
-      begin = bestsil[2]
-      if begin < best[1]:
-        begin = best[1]
-      end = bestsil[3]
-      if end > best[2]:
-        end = best[2]
-      return [begin, end]
+      return [bestsil[2], bestsil[3]]
 
     return None
 
@@ -305,7 +299,7 @@ class viddin:
 
     def __repr__(self):
       return "TitleInfo %0.3f" % (self.length)
-      
+
   @staticmethod
   def getDVDInfo(path, debugFlag=False):
     cmd = ["lsdvd", "-asc", "-Oy", path]
@@ -322,6 +316,7 @@ class viddin:
       tracks = ast.literal_eval(pstr)
     else:
       print("bad track info", pstr)
+      return None
 
     for trk in tracks['track']:
       # the video track is number 0
@@ -437,7 +432,7 @@ class viddin:
         if eid not in eps:
           eps.append(eid)
       return eps
-      
+
     def formatEpisodeID(self, episode, skey=None, ekey=None, fractional=False):
       num = 0
       if not skey:
@@ -501,7 +496,7 @@ class viddin:
       if epcount == 1:
         episode = episode[0]
       return episode
-    
+
     def renameVid(self, episode, filename, order, dryrunFlag):
       if isinstance(episode, list):
         title = ""
@@ -519,7 +514,7 @@ class viddin:
       else:
         title = episode.title.strip()
       title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", title))
-        
+
       if order == viddin.ORDER_DVD:
         epid = self.formatEpisodeID(episode, "dvdSeason", "dvdEpisode")
       elif order == viddin.ORDER_ABSOLUTE:
@@ -824,7 +819,7 @@ class viddin:
     def writeChapters(self):
       if self._chapters is None:
         return
-      
+
       _, ext = os.path.splitext(self.path)
       if ext == ".mkv":
         cfile, cfname = tempfile.mkstemp()
@@ -879,7 +874,10 @@ class viddin:
                  "-codec",  "copy", "-map", "0", tf.name]
           stat = viddin.runCommand(cmd)
           if stat == 0:
+            st = os.stat(self.path)
             os.rename(tf.name, self.path)
+            os.chown(self.path, st.st_uid, st.st_gid)
+            os.chmod(self.path, st.st_mode)
           else:
             os.remove(tf.name)
           os.remove(cfname)
@@ -912,7 +910,7 @@ class viddin:
 
       if normalizeFlag:
         didEdit = self.normalizeChapters(prefer=added) or didEdit
-        
+
       return didEdit
 
     def chapterWithID(self, chapID):
@@ -946,7 +944,7 @@ class viddin:
       else:
         chap_idx = None
       return chap_idx, chap
-    
+
     def deleteChapters(self, chapters):
       # chapters can be a list of any combination of ints, floats,
       # strings, or Chapter class. ints are treated as index, floats
@@ -969,11 +967,11 @@ class viddin:
       self._chapters = []
       self.addChapters(chapters)
       return
-    
+
     def normalizeChapters(self, prefer=None):
       if self._chapters is None:
         self._chapters = self._loadChapters()
-        
+
       didEdit = False
       if len(self._chapters) > 0 and self._chapters[0].position < 2:
         if self._chapters[0].position > 0:
@@ -1082,7 +1080,7 @@ class viddin:
               break
         trk['number'] = tnum
       return parsed
-          
+
     def extractTrack(self, dest, trackNum, start, end, lang, debugFlag=False):
       # If start/end were specified, the original file has to be
       # split just to split the subs, otherwise the subs will be
@@ -1151,7 +1149,7 @@ class viddin:
       if os.path.getsize(sub_path) == 0:
         subs.remove()
         subs = None
-        
+
       return subs
 
     @property

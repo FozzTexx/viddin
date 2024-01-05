@@ -12,7 +12,7 @@ FLAGS="--film"
 class EpisodePosition:
   def __init__(self, title, chapter=None, start=None, end=None):
     self.title = title
-    if isinstance(str, title) and re.match(r"^[0-9]+$", title):
+    if isinstance(title, str) and re.match(r"^[0-9]+$", title):
       self.title = int(title)
     self.chapter = chapter
     self.start = start
@@ -23,8 +23,9 @@ class EpisodePosition:
   def isFile(self):
     if isinstance(self.title, str) and os.path.exists(self.title):
       return True
+    raise ValueError("Not a file", isinstance(self.title, str), os.path.exists(self.title), self.title)
     return False
-  
+
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument("episode", help="episode number as SSxEE (2x05)")
@@ -51,7 +52,7 @@ def main():
     exit(1)
   season = int(m.group(1))
   episode = int(m.group(2))
-  
+
   dvd = "/dev/dvd"
   if args.dvd:
     dvd = args.dvd
@@ -88,25 +89,32 @@ def main():
         print("Rip failed", file=sys.stderr)
         exit(1)
 
-    viddin.findBlack(temp, args.before if title.isFile else None)
-    path, ext = os.path.splitext(temp)
+      viddin.findBlack(temp)
+      path, ext = os.path.splitext(temp)
+
+    else:
+      viddin.findBlack(title.title, args.before)
+      path, ext = os.path.splitext(title.title)
+
     black = viddin.loadSplits(path + ".blk")
 
     for filename in glob.glob(os.path.join(".", path) + ".*"):
+      filename = os.path.abspath(filename)
+      if filename == os.path.abspath(title.title):
+        continue
       os.remove(filename)
-      
+
     offset = black[-1][0]
 
     cmd = ["rip-video"]
     cmd.extend(args.flags.split())
-    cmd.extend(["--title", str(title.title)])
     if title.chapter:
       cmd.extend(["--start-at", str(title.start + offset),
                   "--stop-at", str(title.end)])
     else:
       cmd.extend(["--start-at", str(offset)])
     if not title.isFile:
-      cmd.extend([dvd, outpath])
+      cmd.extend(["--title", str(title.title), dvd, outpath])
     else:
       cmd.extend([title.title, outpath])
     print(viddin.listToShell(cmd))
@@ -117,7 +125,7 @@ def main():
 
   cmd = ["eject", dvd]
   viddin.runCommand(cmd)
-  
+
   return
 
 if __name__ == '__main__':

@@ -86,10 +86,12 @@ class viddin:
   @staticmethod
   def formatTimecode(tc):
     ft = str(datetime.timedelta(seconds = tc))
-    p = re.compile(r'^[0:]+')
-    m = p.search(ft)
+    m = re.match(r'^[0:]+', ft)
     if m:
-      ft = ft[m.span()[1]:]
+      idx = m.span()[1]
+      if idx < len(ft) and ft[idx] == '.':
+        idx -= 1
+      ft = ft[idx:]
     dp = ft.rfind(".")
     if dp >= 0 and dp < len(ft) - 4:
       ft = ft[:dp+4]
@@ -196,8 +198,8 @@ class viddin:
       print("Finding black")
       cmd = ["find-black", "--duration", "0.05"]
       if stop is not None:
-        cmd.extend("--stop-at", str(stop)]
-      cmd.extend([filename, video]
+        cmd.extend(["--stop-at", str(stop)])
+      cmd.extend([filename, video])
       subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     return
 

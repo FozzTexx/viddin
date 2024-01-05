@@ -42,7 +42,7 @@ def build_argparser():
 
 class TextResnet:
   MODEL_DIR = "~/open_model_zoo_models"
-  MODEL_PRECISION = "FP16"
+  MODEL_PRECISION = "FP32"
   MODELS = {
     "bounds": ["intel", "horizontal-text-detection-0001"],
     "recognize": ["public", "text-recognition-resnet-fc"],

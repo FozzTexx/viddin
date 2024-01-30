@@ -196,12 +196,18 @@ ENV WSUSER viddin
 RUN set -e \
     ; apt-get update \
     ; apt-get install -y --no-install-recommends \
+        eject \
         git \
         libdvd-pkg \
+        lsdvd \
         mediainfo \
         mkvtoolnix \
         mplayer \
+        python3-pillow \
         python3-pip \
+        python3-pytimeparse \
+        setcd \
+        sox \
         sudo \
     ; rm -rf /var/lib/apt/lists/* \
       \

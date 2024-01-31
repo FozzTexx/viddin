@@ -23,7 +23,7 @@ import sys
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -55,7 +55,7 @@ def main():
     exit(1)
     
   video, ext = os.path.splitext(args.file)
-  vfile = viddin.VideoSpec(args.file)
+  vfile = viddin.Media(args.file)
   if args.chapters:
     chapters = viddin.loadChapterFile(args.chapters)
     vfile.setChapters(chapters)

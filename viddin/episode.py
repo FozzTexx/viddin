@@ -13,27 +13,118 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
+import os
+import csv
+import re
+from enum import Enum, auto
+import operator
+import math
+import collections
+import re
+import string
+import unicodedata
+from difflib import SequenceMatcher
+from dataclasses import dataclass
+
+# Words less than MINIMUM_WORD_LENGTH will be discarded automatically and don't
+# need to be listed here
+COMMON_WORDS = ["the", "and", "that"]
+MINIMUM_WORD_LENGTH = 3
+
+class EpisodeOrder(Enum):
+  AIRED = auto()
+  DVD = auto()
+  ABSOLUTE = auto()
+
+class EpisodeID:
+  def __init__(self, val=None, *, season=None, episode=None, segment=None):
+    if isinstance(val, str):
+      start = val.split('x')
+      season = int(start[0])
+      segment = None
+      if '.' in start[1]:
+        idx = start[1].find('.')
+        episode = int(start[1][:idx])
+        segment = int(start[1][idx+1:])
+      else:
+        episode = int(start[1])
+    elif isinstance(val, (list, tuple)):
+      season, episode, segment = list(val) + [None]
+
+    if isinstance(episode, float):
+      segment = int((episode % 1) * 10)
+
+    self.season = int(season)
+    self.episode = int(episode)
+    self.segment = None
+    if segment is not None:
+      self.segment = int(segment)
+    return
+
+  def asString(self, width=2, includeSegment=True):
+    if width < 2:
+      width = 2
+    val = f"{self.season}x{self.episode:0{width}d}"
+    if includeSegment and self.segment is not None:
+      val += f".{self.segment}"
+    return val
+
+  def __repr__(self):
+    return self.asString()
+
+  def __eq__(self, other):
+    return self.season == other.season \
+      and self.episode == other.episode \
+      and self.segment == other.segment
+
+  def __lt__(self, other):
+    return self.season < other.season \
+      or self.episode < other.episode \
+      or (self.segment is None and other.segment is not None) \
+      or (other.segment is not None and self.segment < other.segment)
+
+  def __hash__(self):
+    return hash((self.season, self.episode, self.segment))
+
 class EpisodeInfo:
-  def __init__(self, airedSeason, airedEpisode, dvdSeason, dvdEpisode,
-               absoluteNum=None, title=None, airDate=None):
-    self.airedSeason = airedSeason
-    self.airedEpisode = airedEpisode
-    self.dvdSeason = dvdSeason
-    self.dvdEpisode = dvdEpisode
+  def __init__(self, aired, dvd, absoluteNum=None, title=None, airDate=None, extra=None):
+    self.airedID = aired
+    self.dvdID = dvd
     self.absoluteNum = absoluteNum
     self.title = title
     self.airDate = airDate
+    self.extra = extra
     return
 
+  def asCSV(self):
+    row = [self.airedID.asString(), self.dvdID.asString(), self.airDate, self.title,
+           self.absoluteNum, self.extra]
+    while row[-1] is None:
+      del row[-1]
+    return row
+
   def __repr__(self):
-    return "%i %i %i %0.1f %s %s" % (self.airedSeason, self.airedEpisode, self.dvdSeason,
-                                     self.dvdEpisode, self.title, self.airDate)
+    return f"{self.airedID}/{self.dvdID}/{self.title}"
 
 class EpisodeList:
-  def __init__(self, episodes, seasonKey, episodeKey):
-    self.episodes = sorted(episodes, key=operator.attrgetter(seasonKey, episodeKey))
-    self.seasonKey = seasonKey
-    self.episodeKey = episodeKey
+  @dataclass
+  class TitleMatch:
+    episode: str
+    seen: list
+    words: int
+    wordPercent: float
+    lengthPercent: float
+    usedPercent: float
+
+  def __init__(self, episodes, key, minimumWordLength=3, commonWords=None):
+    self.key = key
+    self.episodes = sorted(episodes, key=operator.attrgetter(self.key))
+    self.commonWords = commonWords
+    self.minimumWordLength = minimumWordLength
+
+    if self.commonWords is None:
+      self.commonWords = set(COMMON_WORDS + self.mostCommon([x.title for x in self.episodes]))
+
     return
 
   def indexOf(self, episode):
@@ -44,36 +135,25 @@ class EpisodeList:
   def episodeNumbers(self, split=False):
     eps = []
     for e in self.episodes:
-      eid = self.formatEpisodeID(e, self.seasonKey, self.episodeKey, fractional=split)
+      eid = self.formatEpisodeID(e, self.key, fractional=split)
       if eid not in eps:
         eps.append(eid)
     return eps
 
-  def formatEpisodeID(self, episode, skey=None, ekey=None, fractional=False):
+  def formatEpisodeID(self, episode, key=None, fractional=False):
     num = 0
-    if not skey:
-      skey = self.seasonKey
-    if not ekey:
-      ekey = self.episodeKey
-    epnum = getattr(episode, ekey)
-    if isinstance(skey, int):
-      season = skey
-      num = len(self.episodes)
-    else:
-      season = getattr(episode, skey)
-      for row in self.episodes:
-        if getattr(row, skey) == season:
-          num += 1
+    if not key:
+      key = self.key
+    season = getattr(episode, key).season
+    for row in self.episodes:
+      if getattr(row, key).season == season:
+        num += 1
     if num < 1:
       num = 1
     digits = int(math.floor(math.log(num, 10)) + 1)
     if digits < 2:
       digits = 2
-    epid = "%%ix%%0%ii" % digits
-    eid_str = epid % (season, epnum)
-    if fractional:
-      eid_str += ".%i" % (epnum * 10 - int(epnum) * 10)
-    return eid_str
+    return getattr(episode, key).asString(width=digits, includeSegment=fractional)
 
   def findVideo(self, episode):
     guess = "\\b" + self.formatEpisodeID(episode.dvdSeason, episode.dvdEpisode) + "\\b"
@@ -85,42 +165,13 @@ class EpisodeList:
       return videos[indices[0]]
     return None
 
-  def findEpisode(self, epid, order=None, fractional=False):
-    if type(epid) is int:
-      if order == viddin.ORDER_DVD:
-        epid = self.formatEpisodeID(self.episodes[epid], "dvdSeason", "dvdEpisode")
-      elif order == viddin.ORDER_ABSOLUTE:
-        epid = self.formatEpisodeID(self.episode[epid], 1, "absoluteNum")
-      else:
-        epid = self.formatEpisodeID(self.episodes[epid])
-
-    episode = None
-    epcount = 0
-    dvdnum = re.split(" *x *", epid)
-    dvdseason = int(re.sub("[^0-9]*", "", dvdnum[0]));
-    dvdepisode = int(re.sub("[^0-9]*", "", dvdnum[1]));
-    if fractional:
-      dvdepisode = float(re.sub("[^0-9.]*", "", dvdnum[1]));
-    for row in self.episodes:
-      if dvdseason == getattr(row, self.seasonKey) \
-            and (dvdepisode == int(getattr(row, self.episodeKey))
-                 or (fractional and dvdepisode == getattr(row, self.episodeKey))):
-        if not episode:
-          episode = []
-        episode.append(row)
-        epcount += 1
-    if epcount == 1:
-      episode = episode[0]
-    return episode
-
   def renameVid(self, episode, filename, order, dryrunFlag):
     if isinstance(episode, list):
       title = ""
       for e in episode:
         t = e.title.strip()
-        part = int((e.dvdEpisode * 10) % 10)
-        pstr = " (" + str(part) + ")"
-        if part and t.endswith(pstr):
+        pstr = f" ({e.dvdID.segment})"
+        if e.dvdID.segment and t.endswith(pstr):
           t = t[:-len(pstr)]
         if title != t:
           if len(title):
@@ -131,9 +182,9 @@ class EpisodeList:
       title = episode.title.strip()
     title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", title))
 
-    if order == viddin.ORDER_DVD:
+    if order == EpisodeOrder.DVD:
       epid = self.formatEpisodeID(episode, "dvdSeason", "dvdEpisode")
-    elif order == viddin.ORDER_ABSOLUTE:
+    elif order == EpisodeOrder.ABSOLUTE:
       epid = self.formatEpisodeID(episode, 1, "absoluteNum")
     else:
       epid = self.formatEpisodeID(episode)
@@ -153,3 +204,221 @@ class EpisodeList:
           print("Already exists! " + eptitle)
     return filename
 
+  def titleToWords(self, title):
+    ep_title = self.splitWords(title)
+    if not len(ep_title):
+      return None
+    t_words = []
+    for word in ep_title:
+      if word in self.commonWords or len(word) < self.minimumWordLength:
+        continue
+      t_words.append(re.sub("[^0-9a-z]+", "", word))
+    return t_words
+    
+  def compareTitle(self, episode, text, ocrWords):
+    titleWords = self.titleToWords(episode.title)
+    if not titleWords:
+      return None
+
+    m_words = []
+
+    remain = titleWords.copy()
+    for w in ocrWords:
+      for tw in remain:
+        pct_match = SequenceMatcher(None, tw, w).ratio()
+        if pct_match > 0.9 or (tw in w and pct_match > 0.80):
+          m_words.append(w)
+          remain.remove(tw)
+          break
+
+    pct_words = len(m_words) / len(titleWords)
+    pct_title = len(titleWords) / len(m_words) if len(m_words) else 0
+    m_text = " ".join(m_words)
+    pct_length = len(m_text) / len(episode.title)
+    pct_used = len(m_text) / len(text)
+
+    # if len(m_words):
+    #   print("POSSIBLE MATCH\n"
+    #         f"  Pct words: {pct_words}\n"
+    #         f"  Pct title: {pct_title}\n",
+    #         f"  Pct length: {pct_length}\n",
+    #         f"  Pct used: {pct_used}\n",
+    #         f"  m_words: {m_words}\n",
+    #         f"  episode: {episode}\n",
+    #         f"  m_text: {m_text}\n",
+    #         f"  text: {text}\n")
+
+    if (pct_length > 0.50 or pct_words == 1.0) \
+       and (pct_title > 0.95 or pct_used > 0.50 or tstr[0] == '#'):
+      #print("DID MATCH", episode.title, m_words)
+      return EpisodeList.TitleMatch(episode, m_words, len(m_words),
+                                    pct_words, pct_length, pct_used)
+
+    #print("NOPE", pct_length, pct_used, episode.title[0] == '#')
+    return None
+    
+  def findEpisode(self, epid, order=None, fractional=False):
+    if not isinstance(epid, EpisodeID):
+      epid = EpisodeID(epid)
+
+    episode = None
+    epcount = 0
+    for row in self.episodes:
+      rowid = getattr(row, self.key)
+      if epid.season == rowid.season and epid.episode == rowid.episode \
+         and (not fractional or epid.segment == rowid.segment):
+        if not episode:
+          episode = []
+        episode.append(row)
+        epcount += 1
+    if epcount == 1:
+      episode = episode[0]
+    return episode
+
+  def findEpisodeByTitle(self, text):
+    words = [x for x in text.lower().split()
+             if len(x) >= self.minimumWordLength and x not in self.commonWords]
+    if not words:
+      return None
+
+    matches = []
+    for row in self.episodes:
+      tm = self.compareTitle(row, text, words)
+      if tm is not None:
+        matches.append(tm)
+
+    if len(matches):
+      matches.sort(key=lambda x: (x.usedPercent, x.wordPercent), reverse=True)
+      return matches[0].episode
+
+    return None
+
+  def splitWords(self, line):
+    output = line.translate(str.maketrans('', '', string.punctuation))
+    output = unicodedata.normalize("NFKD", output).encode('ascii', 'ignore').decode("ascii")
+    words = output.lower().split()
+    words = [re.sub("[^0-9a-z]+", "", x) for x in words]
+    words = [x for x in words if len(x) >= self.minimumWordLength and x not in COMMON_WORDS]
+    if '' in words:
+      raise ValueError(line, words)
+    return words
+  
+  def mostCommon(self, titles):
+    words = [self.splitWords(x) for x in titles]
+    words = [x for xs in words for x in xs]
+    counter = collections.Counter(words)
+    common = counter.most_common()
+    count = [x[1] for x in common]
+    avg = sum(count) / len(count)
+    most = [x[0] for x in common if x[1] >= avg * 3]
+    return most
+
+def loadEpisodeInfoFromCSV(path):
+  CSV_EPISODE = 0
+  CSV_DVDEP = 1
+  CSV_ORIGDATE = 2
+  CSV_TITLE = 3
+  CSV_ABSOLUTE = 4
+  series = []
+  f = open(path, 'rU')
+  try:
+    reader = csv.reader(f)
+    for row in reader:
+      aired = EpisodeID(row[CSV_EPISODE])
+      dvdep = row[CSV_DVDEP]
+      if not re.match(".*x.*", dvdep):
+        dvdep = aired + "." + dvdep
+      dvd = EpisodeID(dvdep)
+      anum = None
+      if CSV_ABSOLUTE < len(row):
+        anum = int(row[CSV_ABSOLUTE])
+      info = EpisodeInfo(aired, dvd,
+                         title=row[CSV_TITLE], airDate=row[CSV_ORIGDATE],
+                         absoluteNum=anum)
+      series.append(info)
+  finally:
+    f.close()
+  return series
+
+def loadEpisodeInfoFromTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quietFlag=False,
+                            interactiveFlag=False):
+  TVDB_DVDSEASON = "dvd_season"
+  TVDB_DVDEPNUM = "dvd_episodenumber"
+  vers = tvdb_api.__version__.split('.')
+  if int(vers[0]) >= 2:
+    TVDB_DVDSEASON = "dvdSeason"
+    TVDB_DVDEPNUM = "dvdEpisodeNumber"
+
+  series = []
+  old_stdout = sys.stdout
+  sys.stdout = open("/dev/tty", "w")
+  t = tvdb_api.Tvdb(interactive=interactiveFlag)
+  show = t[seriesName]
+  sys.stdout = old_stdout
+
+  for season in show:
+    for epnum in show[season]:
+      episode = show[season][epnum]
+      epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
+      epinfo = None
+      anum = episode['absoluteNumber']
+      if anum:
+        anum = int(anum)
+      else:
+        anum = 0
+      if not dvdIgnore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
+        epinfo = EpisodeInfo(int(episode['seasonnumber']),
+                             int(episode['episodenumber']),
+                             int(episode[TVDB_DVDSEASON]),
+                             float(episode[TVDB_DVDEPNUM]),
+                             absoluteNum=anum)
+      elif not dvdIgnore and episode[TVDB_DVDEPNUM]:
+        epinfo = EpisodeInfo(int(episode['seasonnumber']),
+                             int(episode['episodenumber']),
+                             int(episode['seasonnumber']),
+                             float(episode[TVDB_DVDEPNUM]),
+                             absoluteNum=anum)
+      else:
+        if dvdMissing or dvdIgnore:
+          epinfo = EpisodeInfo(int(episode['seasonnumber']),
+                               int(episode['episodenumber']),
+                               int(episode['seasonnumber']),
+                               float(episode['episodenumber']),
+                               absoluteNum=anum)
+          if len(series) > 0:
+            epnum = series[-1].dvdEpisode
+            if len(series) > 1 and series[-1].dvdSeason == series[-2].dvdSeason \
+                  and int(series[-1].dvdEpisode) - int(series[-2].dvdEpisode) > 1:
+              epnum = int(series[-2].dvdEpisode)
+              epnum += 1
+              epnum = float(epnum)
+              series[-1].dvdEpisode = epnum
+            if series[-1].airDate == episode['firstaired']:
+              epnum = str(epnum)
+              idx = epnum.find('.')
+              part = int(epnum[idx+1:])
+              if part == 0:
+                part = 1
+                series[-1].dvdEpisode = float(epnum[:idx+1] + str(part))
+              part += 1
+              epinfo.dvdEpisode = float(epnum[:idx+1] + str(part))
+        elif not quietFlag:
+          print("No DVD info for")
+          print(episode)
+      if epinfo:
+        epinfo.title = episode['episodename']
+        epinfo.airDate = episode['firstaired']
+        epinfo.productionCode = episode['productioncode']
+        series.append(epinfo)
+
+  # thetvdb does not prevent duplicate DVD numbering, fix it
+  series.sort(key=lambda x:(x.dvdSeason, x.dvdEpisode))
+  for previous, current in zip(series, series[1:]):
+    if previous.dvdSeason == current.dvdSeason \
+       and previous.dvdEpisode >= current.dvdEpisode:
+      part = int((previous.dvdEpisode * 10) % 10)
+      if part == 0:
+        part = 1
+      previous.dvdEpisode = int(previous.dvdEpisode) + part / 10
+      current.dvdEpisode = int(previous.dvdEpisode) + (part + 1) / 10
+  return series

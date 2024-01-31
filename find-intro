@@ -25,9 +25,11 @@ import argparse
 import datetime
 import sys
 import re
-from viddin import viddin
+import viddin
 
 DISTANCE = 2
+CHAPTER_INTRO = "Intro"
+CHAPTER_SKIP = "Skip Intro"
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -51,35 +53,16 @@ def matchesPattern(pos, splits, pattern):
       return False
   return True
 
-def loadSplits(filename):
-  video, ext = os.path.splitext(filename)
-
-  viddin.findBlack(filename)
-  viddin.findSilence(filename)
-
-  black = viddin.loadSplits(video + ".blk")
-  silence = viddin.loadSplits(video + ".sil")
-  splits = []
-  for row in black:
-    match = viddin.bestSilence(row, silence)
-    if match:
-      splits.append((match[1] - match[0]) / 2 + match[0])
-    else:
-      splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
-  return splits, silence
-
-def findCredits(filename, pattern, addFlag):
-  splits, _ = loadSplits(filename)
-
-  vfile = viddin.VideoSpec(filename, None)
+def findCredits(episode, pattern, addFlag):
+  splits = episode.loadSplits()
 
   for idx in range(len(pattern), len(splits)):
     if matchesPattern(idx, splits, pattern):
       pos = abs(splits[idx])
-      doEdit = vfile.addChapters([viddin.Chapter(pos, "Skip Intro")])
+      doEdit = episode.addChapters([viddin.Chapter(pos, CHAPTER_SKIP)])
       print("Setting opening for %s to %0.3f" % (filename, pos))
       if doEdit and addFlag:
-        vfile.writeChapters()
+        episode.writeChapters()
       return
 
   print("Couldn't find opening for", filename)
@@ -97,23 +80,28 @@ def bestSplit(position, splits, margin=DISTANCE):
     return boffset, bdiff
   return None
 
-def findAudio(filename, theme, addFlag, chapterFlag, margin):
-  splits, silence = loadSplits(filename)
+def findAudio(episode, theme, addFlag, chapterFlag, margin):
+  intro_idx, _ = episode.chapterWithID(CHAPTER_INTRO)
+  skip_idx, _ = episode.chapterWithID(CHAPTER_SKIP)
+  if intro_idx is not None and skip_idx is not None:
+    return
 
-  video, ext = os.path.splitext(filename)
-  aud = video + ".aud"
+  splits = episode.loadSplits()
+
+  base, ext = os.path.splitext(episode.path)
+  aud = base + ".aud"
 
   # FIXME - need to keep track of which audio file was used to create .aud, not just timestamp
   if os.path.exists(aud) and os.path.getmtime(aud) < os.path.getmtime(theme):
     os.unlink(aud)
 
   if not os.path.exists(aud):
-    cmd = ["find-audio", theme, filename]
+    cmd = ["find-audio", theme, episode.path]
     viddin.runCommand(cmd)
-  audio = viddin.loadSplits(video + ".aud")
+  audio = viddin.loadSplits(base + ".aud")
+  silence = viddin.loadSplits(base + ".sil")
 
-  vfile = viddin.VideoSpec(filename, None)
-  chapters = vfile.chapters
+  chapters = episode.chapters
 
   _, begin, end = audio[0]
   audio_chaps = [None, None]
@@ -164,8 +152,8 @@ def findAudio(filename, theme, addFlag, chapterFlag, margin):
       audio_chaps[0] = audio_chaps[1] - (end - begin)
 
   audio_chaps.sort()
-  chaps = [viddin.Chapter(audio_chaps[0], "Intro"),
-           viddin.Chapter(audio_chaps[1], "Skip Intro")]
+  chaps = [viddin.Chapter(audio_chaps[0], CHAPTER_INTRO),
+           viddin.Chapter(audio_chaps[1], CHAPTER_SKIP)]
   identical = []
   for idx in range(len(chaps)):
     c = chaps[idx]
@@ -179,7 +167,7 @@ def findAudio(filename, theme, addFlag, chapterFlag, margin):
     del was_chaps[idx]
 
   if chaps:
-    doEdit = vfile.addChapters(chaps)
+    doEdit = episode.addChapters(chaps)
     if doEdit:
       for c, w in zip(chaps, was_chaps):
         print("  %s: %0.3f" % (c.name, c.position), end="")
@@ -188,7 +176,7 @@ def findAudio(filename, theme, addFlag, chapterFlag, margin):
         print()
 
     if doEdit and addFlag:
-      vfile.writeChapters()
+      episode.writeChapters()
 
   return
 
@@ -201,7 +189,8 @@ def main():
         print("No such file", path)
         exit(1)
       print(path)
-      findAudio(path, args.audio, args.add, args.chapter_only, args.margin)
+      episode = viddin.Media(path)
+      findAudio(episode, args.audio, args.add, args.chapter_only, args.margin)
   else:
     pattern = []
     for idx in range(len(args.pattern)-1):
@@ -211,7 +200,8 @@ def main():
       if not os.path.exists(path):
         print("No such file", path)
         exit(1)
-      findCredits(path, pattern, args.add)
+      episode = viddin.Media(path)
+      findCredits(episode, pattern, args.add)
   return
 
 if __name__ == '__main__':

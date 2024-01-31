@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
+# Copyright 2022 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
 import argparse
 import os, sys
 import re
-import math
+# import math
 import csv
-import cv2
-from pathlib import Path
-from openvino.runtime import Core
-import cv2
-import numpy as np
-import json
-from difflib import SequenceMatcher
-
-sys.path.append("/usr/local/bin/")
-from viddin import viddin
+# import cv2
+# import cv2
+# import json
+import viddin
 
 PAST_TITLE = ["producer", "guest", "starring", "directed", "produced", "written"]
-
- # Words less than 3 letters will be discarded automatically and don't
- # need to be listed here
-COMMON_WORDS = ["the", "and", "that"]
-
-CSV_EPISODE = 0
-CSV_DVDEP = 1
-CSV_ORIGDATE = 2
-CSV_TITLE = 3
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -42,196 +42,23 @@ def build_argparser():
   parser.add_argument("--crop", help="bounding box to crop to [x,y,w,h]")
   return parser
 
-class TextResnet:
-  MODEL_DIR = "~/open_model_zoo_models"
-  MODEL_PRECISION = "FP16"
-  MODELS = {
-    "bounds": ["intel", "horizontal-text-detection-0001"],
-    "recognize": ["public", "text-recognition-resnet-fc"],
-  }
-
-  def __init__(self):
-    super().__init__()
-    self.engine = Core()
-    self.detectors = {}
-
-    model_dir = Path(self.MODEL_DIR).expanduser()
-    for model in self.MODELS:
-      mp = self.MODELS[model]
-      path = (model_dir / mp[0] / mp[1] / self.MODEL_PRECISION / mp[1]).with_suffix(".xml")
-      loaded = self.engine.read_model(model=path, weights=path.with_suffix(".bin"))
-      compiled = self.engine.compile_model(model=loaded, device_name="CPU")
-      self.detectors[model] = compiled
-    return
-
-  def multiplyByRatio(self, ratio_x, ratio_y, box):
-    return [max(shape * ratio_y, 10) if idx % 2 else shape * ratio_x
-            for idx, shape in enumerate(box[:-1])]
-
-  def runPreprocesingOnCrop(self, crop, net_shape):
-    temp_img = cv2.resize(crop, net_shape)
-    temp_img = temp_img.reshape((1,) * 2 + temp_img.shape)
-    return temp_img
-
-  def recognizeText(self, frame):
-    grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    N, C, H, W = self.detectors['bounds'].input(0).shape
-    resized_image = cv2.resize(frame, (W, H))
-    input_image = np.expand_dims(resized_image.transpose(2, 0, 1), 0)
-
-    output_key = self.detectors['bounds'].output("boxes")
-    boxes = self.detectors['bounds']([input_image])[output_key]
-    boxes = boxes[~np.all(boxes == 0, axis=1)]
-
-    _, _, H, W = self.detectors['recognize'].input(0).shape
-    (real_y, real_x), (resized_y, resized_x) = grayscale.shape[:2], resized_image.shape[:2]
-    ratio_x, ratio_y = real_x / resized_x, real_y / resized_y
-
-    letters = "~0123456789abcdefghijklmnopqrstuvwxyz"
-
-    annotations = []
-    for i, crop in enumerate(boxes):
-      (x_min, y_min, x_max, y_max) = map(int, self.multiplyByRatio(ratio_x, ratio_y, crop))
-      image_crop = self.runPreprocesingOnCrop(grayscale[y_min:y_max, x_min:x_max], (W, H))
-      result = self.detectors['recognize']([image_crop]) \
-               [self.detectors['recognize'].output(0)]
-      recognition_results_test = np.squeeze(result)
-
-      annotation = []
-      for letter in recognition_results_test:
-        parsed_letter = letters[letter.argmax()]
-
-        # Returning 0 index from `argmax` signalizes an end of a string.
-        if parsed_letter == letters[0]:
-            break
-        annotation.append(parsed_letter)
-      annotations.append("".join(annotation))
-
-    return annotations
-
-def bisect(end):
-  array = list(range(end))
-  divisions = 2
-  step = len(array) // divisions
-  idx = 0
-  b_array = []
-
-  while len(b_array) < len(array):
-    elem = array[idx]
-    if elem is not None:
-      b_array.append(elem)
-      array[idx] = None
-    idx += step
-    if idx >= len(array):
-      divisions *= 2
-      step = len(array) // divisions
-      idx = step
-
-  return b_array
-
-def find_episode(text, titles):
-  ocr_words = [x for x in text.lower().split() if len(x) >= 3 and x not in COMMON_WORDS]
-  if not ocr_words:
-    return None
-
-  matches = []
-  for row in titles:
-    tstr = row[CSV_TITLE]
-    ep_title = tstr.lower()
-    if not len(ep_title):
-      continue
-    t_words = []
-    for word in ep_title.split():
-      if word in COMMON_WORDS or len(word) < 3:
-        continue
-      t_words.append(re.sub("[^0-9a-z]+", "", word))
-    m_words = []
-
-    for w in ocr_words:
-      for tw in t_words:
-        pct_match = SequenceMatcher(None, tw, w).ratio()
-        if pct_match > 0.9 or (tw in w and pct_match > 0.80):
-          m_words.append(w)
-    pct_words = len(m_words) / len(t_words)
-    pct_title = len(t_words) / len(m_words) if len(m_words) else 0
-    m_text = " ".join(m_words)
-    pct_length = len(m_text) / len(tstr)
-    pct_used = len(m_text) / len(text)
-    # if len(m_words):
-    #   print("POSSIBLE MATCH",
-    #         "  Pct words:", pct_words,
-    #         "  Pct title:", pct_title,
-    #         "  Pct length:", pct_length,
-    #         "  Pct used:", pct_used,
-    #         "  m_words:", m_words,
-    #         "  row:", row,
-    #         "  m_text:", m_text,
-    #         "  text:", text)
-    if (pct_length > 0.50 or pct_words == 1.0) \
-       and (pct_title > 0.95 or pct_used > 0.50 or tstr[0] == '#'):
-      # print("DID MATCH")
-      matches.append([row, len(m_words), pct_words, pct_length, pct_used])
-    # else:
-    #   print("NOPE", pct_length, pct_used, tstr[0] == '#')
-  if len(matches):
-    matches.sort(key=lambda x: x[2])
-    # print("MATCHES FOR MIKEY", matches[0][0])
-    return matches[0][0]
-  return None
-
 def append_order(path, epnum, text, position):
   base, ext = os.path.splitext(os.path.basename(path))
   if 'x' in base:
     start = base.split('x')
     season = int(start[0])
-  elif 'x' in epnum:
-    start = epnum.split('x')
-    season = int(start[0])
   else:
-    return
+    season = epnum.season
 
   log_dir = os.path.dirname(os.path.abspath(path))
   log_path = os.path.join(log_dir, str(season) + "order.txt")
 
   pos = position.split(" ")
-  row = [path, epnum + ext, pos[0], text]
+  row = [path, f"{epnum}{ext}", pos[0], text]
   with open(log_path, "a") as f:
     writer = csv.writer(f)
     writer.writerow(row)
 
-  return
-
-def filter_order(order, after, start, dur, between):
-  between = sorted(between)
-  order_after = order[after:]
-  filtered = [x for x in order_after if between[0] <= start + x * dur <= between[1]]
-  if len(filtered):
-    remain = [x for x in order_after if x not in filtered]
-    order[after:] = filtered + remain
-    print(file=sys.stderr)
-    print("Narrowing search %0.3f-%0.3f" % (between[0], between[1]), file=sys.stderr)
-  return order
-
-def show_status(offset, message=None):
-  buf = "Searching %0.3f " % (offset)
-  if message:
-    buf += message
-
-  width = 80
-  viddin.initCurses()
-  if not viddin.validTerminal:
-    print("INVALID TERMINAL")
-    exit(1)
-
-  if viddin.validTerminal:
-    try:
-      width = os.get_terminal_size().columns
-    except OSError:
-      pass
-    buf = buf[:width - 1]
-    if message:
-      buf += viddin.clearEOL
-  print(buf + "\r", end="", file=sys.stderr)
   return
 
 def main():
@@ -239,22 +66,15 @@ def main():
 
   args = build_argparser().parse_args()
 
-  with open(args.titles, newline='') as f:
-    reader = csv.reader(f)
-    titles = list(reader)
-    # FIXME - generate list of words of all titles to quickly discard OCR words not in titles
-    season_titles = {}
-    for title in titles:
-      ep_id = title[0]
-      if 'x' in ep_id:
-        ep_parts = ep_id.split('x')
-        season = int(ep_parts[0])
-        if season not in season_titles:
-          season_titles[season] = []
-        season_titles[season].append(title)
+  titles = viddin.loadEpisodeInfoFromCSV(args.titles)
+  # FIXME - generate list of words of all titles to quickly discard OCR words not in titles
+  season_titles = {}
+  for title in titles:
+    if title.airedID.season not in season_titles:
+      season_titles[title.airedID.season] = []
+      season_titles[title.airedID.season].append(title)
 
   ep_match = []
-  ocr_engine = TextResnet()
 
   if args.past_title:
     PAST_TITLE = [x.strip() for x in args.past_title.split(",")]
@@ -288,9 +108,9 @@ def main():
 
     print()
     print("Working on", path)
-    vfile = viddin.VideoSpec(path, None)
+    vfile = viddin.Media(path, None)
     chapters = list(vfile.chapters)
-    chapters.append(viddin.Chapter(viddin.getLength(vfile.path), "end"))
+    chapters.append(viddin.Chapter(vfile.length, "end"))
 
     print("Chapter", args.chapter)
 
@@ -304,6 +124,8 @@ def main():
       print("Chapter not found")
       continue
 
+    searcher = viddin.OCR(vfile, season_titles[season] if season is not None else titles)
+    
     start = chapters[usechap][0]
     end = chapters[usechap+1][0]
     if args.offset is not None:
@@ -315,88 +137,16 @@ def main():
     chap_len = end - start
     print("Chapter len", viddin.formatTimecode(chap_len))
 
-    check_dur = 1 / 24
-    check_max = int(math.ceil(chap_len) / check_dur)
-    print("Check max", check_max)
-    print("Range", start, end)
-
-    check_order = bisect(check_max)
-    skip_before = skip_after = None
-
-    # Favor the first 5, 30, and within seconds
-    check_order = filter_order(check_order, 0,
-                               start, check_dur, (start, start + args.within))
-    check_order = filter_order(check_order, 0,
-                               start, check_dur, (start, start + 30))
-    check_order = filter_order(check_order, 0,
-                               start, check_dur, (start, start + 5))
-
-    video = cv2.VideoCapture(path)
-    all_subs = []
-    found = False
-    idx = 0
-    while idx < len(check_order):
-      offset = start + check_order[idx] * check_dur
-      idx += 1
-
-      if skip_before is not None and offset < skip_before:
-        continue
-      if skip_after is not None and offset > skip_after:
-        continue
-
-      show_status(offset)
-      video.set(cv2.CAP_PROP_POS_MSEC, offset * 1000)
-      ret, frame = video.read()
-      if frame is None:
-        continue
-
-      if bounds:
-        frame = frame[bounds[1]:bounds[1]+bounds[3], bounds[0]:bounds[0]+bounds[2]]
-
-      text = ocr_engine.recognizeText(frame)
-      if len(text):
-        timecode = viddin.formatTimecode(offset)
-        show_status(offset, timecode + " " + str(text))
-
-        l_text = " ".join(text).lower()
-        did_filter = False
-        for word in PAST_TITLE:
-          if word in l_text:
-            skip_after = offset
-            check_order = filter_order(check_order, idx,
-                                       start, check_dur, (offset, offset - 15))
-            did_filter = True
-            break
-
-        all_subs.append(l_text)
-        check_titles = titles
-        if season is not None:
-          check_titles = season_titles[season]
-        episode = find_episode(l_text, check_titles)
-        if episode is not None:
-          print(file=sys.stderr)
-          print(path, "is", episode, "-- Title card at", timecode,
-                "within", offset - start, file=sys.stderr)
-          ep_match.append([path, episode[CSV_DVDEP]])
-          append_order(path, episode[CSV_DVDEP], text, timecode)
-          found = True
-          break
-        # elif "copyright" in l_text or "universal" in l_text:
-        #   print(file=sys.stderr)
-        #   print("Found title card but unable to read it", file=sys.stderr)
-        #   print(timecode, file=sys.stderr)
-        #   append_order(path, "", text, timecode)
-        #   found = True
-        #   break
-
-        # # Found a large block of text, search in this area immediately
-        # if not did_filter and len(text) >= 10:
-        #   check_order = filter_order(check_order, idx,
-        #                              start, check_dur, (offset, offset - 15))
-
+    episode, offset, text = searcher.searchForTitleCard(start, chap_len, args.within)
+    timecode = viddin.formatTimecode(offset)
+    if episode is not None:
+      print(file=sys.stderr)
+      print(path, "is", episode, "-- Title card at", timecode,
+            "within", offset - start, file=sys.stderr)
+      ep_match.append([path, episode.dvdID])
+      append_order(path, episode.dvdID, text, timecode)
       print("\r", end="", file=sys.stderr)
-
-    if not found:
+    else:
       append_order(path, "", str(all_subs), "")
 
   print()

@@ -21,7 +21,7 @@ import os
 import argparse
 from termcolor import colored
 import time
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -67,11 +67,16 @@ def build_argparser():
   parser.add_argument("--x265", action="store_true", help="encode with x265 codec")
   parser.add_argument("--anim265", action="store_true",
                       help="encode with x265 codec tuned for animation")
-  parser.add_argument("--audio", help="use specified audio codec")
+  parser.add_argument("--video-codec", help="video codec to use")
+  parser.add_argument("--audio-codec", help="use specified audio codec")
   parser.add_argument("--mixdown", help="mix channels into specified format")
   parser.add_argument("--width", help="output width")
   parser.add_argument("--height", help="output height")
   parser.add_argument("--pixel-aspect", help="output aspect ratio")
+  parser.add_argument("--non-anamorphic", action="store_true",
+                      help="set pixel aspect ratio to 1:1")
+  parser.add_argument("--no-keep-display-aspect", action="store_true",
+                      help="set pixel aspect ratio to 1:1")
   parser.add_argument("--bluray", action="store_true", help="set defaults for ripping Blu-Ray")
   parser.add_argument("--movie", action="store_true", help="set defaults for movies")
   parser.add_argument("--restore-ntsc", action="store_true", help="slow down PAL speed-ups")
@@ -121,7 +126,6 @@ def printSubs(subs, lang):
   return
 
 def outputStatus(dest, source, title, message=None, color=None, addtl=None):
-  viddin.initCurses()
   status = dest + ":"
   if title:
     status += " " + str(title)
@@ -130,7 +134,7 @@ def outputStatus(dest, source, title, message=None, color=None, addtl=None):
   if addtl:
     status += " " + addtl
   # Clear to EOL at beginning and then at end in case this message wraps two lines
-  status = viddin.clearEOL + status + viddin.clearEOL
+  status = viddin.Terminal().clearEOL + status + viddin.Terminal().clearEOL
   print(status)
   return
 
@@ -187,19 +191,19 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
 
     # Check for closed captioning
     foundCC = False
-    if source.isDVD():
+    if source.isDVD:
       if chapters is not None:
         start, end = source.startEndForChapters(chapters)
 
       dvd_subs = source.extractDVDSubtitle(dest.path, None, start, end, lang, debugFlag)
-      sub_track = viddin.VideoSpec(dvd_subs)
+      sub_track = viddin.Media(dvd_subs)
       tinfo = sub_track.getTitleInfo()
       subs = tinfo.subtitles
       for trk in subs:
         if trk['language'] == lang and trk['codec'] in ("SubStationAlpha", "VobSub"):
           foundCC = True
           tracks = [trk['rv_track_id']]
-          source = viddin.VideoSpec(dvd_subs)
+          source = viddin.Media(dvd_subs)
           chapters = None
           start = end = None
           break
@@ -387,9 +391,6 @@ def main():
     flags.extend(["-x", "weightb=1:bframes=11:bframe-bias=90:rc-lookahead=60:me=dia:max-merge=5:rect:ctu=64:b-adapt=2:tu-inter-depth=4:tu-intra-depth=4:ipratio=0.8"])
     encoder = "x265"
 
-  if args.audio:
-    flags.extend(["--aencoder", args.audio])
-
   if args.mixdown:
     flags.extend(["--mixdown", args.mixdown])
 
@@ -397,9 +398,15 @@ def main():
     flags.extend(["-X", args.width])
   if args.height:
     flags.extend(["-Y", args.height])
+  if args.width and args.height:
+    flags.extend(["--non-anamorphic", "--no-keep-display-aspect"])
 
   if args.pixel_aspect:
     flags.extend(["--pixel-aspect", args.pixel_aspect])
+  if args.non_anamorphic:
+    flags.extend(["--non-anamorphic"])
+  if args.no_keep_display_aspect:
+    flags.extend(["--no-keep-display-aspect"])
 
   # FIXME - if user specifies a range or a list, abort
   if args.title:
@@ -437,6 +444,11 @@ def main():
     print("normalize value must be negative")
     exit(1)
 
+  if args.video_codec:
+    flags.extend(["--encoder", args.video_codec])
+  if args.audio_codec:
+    flags.extend(["--aencoder", args.audio_codec])
+
   if not path_source:
     path_source = path_dest
     path_dest = None
@@ -460,11 +472,9 @@ def main():
 
   encodeBegin = time.time()
 
-  source = viddin.VideoSpec(path_source,
+  source = viddin.Media(path_source,
                             int(args.title) if args.title is not None else args.title)
-  if not source.isDVD():
-    source.titleNumber = None
-  dest = viddin.VideoSpec(path_dest, None)
+  dest = viddin.Media(path_dest, None)
 
   os.environ['AV_LOG_FORCE_NOCOLOR'] = "1"
 

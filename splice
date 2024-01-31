@@ -26,7 +26,7 @@ import shutil
 import pty
 import subprocess
 import sys
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -42,33 +42,40 @@ def main():
   args = build_argparser().parse_args()
   longest = None
   chapters = []
-  for vid in args.files:
-    length = viddin.getLength(vid)
+
+  for path in args.files:
+    if not os.path.exists(path):
+      print("No such file:", path)
+      exit(1)
+
+  videos = [viddin.Media(x) for x in args.files]
+  for vid in videos:
+    length = vid.length
     if not longest or length > longest[1]:
       longest = (vid, length)
     if len(chapters):
       length += chapters[-1]
     chapters.append(length)
 
-  dsize = viddin.getResolution(longest[0])
+  dsize = longest[0].resolution
   print(dsize)
 
   tmpdir = tempfile.mkdtemp()
   print(tmpdir)
   
   inputs = []
-  for vid in args.files:
-    res = viddin.getResolution(vid)
+  for vid in videos:
+    res = vid.resolution
     if res == dsize:
-      inputs.append(os.path.abspath(vid))
+      inputs.append(os.path.abspath(vid.path))
     else:
-      tmp, ext = os.path.splitext(vid)
-      tmp += "_%i" % (args.files.index(vid)) + ext
+      tmp, ext = os.path.splitext(vid.path)
+      tmp += "_%i" % (args.files.index(vid.path)) + ext
       tmp = os.path.join(tmpdir, tmp)
       cmd = ["ffmpeg", "-i", vid,
              "-vf", "scale=%i:%i" % (dsize[0], dsize[1]),
              "-c", "copy", "-vcodec", "libx264", "-map", "0", tmp];
-      print(cmd)
+      print(viddin.listToShell(cmd))
       viddin.runCommand(cmd, args.debug)
       inputs.append(tmp)
 
@@ -88,8 +95,11 @@ def main():
         cmd.append("+")
       cmd.append(vid)
 
-  print(cmd)
-  viddin.runCommand(cmd, args.debug)
+  print(viddin.listToShell(cmd))
+  stat = viddin.runCommand(cmd, args.debug)
+  if stat != 0:
+    print("Failed to splice")
+    exit(1)
 
   shutil.rmtree(tmpdir)
 
@@ -99,7 +109,8 @@ def main():
       chapters[0] = 0
     else:
       chapters.insert(0, 0)
-    vfile = viddin.VideoSpec(args.dest)
+    chapters = chapters[:-1]
+    vfile = viddin.Media(args.dest)
     vfile.addChapters(chapters)
     vfile.writeChapters()
     

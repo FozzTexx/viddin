@@ -24,7 +24,7 @@ import sys
 import math
 import csv
 import fnmatch
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -52,14 +52,14 @@ def main():
   args = build_argparser().parse_args()
 
   if os.path.isfile(args.series):
-    series = viddin.loadEpisodeInfoCSV(args.series)
+    series = viddin.loadEpisodeInfoFromCSV(args.series)
   else:
-    series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=args.dvdignore,
-                                        dvdMissing=args.dvdmissing, quietFlag=args.quiet,
-                                        interactiveFlag=args.interactive)
+    series = viddin.loadEpisodeInfoFromTVDB(args.series, dvdIgnore=args.dvdignore,
+                                            dvdMissing=args.dvdmissing, quietFlag=args.quiet,
+                                            interactiveFlag=args.interactive)
     
-  dvdorder = viddin.EpisodeList(series, "dvdSeason", "dvdEpisode")
-  airedorder = viddin.EpisodeList(series, "airedSeason", "airedEpisode")
+  dvdorder = viddin.EpisodeList(series, "dvdID")
+  airedorder = viddin.EpisodeList(series, "airedID")
 
   files = os.listdir(".")
   pattern = args.regex
@@ -130,11 +130,11 @@ def main():
           break
         epid = eids[e_idx]
       
-      order = viddin.ORDER_AIRED
+      order = viddin.EpisodeOrder.AIRED
       if args.dvdorder:
-        order = viddin.ORDER_DVD
+        order = viddin.EpisodeOrder.DVD
       if args.absolute:
-        order = viddin.ORDER_ABSOLUTE
+        order = viddin.EpisodeOrder.ABSOLUTE
 
       if args.airedorder:
         episode = airedorder.findEpisode(epid, fractional=args.split)

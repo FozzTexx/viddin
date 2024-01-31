@@ -1,5 +1,5 @@
 IMAGE=viddin
-VERSION=1.0
+VERSION=2.0
 BUNDLES=HandBrake.bundle FFmpeg.bundle ccextractor.bundle h264-tools.bundle viddin.tar
 SCRIPTS=$(shell git ls-tree --full-tree -r --name-only --full-name HEAD | sed -e '/^docker/d')
 OSCRIPTS=$(addprefix ../,$(SCRIPTS))

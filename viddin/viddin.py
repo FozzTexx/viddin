@@ -13,16 +13,17 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-import os
+import os, sys
 import pty
 from collections import namedtuple
 import shlex
 import curses
 import subprocess
+import datetime
+import re
+import magic
 # import json
 # import xmltodict
-# import re
-# import datetime
 # import sys
 # import tvdb_api
 # import operator
@@ -33,6 +34,8 @@ import subprocess
 # import stat
 # import io
 # from dvdlang import dvdLangISO
+
+Chapter = namedtuple("Chapter", ["position", "name"])
 
 def findBlack(path):
   video, ext = os.path.splitext(path)
@@ -74,14 +77,62 @@ def splitNearest(splits, position, margin=2, matchNeg=False):
   boffset = None
   for row in splits:
     if row[0] >= 0 or matchNeg:
-      diff = abs(pos - abs(row[0]))
+      diff = abs(position - abs(row[0]))
       if not boffset or diff < bdiff:
         bdiff = diff
         boffset = row
   if boffset and bdiff < margin:
     return boffset
   return None
-  
+
+def bestSilence(best, silence):
+  bestsil = None
+  for row in silence:
+    begin = max(best[1], row[1])
+    end = min(best[2], row[2])
+    if begin <= end:
+      overlap = end - begin
+      center = begin + (end - begin) / 2
+      if not bestsil or overlap > bestsil[0]:
+        bestsil = [overlap, center, begin, end]
+
+  if bestsil:
+    return [bestsil[2], bestsil[3]]
+
+  return None
+
+def formatTimecode(tc):
+  ft = str(datetime.timedelta(seconds = tc))
+  m = re.match(r'^[0:]+', ft)
+  if m:
+    idx = m.span()[1]
+    if idx < len(ft) and ft[idx] == '.':
+      idx -= 1
+    ft = ft[idx:]
+  dp = ft.rfind(".")
+  if dp >= 0 and dp < len(ft) - 4:
+    ft = ft[:dp+4]
+  if not ft:
+    ft = "0"
+  return ft
+
+def formatChapter(seconds):
+  hours = int(seconds / 3600)
+  minutes = int((seconds / 60) % 60)
+  return "%02i:%02i:%06.3f" % (hours, minutes, seconds - hours * 3600 - minutes * 60)
+
+def decodeTimecode(tc):
+  tc = tc.replace(',', '.')
+  fraction = 0.0
+  if re.match(".*[.][0-9]+$", tc):
+    parts = re.split("[.]", tc)
+    fraction = float("."+parts[1])
+    tc = parts[0]
+
+  seconds = sum(int(x) * 60 ** i for i,x in enumerate(reversed(tc.split(":"))))
+  seconds += fraction
+  return seconds
+
 def listToShell(cmd):
   return " ".join([shlex.quote(x) for x in cmd])
 
@@ -90,39 +141,37 @@ def runCommand(cmd, debugFlag=False, stderr=None):
   if isinstance(cmd, (list, tuple)):
     do_shell = False
 
-  viddin.initCurses()
-  if debugFlag or not viddin.validTerminal:
+  if debugFlag or not Terminal().validTerminal:
     err = subprocess.call(cmd, stderr=stderr)
   else:
-    try:
-      width = os.get_terminal_size().columns
-    except OSError:
-      width = 80
     pos = 0
     err = None
     master, slave = pty.openpty()
     if stderr is None:
       stderr = slave
+    
     with subprocess.Popen(cmd, shell=do_shell, stdin=slave, stdout=slave, stderr=stderr,
                          close_fds=True) as p:
       m = os.fdopen(master, "rb")
       os.close(slave)
+      width = Terminal().width
+
       try:
         while True:
-          c = list(m.read(1))[0]
+          c = ord(m.read(1))
           if c > 127:
             continue
           if c == 27:
-            c = list(m.read(1))[0]
-            if c == '[':
-              c = list(m.read(1))[0]
-              if c == 'K':
+            c = ord(m.read(1))
+            if c == ord('['):
+              c = ord(m.read(1))
+              if c == ord('K'):
                 continue
           if c == 10:
             c = 13
           if (c == 13 and pos > 0) or width == 0 or pos < width - 2:
             if pos == 0:
-              sys.stdout.write(viddin.clearEOL)
+              sys.stdout.write(Terminal().clearEOL)
             sys.stdout.write(chr(c))
             pos += 1
             if c == 13:
@@ -130,79 +179,62 @@ def runCommand(cmd, debugFlag=False, stderr=None):
           sys.stdout.flush()
       except OSError:
         pass
+
       os.close(master)
       p.wait()
       err = p.returncode
   return err
 
-# This class is mostly just used to put all the functions in their own namespace
-class viddin:
+def videosInDirectory(dir_path):
+  files = os.listdir(dir_path)
+  videos = []
+  for f in files:
+    path = os.path.join(dir_path, f)
+    if os.path.isfile(path):
+      mtype = magic.from_file(path, mime=True)
+      if mtype.startswith("video/"):
+        videos.append(path)
 
-  ORDER_AIRED = 1
-  ORDER_DVD = 2
-  ORDER_ABSOLUTE = 3
+  videos.sort()
+  return videos
 
-  Chapter = namedtuple("Chapter", ["position", "name"])
+class Terminal:
+  _self = None
 
-  didCursesInit = False
-  validTerminal = False
-  @staticmethod
-  def initCurses():
-    if not viddin.didCursesInit:
-      viddin.clearEOL = ""
-      try:
-        curses.setupterm()
-        viddin.validTerminal = True
-        viddin.clearEOL = curses.tigetstr("el")
-        if viddin.clearEOL:
-          viddin.clearEOL = viddin.clearEOL.decode()
-        else:
-          viddin.clearEOL = ""
-      except curses.error as e:
-        pass
-    viddin.didCursesInit = True
+  def __new__(cls):
+    if cls._self is None:
+      cls._self = super().__new__(cls)
+    return cls._self
+
+  def __init__(self):
+    self.validTerminal = False
+    self.clearEOL = ""
+    try:
+      curses.setupterm()
+      self.validTerminal = True
+      self.clearEOL = curses.tigetstr("el")
+      if self.clearEOL:
+        self.clearEOL = self.clearEOL.decode()
+      else:
+        self.clearEOL = ""
+    except curses.error:
+      pass
+
+    try:
+      self.width = os.get_terminal_size().columns
+    except OSError:
+      self.width = 80
     return
 
-  @staticmethod
-  def isint(s):
-    try:
-      int(s)
-      return True
-    except ValueError:
-      return False
+def isint(s):
+  try:
+    int(s)
+    return True
+  except ValueError:
+    return False
 
-  @staticmethod
-  def decodeTimecode(tc):
-    tc = tc.replace(',', '.')
-    fraction = 0
-    if re.match(".*[.][0-9]+$", tc):
-      parts = re.split("[.]", tc)
-      fraction = float("."+parts[1])
-      tc = parts[0]
-
-    seconds = sum(int(x) * 60 ** i for i,x in enumerate(reversed(tc.split(":"))))
-    seconds += fraction
-    return seconds
-
-  @staticmethod
-  def formatTimecode(tc):
-    ft = str(datetime.timedelta(seconds=tc))
-    if tc:
-      p = re.compile(r"^[0:]+")
-      m = p.search(ft)
-      if m:
-        ft = ft[m.span()[1]:]
-      dp = ft.rfind(".")
-      if dp >= 0 and dp < len(ft) - 4:
-        ft = ft[:dp+4]
-    return ft
-
-  @staticmethod
-  def formatChapter(seconds):
-    hours = int(seconds / 3600)
-    minutes = int((seconds / 60) % 60)
-    return "%02i:%02i:%06.3f" % (hours, minutes, seconds - hours * 3600 - minutes * 60)
-
+# This class is mostly just used to put all the functions in their own namespace
+class viddin:
   @staticmethod
   def loadChapterFile(filename):
     chapters = []
@@ -244,23 +276,6 @@ class viddin:
       cmd = ["find-cuts", "--threshold", "0.40", filename, video]
       subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     return
-
-  @staticmethod
-  def bestSilence(best, silence):
-    bestsil = None
-    for row in silence:
-      begin = max(best[1], row[1])
-      end = min(best[2], row[2])
-      if begin <= end:
-        overlap = end - begin
-        center = begin + (end - begin) / 2
-        if not bestsil or overlap > bestsil[0]:
-          bestsil = [overlap, center, begin, end]
-
-    if bestsil:
-      return [bestsil[2], bestsil[3]]
-
-    return None
 
   @staticmethod
   def getDVDInfo(path, debugFlag=False):
@@ -360,120 +375,6 @@ class viddin:
     return fps
 
   @staticmethod
-  def loadEpisodeInfoCSV(filename):
-    CSV_EPISODE = 0
-    CSV_DVDEP = 1
-    CSV_ORIGDATE = 2
-    CSV_TITLE = 3
-    CSV_ABSOLUTE = 4
-    series = []
-    f = open(filename, 'rU')
-    try:
-      reader = csv.reader(f)
-      for row in reader:
-        epnum = re.split(" *x *", row[CSV_EPISODE])
-        dvdep = row[CSV_DVDEP]
-        if not re.match(".*x.*", dvdep):
-          dvdep = row[CSV_EPISODE] + "." + dvdep
-        dvdnum = re.split(" *x *", dvdep)
-        epid = epnum[0] + "x" + epnum[1].zfill(2)
-        anum = None
-        if CSV_ABSOLUTE < len(row):
-          anum = int(row[CSV_ABSOLUTE])
-        info = viddin.EpisodeInfo(int(epnum[0]), int(epnum[1]),
-                                  int(dvdnum[0]), float(dvdnum[1]),
-                                  title=row[CSV_TITLE], airDate=row[CSV_ORIGDATE],
-                                  absoluteNum=anum)
-        series.append(info)
-    finally:
-      f.close()
-    return series
-
-  @staticmethod
-  def loadEpisodeInfoTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quietFlag=False,
-                          interactiveFlag=False):
-    TVDB_DVDSEASON = "dvd_season"
-    TVDB_DVDEPNUM = "dvd_episodenumber"
-    vers = tvdb_api.__version__.split('.')
-    if int(vers[0]) >= 2:
-      TVDB_DVDSEASON = "dvdSeason"
-      TVDB_DVDEPNUM = "dvdEpisodeNumber"
-
-    series = []
-    old_stdout = sys.stdout
-    sys.stdout = open("/dev/tty", "w")
-    t = tvdb_api.Tvdb(interactive=interactiveFlag)
-    show = t[seriesName]
-    sys.stdout = old_stdout
-
-    for season in show:
-      for epnum in show[season]:
-        episode = show[season][epnum]
-        epid = episode['seasonnumber'] + "x" + episode['episodenumber'].zfill(2)
-        epinfo = None
-        anum = episode['absoluteNumber']
-        if anum:
-          anum = int(anum)
-        else:
-          anum = 0
-        if not dvdIgnore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
-          epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
-                                      int(episode['episodenumber']),
-                                      int(episode[TVDB_DVDSEASON]),
-                                      float(episode[TVDB_DVDEPNUM]),
-                                      absoluteNum=anum)
-        elif not dvdIgnore and episode[TVDB_DVDEPNUM]:
-          epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
-                                      int(episode['episodenumber']),
-                                      int(episode['seasonnumber']),
-                                      float(episode[TVDB_DVDEPNUM]),
-                                      absoluteNum=anum)
-        else:
-          if dvdMissing or dvdIgnore:
-            epinfo = viddin.EpisodeInfo(int(episode['seasonnumber']),
-                                        int(episode['episodenumber']),
-                                        int(episode['seasonnumber']),
-                                        float(episode['episodenumber']),
-                                        absoluteNum=anum)
-            if len(series) > 0:
-              epnum = series[-1].dvdEpisode
-              if len(series) > 1 and series[-1].dvdSeason == series[-2].dvdSeason \
-                    and int(series[-1].dvdEpisode) - int(series[-2].dvdEpisode) > 1:
-                epnum = int(series[-2].dvdEpisode)
-                epnum += 1
-                epnum = float(epnum)
-                series[-1].dvdEpisode = epnum
-              if series[-1].airDate == episode['firstaired']:
-                epnum = str(epnum)
-                idx = epnum.find('.')
-                part = int(epnum[idx+1:])
-                if part == 0:
-                  part = 1
-                  series[-1].dvdEpisode = float(epnum[:idx+1] + str(part))
-                part += 1
-                epinfo.dvdEpisode = float(epnum[:idx+1] + str(part))
-          elif not quietFlag:
-            print("No DVD info for")
-            print(episode)
-        if epinfo:
-          epinfo.title = episode['episodename']
-          epinfo.airDate = episode['firstaired']
-          epinfo.productionCode = episode['productioncode']
-          series.append(epinfo)
-
-    # thetvdb does not prevent duplicate DVD numbering, fix it
-    series.sort(key=lambda x:(x.dvdSeason, x.dvdEpisode))
-    for previous, current in zip(series, series[1:]):
-      if previous.dvdSeason == current.dvdSeason \
-         and previous.dvdEpisode >= current.dvdEpisode:
-        part = int((previous.dvdEpisode * 10) % 10)
-        if part == 0:
-          part = 1
-        previous.dvdEpisode = int(previous.dvdEpisode) + part / 10
-        current.dvdEpisode = int(previous.dvdEpisode) + (part + 1) / 10
-    return series
-
-  @staticmethod
   def uniqueFile(path, extension=None):
     dest, ext = os.path.splitext(path)
     if not extension:
@@ -488,4 +389,3 @@ class viddin:
       counter += 1
       upath = dest + "_" + str(counter) + extension
     return upath
-

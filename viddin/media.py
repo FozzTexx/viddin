@@ -16,9 +16,16 @@
 import os
 import stat
 import subprocess
+import json
+import re
+import tempfile
+import xmltodict
+import cv2
 import viddin
 
 def _isDVD(path):
+  if not os.path.exists(path):
+    return False
   mode = os.stat(path).st_mode
   if stat.S_ISBLK(mode) or stat.S_ISDIR(mode):
     return True
@@ -26,7 +33,7 @@ def _isDVD(path):
   if ext.lower() == ".iso":
     return True
   return False
-  
+
 class Media:
   def __new__(cls, path, titleNumber=None):
     if cls == Media:
@@ -37,7 +44,7 @@ class Media:
         return MKVContainer(path)
       return VideoFile(path)
     return super().__new__(cls)
-  
+
   def __init__(self, path, titleNumber=None):
     self.path = path
     self._chapters = None
@@ -58,34 +65,6 @@ class Media:
     start = chaptimes[int(chaps[0]) - 1]
     end = chaptimes[int(chaps[1])]
     return start.position, end.position
-
-  def _loadChapters(self, debugFlag=False):
-    chapters = []
-    if self.titleNumber != None or self.isDVD():
-      dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
-      chaps = dvdInfo['track'][self.titleNumber - 1]['chapter']
-      chapters.append(viddin.Chapter(0, None))
-      offset = 0
-      for c in chaps:
-        offset += c['length']
-        chapters.append(viddin.Chapter(offset, None))
-    else:
-      cmd = ["ffprobe", "-i", self.path, "-print_format", "json", "-show_chapters"]
-      if debugFlag:
-        print(viddin.listToShell(cmd))
-      process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                 stderr=subprocess.DEVNULL)
-      pstr = process.stdout.read()
-      process.stdout.close()
-      jinfo = json.loads(pstr)
-
-      for idx, chp in enumerate(jinfo['chapters']):
-        begin = float(chp['start_time'])
-        name = "Chapter %i" % (idx + 1)
-        if 'tags' in chp and 'title' in chp['tags']:
-          name = chp['tags']['title']
-        chapters.append(viddin.Chapter(begin, name))
-    return chapters
 
   def writeChapters(self):
     if self._chapters is None:
@@ -339,6 +318,10 @@ class Media:
       self._chapters = self._loadChapters()
     return tuple(self._chapters)
 
+  @property
+  def isDVD(self):
+    return isinstance(self, DVDTitle)
+
 class TrackSpec:
   def __init__(self, path, trackNumber):
     self.path = path
@@ -419,7 +402,7 @@ class DVDTitle(Media):
     super().__init__(path)
     self.titleNumber = titleNumber
     return
-  
+
   def getTitleInfo(self, debugFlag=False):
     dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
     if dvdInfo is not None:
@@ -476,6 +459,17 @@ class DVDTitle(Media):
       exit(1)
     return trk_source
 
+  def _loadChapters(self, debugFlag=False):
+    chapters = []
+    dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
+    chaps = dvdInfo['track'][self.titleNumber - 1]['chapter']
+    chapters.append(viddin.Chapter(0, None))
+    offset = 0
+    for c in chaps:
+      offset += c['length']
+      chapters.append(viddin.Chapter(offset, None))
+    return chapters
+
 class VideoFile(Media):
   def loadSplits(self, withSilence=True):
     base, _ = os.path.splitext(self.path)
@@ -495,6 +489,25 @@ class VideoFile(Media):
           splits.append(0 - ((row[1] - row[0]) / 2 + row[0]))
     return splits
 
+  def _loadChapters(self, debugFlag=False):
+    chapters = []
+    cmd = ["ffprobe", "-i", self.path, "-print_format", "json", "-show_chapters"]
+    if debugFlag:
+      print(viddin.listToShell(cmd))
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    pstr = process.stdout.read()
+    process.stdout.close()
+    jinfo = json.loads(pstr)
+
+    for idx, chp in enumerate(jinfo['chapters']):
+      begin = float(chp['start_time'])
+      name = "Chapter %i" % (idx + 1)
+      if 'tags' in chp and 'title' in chp['tags']:
+        name = chp['tags']['title']
+      chapters.append(viddin.Chapter(begin, name))
+    return chapters
+
   @property
   def length(self):
     if not hasattr(self, '_length'):
@@ -513,7 +526,35 @@ class VideoFile(Media):
       self._length = tlen
     return self._length
 
+  @property
+  def resolution(self):
+    if not hasattr(self, '_resolution'):
+      vid = cv2.VideoCapture(self.path)
+      height = vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
+      width = vid.get(cv2.CAP_PROP_FRAME_WIDTH)
+      self._resolution = (width, height)
+    return self._resolution
+
+  @property
+  def aspect(self):
+    res = self.resolution
+    return res[0] / res[1]
+
+  @property
+  def framesPerSecond(self):
+    if not hasattr(self, '_fps'):
+      vid = cv2.VideoCapture(self.path)
+      self._fps = vid.get(cv2.CAP_PROP_FPS)
+    return self._fps
+
 class MKVContainer(VideoFile):
+  @staticmethod
+  def trackWithUid(uid, tracks):
+    for track in tracks:
+      if 'uid' in track and uid == track['uid']:
+        return track
+    return None
+
   def getTitleInfo(self, debugFlag=False):
     cmd = ["mkvmerge", "-i", "-F", "json", self.path]
     if debugFlag:
@@ -566,7 +607,7 @@ class MKVContainer(VideoFile):
 
       for track in xlist:
         if 'TrackUID' in track:
-          tt = viddin.trackWithUid(track['TrackUID'], tracks)
+          tt = self.trackWithUid(track['TrackUID'], tracks)
           if tt:
             tt.update(track)
 
@@ -638,3 +679,9 @@ class MKVContainer(VideoFile):
       viddin.runCommand(cmd)
 
     return self.writeSubtitles(subs, track_num)
+
+  @property
+  def tracks(self):
+    if not hasattr(self, '_tracks'):
+      self._tracks = self.getTitleInfo().tracks
+    return self._tracks

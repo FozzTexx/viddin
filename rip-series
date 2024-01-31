@@ -2,7 +2,7 @@
 import argparse
 import os
 import subprocess
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -27,12 +27,24 @@ def main():
   episode = int(start[1])
 
   flags = unused
-  err = False
-  for idx, title in enumerate(args.titles):
+  do_eject = err = False
+  sources = []
+  for title in args.titles:
+    if os.path.isdir(title):
+      sources.extend(viddin.videosInDirectory(title))
+    else:
+      sources.append(["--title", title, args.dvd])
+      do_eject = True
+
+  for idx, source in enumerate(sources):
     cmd = ["rip-video"]
     cmd.extend(flags)
     epid = f"{season}x{episode+idx:02d}{args.extension}"
-    cmd.extend(["--title", title, args.dvd, epid])
+    if isinstance(source, (list, tuple)):
+      cmd.extend(source)
+    else:
+      cmd.append(source)
+    cmd.append(epid)
     if args.debug:
       print(viddin.listToShell(cmd))
     result = subprocess.run(cmd)
@@ -40,7 +52,7 @@ def main():
       err = True
       break
 
-  if not err:
+  if not err and do_eject:
     cmd = ["eject", args.dvd]
     subprocess.run(cmd)
 

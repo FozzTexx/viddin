@@ -203,24 +203,14 @@ RUN set -e \
         mediainfo \
         mkvtoolnix \
         mplayer \
-        python3-pillow \
         python3-pip \
-        python3-pytimeparse \
         setcd \
         sox \
         sudo \
     ; rm -rf /var/lib/apt/lists/* \
-      \
+     \
     ; pip3 install \
-        tesserocr \
-    ; pip3 install \
-        librosa \
-        opencv-python \
-        openvino \
         requests-cache==0.5.2 \
-        termcolor \
-        tvdb_api==2.0 \
-        xmltodict \
     ;
 
 RUN set -e \
@@ -261,4 +251,10 @@ COPY viddin-init /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/viddin-init"]
 
 # Install viddin scripts
-ADD viddin.tar /usr/local/bin
+ADD viddin.tar /tmp/viddin/
+RUN set -e \
+    ; cd /tmp/viddin \
+    ; ./setup.py install \
+    ; cd \
+    ; rm -rf /tmp/viddin \
+    ;

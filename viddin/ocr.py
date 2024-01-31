@@ -27,7 +27,7 @@ PAST_TITLE = ["producer", "guest", "starring", "directed", "produced", "written"
 
 class TextResnet:
   MODEL_DIR = "~/open_model_zoo_models"
-  MODEL_PRECISION = "FP16"
+  MODEL_PRECISION = "FP32"
   MODELS = {
     "bounds": ["intel", "horizontal-text-detection-0001"],
     "recognize": ["public", "text-recognition-resnet-fc"],
@@ -97,7 +97,7 @@ class OCR:
 
   def __init__(self, media, episodes, minimumWordLength=3, commonWords=None):
     self.video = cv2.VideoCapture(media.path)
-    self.episodes = episodes
+    self.episodes = viddin.EpisodeList(episodes, "dvdID")
     self.commonWords = commonWords
     self.minimumWordLength = minimumWordLength
     if OCR._engine == None:
@@ -200,7 +200,7 @@ class OCR:
           did_filter = True
           break
 
-      episode = self.findEpisode(l_text, self.episodes)
+      episode = self.episodes.findEpisodeByTitle(l_text)
       if episode is not None:
         return episode, offset, text
 

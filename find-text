@@ -72,7 +72,7 @@ def main():
   for title in titles:
     if title.airedID.season not in season_titles:
       season_titles[title.airedID.season] = []
-      season_titles[title.airedID.season].append(title)
+    season_titles[title.airedID.season].append(title)
 
   ep_match = []
 

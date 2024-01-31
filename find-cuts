@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# Copyright 2015 by Chris Osborn <fozztexx@fozztexx.com>
+#
+# This file is part of viddin.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License at <http://www.gnu.org/licenses/> for
+# more details.
+
+PCT=0.4	# Set the threshold for considering a frame as the same (1.0 is 100% percent)
+
+while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
+    case "$1" in
+	--threshold)
+	    PCT="$2"
+	    shift 2
+	    ;;
+	*)
+	    echo Unknown flag "$1"
+	    exit 1
+	    ;;
+    esac
+done
+
+LOGFILE=/tmp/split.$$
+
+VIDEO="$1"
+SPLITS="$2"
+
+if [ -z "${VIDEO}" ] ; then
+    echo Please specify video to scan 1>&2
+    exit 1
+fi
+if [ -z "${SPLITS}" ] ; then
+    echo Please specify file to write cut locations into 1>&2
+    exit 1
+fi
+if [ ! -f "${VIDEO}" ] ; then
+    echo "${VIDEO}" not found
+    exit 1
+fi
+
+ffmpeg -i "${VIDEO}" -filter:v "select='gt(scene,${PCT})',showinfo" -f null - 2>&1 | tee ${LOGFILE}
+
+grep showinfo ${LOGFILE} | grep 'pts_time:[0-9.]*' -o | grep '[0-9.]*' -o > "${SPLITS}"
+
+rm -f ${LOGFILE}

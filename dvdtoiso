@@ -20,6 +20,10 @@ def main():
   pstr = pstr.decode("utf-8")
   rows = pstr.split("\n")
 
+  if not pstr:
+    print("Failed to get DVD info")
+    exit(1)
+    
   for row in rows:
     if row.startswith("Logical block size is:"):
       block_size = int(row.split()[-1])

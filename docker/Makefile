@@ -5,8 +5,9 @@ SCRIPTS=$(shell git ls-tree --full-tree -r --name-only --full-name HEAD | sed -e
 OSCRIPTS=$(addprefix ../,$(SCRIPTS))
 
 docker-build: Dockerfile viddin-init install-handbrake.sh $(BUNDLES)
-	docker build $(REBUILDFLAGS) -f Dockerfile \
-	  --rm -t $(IMAGE):$(VERSION) -t $(IMAGE):latest .
+	env BUILDKIT_PROGRESS=plain \
+	  docker build $(REBUILDFLAGS) -f Dockerfile \
+	    --rm -t $(IMAGE):$(VERSION) -t $(IMAGE):latest .
 
 # To force a complete clean build, do:
 #   make rebuild

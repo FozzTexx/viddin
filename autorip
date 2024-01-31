@@ -63,14 +63,17 @@ def get_videos(path, minage, ignore):
   ignore = os.path.commonpath([ignore])
   for root, dirs, files in os.walk(path):
     if ignore == os.path.commonpath([ignore, root]):
+      print("Ignoring", root)
       continue
     for file in files:
       base, ext = os.path.splitext(file)
       if base[0] == '.' or ext not in VIDEO_EXT:
+        print("Not a video", base)
         continue
       fpath = os.path.join(root, file)
       st = os.stat(fpath)
       if now - st.st_mtime < minage:
+        print("Skipping", fpath, "age:", now - st.st_mtime)
         continue
       result.append(fpath)
   result.sort()

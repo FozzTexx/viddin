@@ -33,6 +33,10 @@ while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do
 	    PXL="$2"
 	    shift 2
 	    ;;
+	--stop-at)
+	    STOP="-t $2"
+	    shift 2
+	    ;;
 	*)
 	    echo Unknown flag "$1"
 	    exit 1
@@ -58,7 +62,7 @@ if [ ! -f "${VIDEO}" ] ; then
     exit 1
 fi
 
-ffmpeg -i "${VIDEO}" -vf blackdetect=d=${DUR}:pic_th=${PIC}:pix_th=${PXL} -an -f null - 2>&1 | tee ${LOGFILE}
+ffmpeg -i "${VIDEO}" -vf blackdetect=d=${DUR}:pic_th=${PIC}:pix_th=${PXL} -an -f null ${STOP} - 2>&1 | tee ${LOGFILE}
 
 tr '\015' '\012' < ${LOGFILE} | egrep 'black_start:.*black_end:' | sed -e 's/:/ /g' \
     | awk 'BEGIN {p = 0} {n = $5 + $9 / 2; printf "%.3f %.3f %.3f %.3f %.3f\n", n, $5, $7, $9, n - p; p = n}' \

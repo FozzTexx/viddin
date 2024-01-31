@@ -2,7 +2,7 @@
 BASE=$(basename $0)
 TMP=/tmp/${BASE}.$$
 
-set -e
+set -ex
 
 echo "Finding current version"
 MAKEMKV_URL="http://www.makemkv.com/download/"
@@ -24,16 +24,36 @@ echo "Extracting makemkv"
 tar xf makemkv-bin-${MAKEMKV_CUR}.tar.gz
 tar xf makemkv-oss-${MAKEMKV_CUR}.tar.gz
 
+PROGRAM_NAME=makemkv
+VERSION="${MAKEMKV_CUR}"
+PKG_ROOT="/tmp/${PROGRAM_NAME}"
+mkdir -p "${PKG_ROOT}/usr"
+
 echo "Building makemkv"
 cd makemkv-oss-*/
-./configure && make && make install
+./configure --prefix="${PKG_ROOT}/usr"
+make
+make install
 
 cd ..
 
 cd makemkv-bin-${MAKEMKV_CUR}
 mkdir -p tmp
 echo accepted > tmp/eula_accepted
-make && make install
+make
+make install PREFIX="${PKG_ROOT}/usr"
+
+cd "${PKG_ROOT}"
+mkdir DEBIAN
+echo Package: "${PROGRAM_NAME}" >> DEBIAN/control
+echo Version: "${VERSION}" >> DEBIAN/control
+echo Maintainer: fozztexx@fozztexx.com >> DEBIAN/control
+echo Architecture: "$(dpkg-architecture -q DEB_HOST_ARCH)" >> DEBIAN/control
+echo Depends: libqt5widgets5 >> DEBIAN/control
+echo Description: "${PROGRAM_NAME}" >> DEBIAN/control
+
+cd ..
+dpkg-deb --build "${PKG_ROOT}"
 
 cd 
 rm -rf ${TMP}

@@ -1,7 +1,12 @@
 #!/bin/sh
 PATH=/home/fozztexx/Unix/linux/bin:$PATH
-AUTODIR=/buffet/public/video/BR/auto
+AUTODIR=$1
 MINAGE=1h
+
+if [ -z "${AUTODIR}" ] ; then
+    echo Must specify auto rip directory
+    exit 1
+fi
 
 # FIXME - check lock age
 if autorip --minage=${MINAGE} --check ${AUTODIR} ; then

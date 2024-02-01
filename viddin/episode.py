@@ -238,16 +238,16 @@ class EpisodeList:
     pct_length = len(m_text) / len(episode.title)
     pct_used = len(m_text) / len(text)
 
-    # if len(m_words):
-    #   print("POSSIBLE MATCH\n"
-    #         f"  Pct words: {pct_words}\n"
-    #         f"  Pct title: {pct_title}\n",
-    #         f"  Pct length: {pct_length}\n",
-    #         f"  Pct used: {pct_used}\n",
-    #         f"  m_words: {m_words}\n",
-    #         f"  episode: {episode}\n",
-    #         f"  m_text: {m_text}\n",
-    #         f"  text: {text}\n")
+    if len(m_words):
+      print("POSSIBLE MATCH\n"
+            f"  Pct words: {pct_words}\n"
+            f"  Pct title: {pct_title}\n",
+            f"  Pct length: {pct_length}\n",
+            f"  Pct used: {pct_used}\n",
+            f"  m_words: {m_words}\n",
+            f"  episode: {episode}\n",
+            f"  m_text: {m_text}\n",
+            f"  text: {text}\n")
 
     if (pct_length > 0.50 or pct_words == 1.0) \
        and (pct_title > 0.95 or pct_used > 0.50 or tstr[0] == '#'):

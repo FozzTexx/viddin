@@ -17,11 +17,8 @@
 import argparse
 import os, sys
 import re
-# import math
 import csv
-# import cv2
-# import cv2
-# import json
+import json
 import viddin
 
 PAST_TITLE = ["producer", "guest", "starring", "directed", "produced", "written"]
@@ -124,7 +121,8 @@ def main():
       print("Chapter not found")
       continue
 
-    searcher = viddin.OCR(vfile, season_titles[season] if season is not None else titles)
+    searcher = viddin.OCR(vfile, season_titles[season] if season is not None else titles,
+                          bounds=bounds)
     
     start = chapters[usechap][0]
     end = chapters[usechap+1][0]

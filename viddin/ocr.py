@@ -21,6 +21,7 @@ import math
 import numpy as np
 import re
 import viddin
+from viddin.tessocr import TessOCR
 
 PAST_TITLE = ["producer", "guest", "starring", "directed", "produced", "written",
               "writer", "storyboard"]
@@ -95,13 +96,15 @@ class TextResnet:
 class OCR:
   _engine = None
 
-  def __init__(self, media, episodes, minimumWordLength=3, commonWords=None):
+  def __init__(self, media, episodes, minimumWordLength=3, commonWords=None, bounds=None):
     self.video = cv2.VideoCapture(media.path)
     self.episodes = viddin.EpisodeList(episodes, "dvdID")
     self.commonWords = commonWords
     self.minimumWordLength = minimumWordLength
+    self.bounds = bounds
     if OCR._engine == None:
-      OCR._engine = TextResnet()
+      #OCR._engine = TextResnet()
+      OCR._engine = TessOCR()
     self.engine = OCR._engine
     return
 
@@ -183,8 +186,12 @@ class OCR:
       if frame is None:
         continue
 
+      if self.bounds:
+        frame = frame[self.bounds[1]:self.bounds[1]+self.bounds[3],
+                      self.bounds[0]:self.bounds[0]+self.bounds[2]]
+                
       text = self.engine.recognizeText(frame)
-      if not len(text):
+      if not text:
         continue
 
       timecode = viddin.formatTimecode(offset)

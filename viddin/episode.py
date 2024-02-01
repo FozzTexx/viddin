@@ -13,7 +13,7 @@
 # GNU General Public License at <http://www.gnu.org/licenses/> for
 # more details.
 
-import os
+import os, sys
 import csv
 import re
 from enum import Enum, auto
@@ -25,6 +25,7 @@ import string
 import unicodedata
 from difflib import SequenceMatcher
 from dataclasses import dataclass
+import tvdb_api
 
 # Words less than MINIMUM_WORD_LENGTH will be discarded automatically and don't
 # need to be listed here
@@ -87,7 +88,7 @@ class EpisodeID:
     return hash((self.season, self.episode, self.segment))
 
 class EpisodeInfo:
-  def __init__(self, aired, dvd, absoluteNum=None, title=None, airDate=None, extra=None):
+  def __init__(self, aired, dvd, *, absoluteNum=None, title=None, airDate=None, extra=None):
     self.airedID = aired
     self.dvdID = dvd
     self.absoluteNum = absoluteNum
@@ -156,10 +157,10 @@ class EpisodeList:
     return getattr(episode, key).asString(width=digits, includeSegment=fractional)
 
   def findVideo(self, episode):
-    guess = "\\b" + self.formatEpisodeID(episode.dvdSeason, episode.dvdEpisode) + "\\b"
+    guess = "\\b" + self.formatEpisodeID(episode.dvdSeason, episode.dvdID.episode) + "\\b"
     indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
     if not len(indices):
-      guess = "\\b[sS]%02i[eE]%02i\\b" % (episode.dvdSeason, episode.dvdEpisode)
+      guess = "\\b[sS]%02i[eE]%02i\\b" % (episode.dvdSeason, episode.dvdID.episode)
       indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
     if len(indices):
       return videos[indices[0]]
@@ -367,41 +368,44 @@ def loadEpisodeInfoFromTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quiet
       else:
         anum = 0
       if not dvdIgnore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
-        epinfo = EpisodeInfo(int(episode['seasonnumber']),
-                             int(episode['episodenumber']),
-                             int(episode[TVDB_DVDSEASON]),
-                             float(episode[TVDB_DVDEPNUM]),
-                             absoluteNum=anum)
+        epinfo = EpisodeInfo(
+          EpisodeID(season=int(episode['seasonnumber']),
+                    episode=int(episode['episodenumber'])),
+          EpisodeID(season=int(episode[TVDB_DVDSEASON]),
+                    episode=float(episode[TVDB_DVDEPNUM])),
+          absoluteNum=anum)
       elif not dvdIgnore and episode[TVDB_DVDEPNUM]:
-        epinfo = EpisodeInfo(int(episode['seasonnumber']),
-                             int(episode['episodenumber']),
-                             int(episode['seasonnumber']),
-                             float(episode[TVDB_DVDEPNUM]),
-                             absoluteNum=anum)
+        epinfo = EpisodeInfo(
+          EpisodeID(season=int(episode['seasonnumber']),
+                    episode=int(episode['episodenumber'])),
+          EpisodeID(season=int(episode['seasonnumber']),
+                    episode=float(episode[TVDB_DVDEPNUM])),
+          absoluteNum=anum)
       else:
         if dvdMissing or dvdIgnore:
-          epinfo = EpisodeInfo(int(episode['seasonnumber']),
-                               int(episode['episodenumber']),
-                               int(episode['seasonnumber']),
-                               float(episode['episodenumber']),
-                               absoluteNum=anum)
+          epinfo = EpisodeInfo(
+            EpisodeID(season=int(episode['seasonnumber']),
+                      episode=int(episode['episodenumber'])),
+            EpisodeID(season=int(episode['seasonnumber']),
+                      episode=float(episode['episodenumber'])),
+            absoluteNum=anum)
           if len(series) > 0:
-            epnum = series[-1].dvdEpisode
-            if len(series) > 1 and series[-1].dvdSeason == series[-2].dvdSeason \
-                  and int(series[-1].dvdEpisode) - int(series[-2].dvdEpisode) > 1:
-              epnum = int(series[-2].dvdEpisode)
+            epnum = series[-1].dvdID.episode
+            if len(series) > 1 and series[-1].dvdID.season == series[-2].dvdID.season \
+                  and series[-1].dvdID.episode - series[-2].dvdID.episode > 1:
+              epnum = series[-2].dvdID.episode
               epnum += 1
               epnum = float(epnum)
-              series[-1].dvdEpisode = epnum
+              series[-1].dvdID.episode = epnum
             if series[-1].airDate == episode['firstaired']:
               epnum = str(epnum)
               idx = epnum.find('.')
               part = int(epnum[idx+1:])
               if part == 0:
                 part = 1
-                series[-1].dvdEpisode = float(epnum[:idx+1] + str(part))
+                series[-1].dvdID.episode = float(epnum[:idx+1] + str(part))
               part += 1
-              epinfo.dvdEpisode = float(epnum[:idx+1] + str(part))
+              epinfo.dvdID.episode = float(epnum[:idx+1] + str(part))
         elif not quietFlag:
           print("No DVD info for")
           print(episode)
@@ -412,13 +416,13 @@ def loadEpisodeInfoFromTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quiet
         series.append(epinfo)
 
   # thetvdb does not prevent duplicate DVD numbering, fix it
-  series.sort(key=lambda x:(x.dvdSeason, x.dvdEpisode))
+  series.sort(key=lambda x:(x.dvdID.season, x.dvdID.episode))
   for previous, current in zip(series, series[1:]):
-    if previous.dvdSeason == current.dvdSeason \
-       and previous.dvdEpisode >= current.dvdEpisode:
-      part = int((previous.dvdEpisode * 10) % 10)
+    if previous.dvdID.season == current.dvdID.season \
+       and previous.dvdID.episode >= current.dvdID.episode:
+      part = int((previous.dvdID.episode * 10) % 10)
       if part == 0:
         part = 1
-      previous.dvdEpisode = int(previous.dvdEpisode) + part / 10
-      current.dvdEpisode = int(previous.dvdEpisode) + (part + 1) / 10
+      previous.dvdID.episode = previous.dvdID.episode + part / 10
+      current.dvdID.episode = previous.dvdID.episode + (part + 1) / 10
   return series

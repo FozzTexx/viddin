@@ -84,7 +84,7 @@ def main():
     csvdata = []
     for row in dvdorder.episodes:
       info = [airedorder.formatEpisodeID(row), \
-              "%ix%04.1f" % (row.dvdSeason, row.dvdEpisode), row.airDate, row.title,
+              "%ix%04.1f" % (row.dvdID.season, row.dvdID.episode), row.airDate, row.title,
               row.absoluteNum]
       csvdata.append(info)
 

@@ -22,7 +22,7 @@ import datetime
 import tempfile
 import sys
 import re
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -66,7 +66,7 @@ def findNearest(position, chapters):
 def main():
   args = build_argparser().parse_args()
 
-  vfile = viddin.VideoSpec(args.file, None)
+  vfile = viddin.Media(args.file, None)
   doEdit = False
 
   viddin.findBlack(args.file)

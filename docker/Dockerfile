@@ -210,7 +210,18 @@ RUN set -e \
     ; rm -rf /var/lib/apt/lists/* \
      \
     ; pip3 install \
+        Pillow \
+        librosa \
+        numpy \
+        opencv-python \
+        openvino \
+        python_magic \
+        pytimeparse \
         requests-cache==0.5.2 \
+        termcolor \
+        tesserocr \
+        tvdb_api==2.0 \
+        xmltodict \
     ;
 
 RUN set -e \

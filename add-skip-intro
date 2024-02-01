@@ -19,9 +19,7 @@
 import argparse
 import os, sys
 import re
-
-sys.path.extend(("/usr/local/bin/", os.path.expanduser("~/source/viddin")))
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -46,7 +44,7 @@ def main():
     print(path)
     video, ext = os.path.splitext(path)
 
-    vfile = viddin.VideoSpec(path, None)
+    vfile = viddin.Media(path, None)
     chapters = vfile.chapters
 
     _, c1 = vfile.chapterWithID(names[0])

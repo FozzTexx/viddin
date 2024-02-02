@@ -157,10 +157,10 @@ class EpisodeList:
     return getattr(episode, key).asString(width=digits, includeSegment=fractional)
 
   def findVideo(self, episode):
-    guess = "\\b" + self.formatEpisodeID(episode.dvdSeason, episode.dvdID.episode) + "\\b"
+    guess = "\\b" + self.formatEpisodeID(episode.dvdID.season, episode.dvdID.episode) + "\\b"
     indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
     if not len(indices):
-      guess = "\\b[sS]%02i[eE]%02i\\b" % (episode.dvdSeason, episode.dvdID.episode)
+      guess = "\\b[sS]%02i[eE]%02i\\b" % (episode.dvdID.season, episode.dvdID.episode)
       indices = [i for i, x in enumerate(videos) if re.search(guess, x)]
     if len(indices):
       return videos[indices[0]]
@@ -184,7 +184,7 @@ class EpisodeList:
     title = re.sub("[:/]", "-", re.sub("[.!? ]+$", "", title))
 
     if order == EpisodeOrder.DVD:
-      epid = self.formatEpisodeID(episode, "dvdSeason", "dvdEpisode")
+      epid = self.formatEpisodeID(episode, 'dvdID')
     elif order == EpisodeOrder.ABSOLUTE:
       epid = self.formatEpisodeID(episode, 1, "absoluteNum")
     else:

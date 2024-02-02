@@ -136,8 +136,8 @@ def main():
     print("Chapter len", viddin.formatTimecode(chap_len))
 
     episode, offset, text = searcher.searchForTitleCard(start, chap_len, args.within)
-    timecode = viddin.formatTimecode(offset)
     if episode is not None:
+      timecode = viddin.formatTimecode(offset)
       print(file=sys.stderr)
       print(path, "is", episode, "-- Title card at", timecode,
             "within", offset - start, file=sys.stderr)

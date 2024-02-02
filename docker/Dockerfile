@@ -207,6 +207,7 @@ RUN set -e \
         setcd \
         sox \
         sudo \
+        tesseract-ocr-eng \
     ; rm -rf /var/lib/apt/lists/* \
      \
     ; pip3 install \

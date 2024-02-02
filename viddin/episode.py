@@ -26,6 +26,7 @@ import unicodedata
 from difflib import SequenceMatcher
 from dataclasses import dataclass
 import tvdb_api
+import copy
 
 # Words less than MINIMUM_WORD_LENGTH will be discarded automatically and don't
 # need to be listed here
@@ -88,13 +89,22 @@ class EpisodeID:
     return hash((self.season, self.episode, self.segment))
 
 class EpisodeInfo:
-  def __init__(self, aired, dvd, *, absoluteNum=None, title=None, airDate=None, extra=None):
-    self.airedID = aired
-    self.dvdID = dvd
+  def __init__(self, airedID, dvdID, title, *, absoluteNum=None, airDate=None,
+               productionCode=None, extra=None):
+    self.airedID = airedID
+    self.dvdID = dvdID
     self.absoluteNum = absoluteNum
     self.title = title
     self.airDate = airDate
+    self.productionCode = productionCode
     self.extra = extra
+
+    if title is None:
+      raise ValueError("Bad title", title, airedID)
+    if not isinstance(airedID, EpisodeID):
+      raise ValueError("Bad airedID", airedID)
+    if not isinstance(dvdID, EpisodeID):
+      raise ValueError("Bad dvdID", type(dvdID), dvdID)
     return
 
   def asCSV(self):
@@ -238,16 +248,16 @@ class EpisodeList:
     pct_length = len(m_text) / len(episode.title)
     pct_used = len(m_text) / len(text)
 
-    if len(m_words):
-      print("POSSIBLE MATCH\n"
-            f"  Pct words: {pct_words}\n"
-            f"  Pct title: {pct_title}\n",
-            f"  Pct length: {pct_length}\n",
-            f"  Pct used: {pct_used}\n",
-            f"  m_words: {m_words}\n",
-            f"  episode: {episode}\n",
-            f"  m_text: {m_text}\n",
-            f"  text: {text}\n")
+    # if len(m_words):
+    #   print("POSSIBLE MATCH\n"
+    #         f"  Pct words: {pct_words}\n"
+    #         f"  Pct title: {pct_title}\n",
+    #         f"  Pct length: {pct_length}\n",
+    #         f"  Pct used: {pct_used}\n",
+    #         f"  m_words: {m_words}\n",
+    #         f"  episode: {episode}\n",
+    #         f"  m_text: {m_text}\n",
+    #         f"  text: {text}\n")
 
     if (pct_length > 0.50 or pct_words == 1.0) \
        and (pct_title > 0.95 or pct_used > 0.50 or tstr[0] == '#'):
@@ -367,28 +377,28 @@ def loadEpisodeInfoFromTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quiet
         anum = int(anum)
       else:
         anum = 0
+      epdict = {
+        'airedID': EpisodeID(season=int(episode['seasonnumber']),
+                             episode=int(episode['episodenumber'])),
+        'absoluteNum': anum,
+        'title': episode['episodename'],
+        'airDate': episode['firstaired'],
+        'productionCode': episode['productioncode'],
+      }
+
+      if epdict['title'] is None:
+        continue
+
       if not dvdIgnore and episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
-        epinfo = EpisodeInfo(
-          EpisodeID(season=int(episode['seasonnumber']),
-                    episode=int(episode['episodenumber'])),
-          EpisodeID(season=int(episode[TVDB_DVDSEASON]),
-                    episode=float(episode[TVDB_DVDEPNUM])),
-          absoluteNum=anum)
-      elif not dvdIgnore and episode[TVDB_DVDEPNUM]:
-        epinfo = EpisodeInfo(
-          EpisodeID(season=int(episode['seasonnumber']),
-                    episode=int(episode['episodenumber'])),
-          EpisodeID(season=int(episode['seasonnumber']),
-                    episode=float(episode[TVDB_DVDEPNUM])),
-          absoluteNum=anum)
+        epdict['dvdID'] = EpisodeID(season=int(episode[TVDB_DVDSEASON]),
+                                    episode=float(episode[TVDB_DVDEPNUM]))
+      elif not dvdIgnore and not episode[TVDB_DVDSEASON] and episode[TVDB_DVDEPNUM]:
+        epdict['dvdID'] = EpisodeID(season=int(episode['seasonnumber']),
+                                    episode=float(episode[TVDB_DVDEPNUM]))
       else:
         if dvdMissing or dvdIgnore:
-          epinfo = EpisodeInfo(
-            EpisodeID(season=int(episode['seasonnumber']),
-                      episode=int(episode['episodenumber'])),
-            EpisodeID(season=int(episode['seasonnumber']),
-                      episode=float(episode['episodenumber'])),
-            absoluteNum=anum)
+          epdict['dvdID'] = EpisodeID(season=int(episode['seasonnumber']),
+                                      episode=int(episode['episodenumber']))
           if len(series) > 0:
             epnum = series[-1].dvdID.episode
             if len(series) > 1 and series[-1].dvdID.season == series[-2].dvdID.season \
@@ -405,15 +415,15 @@ def loadEpisodeInfoFromTVDB(seriesName, dvdIgnore=False, dvdMissing=False, quiet
                 part = 1
                 series[-1].dvdID.episode = float(epnum[:idx+1] + str(part))
               part += 1
-              epinfo.dvdID.episode = float(epnum[:idx+1] + str(part))
-        elif not quietFlag:
-          print("No DVD info for")
-          print(episode)
-      if epinfo:
-        epinfo.title = episode['episodename']
-        epinfo.airDate = episode['firstaired']
-        epinfo.productionCode = episode['productioncode']
-        series.append(epinfo)
+              epdict['dvdID'].episode = float(epnum[:idx+1] + str(part))
+        else:
+          if not quietFlag:
+            print("No DVD info for")
+            print(episode)
+          continue
+
+      epinfo = EpisodeInfo(**epdict)
+      series.append(epinfo)
 
   # thetvdb does not prevent duplicate DVD numbering, fix it
   series.sort(key=lambda x:(x.dvdID.season, x.dvdID.episode))

@@ -145,7 +145,7 @@ def main():
       append_order(path, episode.dvdID, text, timecode)
       print("\r", end="", file=sys.stderr)
     else:
-      append_order(path, "", str(all_subs), "")
+      append_order(path, "", str(text), "")
 
   print()
   print()

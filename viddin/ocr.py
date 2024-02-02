@@ -103,8 +103,8 @@ class OCR:
     self.minimumWordLength = minimumWordLength
     self.bounds = bounds
     if OCR._engine == None:
-      #OCR._engine = TextResnet()
-      OCR._engine = TessOCR()
+      OCR._engine = TextResnet()
+      #OCR._engine = TessOCR()
     self.engine = OCR._engine
     return
 

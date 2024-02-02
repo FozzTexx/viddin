@@ -81,9 +81,12 @@ class EpisodeID:
 
   def __lt__(self, other):
     return self.season < other.season \
-      or self.episode < other.episode \
-      or (self.segment is None and other.segment is not None) \
-      or (other.segment is not None and self.segment < other.segment)
+      or (self.season == other.season
+          and (self.episode < other.episode \
+               or (self.episode == other.episode \
+                   and ((self.segment is None and other.segment is not None) \
+                        or (self.segment is not None and other.segment is not None \
+                            and self.segment < other.segment)))))
 
   def __hash__(self):
     return hash((self.season, self.episode, self.segment))

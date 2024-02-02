@@ -331,7 +331,7 @@ def loadEpisodeInfoFromCSV(path):
   CSV_TITLE = 3
   CSV_ABSOLUTE = 4
   series = []
-  f = open(path, 'rU')
+  f = open(path, "r")
   try:
     reader = csv.reader(f)
     for row in reader:

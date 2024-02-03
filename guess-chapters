@@ -71,6 +71,7 @@ def main():
 
   viddin.findBlack(args.file)
   viddin.findSilence(args.file)
+  viddin.findCuts(args.file)
 
   expected = None
   if len(args.offsets):

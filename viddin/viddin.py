@@ -40,7 +40,7 @@ Chapter = namedtuple("Chapter", ["position", "name"])
 def findBlack(path):
   video, ext = os.path.splitext(path)
   video += ".blk"
-  if not os.path.exists("%s" % (video)):
+  if not os.path.exists(video):
     print("Finding black")
     cmd = ["find-black", "--duration", "0.05", path, video]
     subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -49,9 +49,18 @@ def findBlack(path):
 def findSilence(path):
   video, ext = os.path.splitext(path)
   video += ".sil"
-  if not os.path.exists("%s" % (video)):
+  if not os.path.exists(video):
     print("Finding silence")
     cmd = ["find-silence", "--threshold", "40", "--duration", "0.01", path, video]
+    subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+  return
+
+def findCuts(filename):
+  video, ext = os.path.splitext(filename)
+  video += ".cut"
+  if not os.path.exists(video):
+    print("Finding cuts")
+    cmd = ["find-cuts", "--threshold", "0.40", filename, video]
     subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
   return
 
@@ -266,16 +275,6 @@ class viddin:
       if 'uid' in track and uid == track['uid']:
         return track
     return None
-
-  @staticmethod
-  def findCuts(filename):
-    video, ext = os.path.splitext(filename)
-    video += ".cut"
-    if not os.path.exists("%s" % (video)):
-      print("Finding cuts")
-      cmd = ["find-cuts", "--threshold", "0.40", filename, video]
-      subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    return
 
   @staticmethod
   def getDVDInfo(path, debugFlag=False):

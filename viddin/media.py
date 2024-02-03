@@ -98,6 +98,7 @@ class Media:
       os.close(cfile)
 
       dpath = os.path.dirname(self.path)
+      _, ext = os.path.splitext(self.path)
       tf = tempfile.NamedTemporaryFile(suffix=ext, dir=dpath, delete=False)
       cmd = ["ffmpeg", "-y", "-i", self.path,
              "-i", cfname, "-map_metadata", "1", "-map_chapters", "1",

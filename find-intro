@@ -131,7 +131,7 @@ def findAudio(episode, theme, addFlag, chapterFlag, margin):
     else:
       audio_chaps[1] = pos
   elif chapterFlag:
-    print("Unable to find audio", filename)
+    print("Unable to find audio", episode.path)
     return
   else:
     # No matching chapter

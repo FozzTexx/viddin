@@ -42,7 +42,9 @@ while [ $# -gt 0 -a x$(expr substr "${1:-empty}" 1 2) = "x--" ] ; do
 	    ;;
     esac
 done
-		
+
+export HISTCONTROL=ignoreboth:erasedups
+
 if [ "$DO_SHELL" = 'user' ] ; then
     cd "${HOSTDIR}"
     if [ $# -gt 0 ] ; then

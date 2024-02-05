@@ -196,8 +196,10 @@ ENV WSUSER viddin
 RUN set -e \
     ; apt-get update \
     ; apt-get install -y --no-install-recommends \
+        bc \
         eject \
         git \
+        less \
         libdvd-pkg \
         lsdvd \
         mediainfo \

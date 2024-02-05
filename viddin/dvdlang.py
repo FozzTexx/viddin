@@ -199,7 +199,7 @@ dvdLangISO = {
   'zh': 'chi',
   'zu': 'zul'
 }
-  
+
 dvdLangFull = {
   'Abkhazian': 'abk',
   'Afar': 'aar',
@@ -334,6 +334,3 @@ dvdLangFull = {
   'Zhuang': 'zha',
   'Zulu': 'zul'
 }
-
-
-

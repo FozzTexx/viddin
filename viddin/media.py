@@ -21,6 +21,8 @@ import re
 import tempfile
 import xmltodict
 import cv2
+import ast
+from viddin.dvdlang import dvdLangISO
 import viddin
 
 def _isDVD(path):
@@ -404,8 +406,37 @@ class DVDTitle(Media):
     self.titleNumber = titleNumber
     return
 
+  def getDVDInfo(self, debugFlag=False):
+    cmd = ["lsdvd", "-asc", "-Oy", self.path]
+    if debugFlag:
+      print(viddin.listToShell(cmd))
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL)
+    pstr = process.stdout.read()
+    process.stdout.close()
+    pstr = pstr.decode("utf-8", "backslashreplace")
+    pstr = pstr.replace("lsdvd = {", "{").strip()
+    tracks = None
+    if len(pstr) and pstr[-1] == '}':
+      tracks = ast.literal_eval(pstr)
+    else:
+      print("bad track info", pstr)
+      return None
+
+    for trk in tracks['track']:
+      # the video track is number 0
+      rv_track_id = 1
+      for ttype in ('audio', 'subp'):
+        for strk in trk[ttype]:
+          strk['rv_track_id'] = rv_track_id
+          strk['type'] = ttype if ttype != 'subp' else 'subtitles'
+          if strk['langcode'] in dvdLangISO:
+            strk['language'] = dvdLangISO[strk['langcode']]
+          rv_track_id += 1
+    return tracks
+
   def getTitleInfo(self, debugFlag=False):
-    dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
+    dvdInfo = self.getDVDInfo(debugFlag=debugFlag)
     if dvdInfo is not None:
       return TitleInfo(dvdInfo['track'][self.titleNumber - 1], "dvd")
     print("Failed to get title info", self.titleNumber)

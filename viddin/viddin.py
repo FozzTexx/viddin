@@ -28,12 +28,10 @@ import magic
 # import tvdb_api
 # import operator
 # import math
-# import ast
 # import tempfile
 # import csv
 # import stat
 # import io
-# from dvdlang import dvdLangISO
 
 Chapter = namedtuple("Chapter", ["position", "name"])
 
@@ -275,36 +273,6 @@ class viddin:
       if 'uid' in track and uid == track['uid']:
         return track
     return None
-
-  @staticmethod
-  def getDVDInfo(path, debugFlag=False):
-    cmd = ["lsdvd", "-asc", "-Oy", path]
-    if debugFlag:
-      print(viddin.listToShell(cmd))
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                               stderr=subprocess.DEVNULL)
-    pstr = process.stdout.read()
-    process.stdout.close()
-    pstr = pstr.decode("utf-8", "backslashreplace")
-    pstr = pstr.replace("lsdvd = {", "{").strip()
-    tracks = None
-    if len(pstr) and pstr[-1] == '}':
-      tracks = ast.literal_eval(pstr)
-    else:
-      print("bad track info", pstr)
-      return None
-
-    for trk in tracks['track']:
-      # the video track is number 0
-      rv_track_id = 1
-      for ttype in ('audio', 'subp'):
-        for strk in trk[ttype]:
-          strk['rv_track_id'] = rv_track_id
-          strk['type'] = ttype if ttype != 'subp' else 'subtitles'
-          if strk['langcode'] in dvdLangISO:
-            strk['language'] = dvdLangISO[strk['langcode']]
-          rv_track_id += 1
-    return tracks
 
   @staticmethod
   def getLength(filename, title=None, chapters=None, debugFlag=False):

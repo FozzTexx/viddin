@@ -73,8 +73,9 @@ def main():
 
   ep_match = []
 
+  past_words = PAST_TITLE
   if args.past_title:
-    PAST_TITLE = [x.strip() for x in args.past_title.split(",")]
+    past_words = [x.strip() for x in args.past_title.split(",")]
 
   bounds = None
   if args.crop:
@@ -122,7 +123,7 @@ def main():
       continue
 
     searcher = viddin.OCR(vfile, season_titles[season] if season is not None else titles,
-                          bounds=bounds)
+                          bounds=bounds, pastTitleWords=past_words)
     
     start = chapters[usechap][0]
     end = chapters[usechap+1][0]

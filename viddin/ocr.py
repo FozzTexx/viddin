@@ -96,7 +96,8 @@ class TextResnet:
 class OCR:
   _engine = None
 
-  def __init__(self, media, episodes, minimumWordLength=3, commonWords=None, bounds=None):
+  def __init__(self, media, episodes, minimumWordLength=3, commonWords=None, bounds=None,
+               pastTitleWords=None):
     self.video = cv2.VideoCapture(media.path)
     self.episodes = viddin.EpisodeList(episodes, "dvdID")
     self.commonWords = commonWords
@@ -106,6 +107,7 @@ class OCR:
       OCR._engine = TextResnet()
       #OCR._engine = TessOCR()
     self.engine = OCR._engine
+    self.pastTitleWords = pastTitleWords
     return
 
   def bisect(self, end):
@@ -199,13 +201,14 @@ class OCR:
       
       l_text = " ".join(text).lower()
       did_filter = False
-      for word in PAST_TITLE:
-        if word in l_text:
-          skip_after = offset
-          check_order = self.filterOrder(check_order, idx,
-                                         position, check_dur, (offset, offset - 15))
-          did_filter = True
-          break
+      if self.pastTitleWords:
+        for word in self.pastTitleWords:
+          if word in l_text:
+            skip_after = offset
+            check_order = self.filterOrder(check_order, idx,
+                                           position, check_dur, (offset, offset - 15))
+            did_filter = True
+            break
 
       episode = self.episodes.findEpisodeByTitle(l_text)
       if episode is not None:

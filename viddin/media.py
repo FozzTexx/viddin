@@ -279,19 +279,21 @@ class Media:
       trk['number'] = tnum
     return parsed
 
-  def writeSubtitles(self, subs, track_num):
+  def writeTrack(self, source, trackNum, dest, debugFlag=False):
+    path, ext = os.path.splitext(dest)
+
     # FIXME - change extension based on track type/encoding
     trk_ext = "sub"
     trk_path = "%s_%i.%s" % (path, trackNum, trk_ext)
 
-    sub_track = viddin.VideoSpec(trk_source)
+    sub_track = Media(source)
     tinfo = sub_track.getTitleInfo()
     subs = tinfo.subtitles
     for trk in subs:
       if trk['type'] == "subtitles":
         trackNum = trk['id']
         break
-    cmd = ["mkvextract", "tracks", trk_source,
+    cmd = ["mkvextract", "tracks", source,
            "%i:%s" % (trackNum, trk_path)]
     if debugFlag:
       print(viddin.listToShell(cmd))
@@ -299,8 +301,8 @@ class Media:
     if err:
       print("Failed to extract")
       exit(1)
-    if trk_source != self.path:
-      os.remove(trk_source)
+    if source != self.path:
+      os.remove(source)
 
     sub_path = trk_path
     idx_path, ext = os.path.splitext(trk_path)
@@ -443,28 +445,25 @@ class DVDTitle(Media):
     return None
 
   def extractTrack(self, dest, trackNum, start, end, lang, debugFlag=False):
-    path, ext = os.path.splitext(dest)
-    trk_source = self.path
-
     # FIXME - what about audio tracks?
-    trk_source = self.extractDVDSubtitle(dest, trackNum, start, end, lang, debugFlag)
-    sub_track = viddin.VideoSpec(trk_source)
+    source = self.extractDVDSubtitle(dest, trackNum, start, end, lang, debugFlag)
+    sub_track = Media(source)
     tinfo = sub_track.getTitleInfo()
     subs = tinfo.subtitles
-    track_num = subs[0]['rv_track_id']
+    trackNum = subs[0]['rv_track_id']
 
-    return self.writeSubtitles(subs, track_num)
+    return self.writeTrack(source, trackNum, dest)
 
   def extractDVDSubtitle(self, dest, trackNum, start, end, lang, debugFlag=False):
     path, ext = os.path.splitext(dest)
     ts_path = path + ".mkv"
-    trk_source = viddin.uniqueFile(ts_path)
+    source = viddin.uniqueFile(ts_path)
     # FIXME - look at trackNum and figure out if it needs subtitle
     #         flags or audio flags or something else
     cmd = ["HandBrakeCLI", "-w", "1",
            "-i", self.path,
            "--title", str(self.titleNumber),
-           "-o", trk_source]
+           "-o", source]
 
     if trackNum is None:
       # This will get closed caption subtitles with ccextractor if they are available
@@ -486,10 +485,10 @@ class DVDTitle(Media):
       print(viddin.listToShell(cmd))
     err = viddin.runCommand(cmd)
 
-    if not os.path.exists(trk_source):
+    if not os.path.exists(source):
       print("Failed to extract track")
       exit(1)
-    return trk_source
+    return source
 
   def _loadChapters(self, debugFlag=False):
     chapters = []
@@ -689,9 +688,10 @@ class MKVContainer(VideoFile):
     # split just to split the subs, otherwise the subs will be
     # misaligned.
 
+    source = self.path
     if start is not None or end is not None:
       ts_path = path + ".mkv"
-      trk_source = viddin.uniqueFile(ts_path)
+      source = viddin.uniqueFile(ts_path)
 
       if start is None:
         start = 0
@@ -705,12 +705,12 @@ class MKVContainer(VideoFile):
         if ':' not in end:
           end = "00:" + end
       cmd = ["mkvmerge", "--split", "parts:%s-%s" % (start, end),
-             "-o", trk_source, self.path]
+             "-o", source, self.path]
       if debugFlag:
         print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)
 
-    return self.writeSubtitles(subs, track_num)
+    return self.writeTrack(source, trackNum, dest)
 
   @property
   def tracks(self):

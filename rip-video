@@ -233,7 +233,8 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
         print("NO LONGEST", lang, subs[0]['language'])
         return
       if subcount > 1:
-        outputStatus(dest.path, source.path, source.titleNumber, "WARNING", "yellow",
+        outputStatus(dest.path, source.path, getattr(source, 'titleNumber', None),
+                     "WARNING", "yellow",
                      "multiple matching subtitles. using %i" % (longest['rv_track_id']))
         printSubs(subs, lang)
       tracks = [longest['rv_track_id']]

@@ -205,6 +205,21 @@ def videosInDirectory(dir_path):
   videos.sort()
   return videos
 
+def uniqueFile(path, extension=None):
+  dest, ext = os.path.splitext(path)
+  if not extension:
+    extension = ext
+  if extension[0] != '.':
+    extension = "." + extension
+  counter = None
+  upath = dest + extension
+  while os.path.exists(upath):
+    if not counter:
+      counter = 1
+    counter += 1
+    upath = dest + "_" + str(counter) + extension
+  return upath
+
 class Terminal:
   _self = None
 
@@ -340,19 +355,3 @@ class viddin:
     else:
       fps = float(fps)
     return fps
-
-  @staticmethod
-  def uniqueFile(path, extension=None):
-    dest, ext = os.path.splitext(path)
-    if not extension:
-      extension = ext
-    if extension[0] != '.':
-      extension = "." + extension
-    counter = None
-    upath = dest + extension
-    while os.path.exists(upath):
-      if not counter:
-        counter = 1
-      counter += 1
-      upath = dest + "_" + str(counter) + extension
-    return upath

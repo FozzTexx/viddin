@@ -22,7 +22,7 @@ import datetime
 import re
 import math
 import sys
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -56,19 +56,20 @@ def findNearest(pos, before):
         return frame
     prev = frame
     
-def splitVideo(segrange, input, output=None, trim=None, quality=None,
+def splitVideo(segrange, filename, output=None, trim=None, quality=None,
                transcodeFlag=False, transcodeOptions=None, iframeFlag=False):
-  video, ext = os.path.splitext(input)
+  video = viddin.Media(filename)
+  base, ext = os.path.splitext(video.path)
 
-  vlen = viddin.getLength(input)
+  vlen = video.length
   if not segrange[1]:
     segrange[1] = vlen
 
   if not output:
-    output = "%sc%s" % (video, ext)
+    output = "%sc%s" % (base, ext)
 
   if trim:
-    fps = viddin.getFrameRate(input)
+    fps = video.framesPerSecond
     trim = float(trim) / fps
 
   if os.path.exists(output):
@@ -85,8 +86,8 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
     if quality:
       qstr = "-crf %s" % (quality)
     # cmd = "ffmpeg -y -i \"%s\" -ss %f -to %f -c copy -vcodec libx264 -map 0 %s \"%s\"" \
-    #     % (input, start, end, qstr, output)
-    cmd = ["rip-video", "--start-at", str(start), "--stop-at", str(end), input, output]
+    #     % (video.path, start, end, qstr, output)
+    cmd = ["rip-video", "--start-at", str(start), "--stop-at", str(end), video.path, output]
     if transcodeOptions:
       cmd.extend(transcodeOptions.split(" "))
     print(cmd)
@@ -107,11 +108,11 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
         temp = output
       cmd = ["mkvmerge", "--split", "parts:%s-%s" %
              (datetime.timedelta(seconds = start), datetime.timedelta(seconds = end)),
-             "-o", temp, input]
+             "-o", temp, video.path]
       print(cmd)
       viddin.runCommand(cmd)
     else:
-      temp = input
+      temp = video.path
 
     if end < vlen:
       tlen = end - start
@@ -120,7 +121,7 @@ def splitVideo(segrange, input, output=None, trim=None, quality=None,
       print(cmd)
       viddin.runCommand(cmd)
       
-    if temp != input and temp != output:
+    if temp != video.path and temp != output:
       os.remove(temp)
   return output
 

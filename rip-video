@@ -426,7 +426,8 @@ def main():
 
   if args.cfr or args.restore_ntsc:
     flags.extend(["--cfr"])
-  elif args.animation or args.pal_animation or args.lap_animation or args.film or args.pal_film or args.tv or args.tv_bob:
+  elif args.animation or args.pal_animation or args.lap_animation \
+       or args.film or args.pal_film or args.tv or args.tv_bob:
     flags.extend(["--vfr"])
 
   if args.start_at:

@@ -100,7 +100,8 @@ class OCR:
                pastTitleWords=None):
     self.video = cv2.VideoCapture(media.path)
     self.episodes = viddin.EpisodeList(episodes, "dvdID")
-    self.commonWords = commonWords
+    if commonWords is not None:
+      self.episodes.commonWords = self.episodes.commonWords | set(commonWords)
     self.minimumWordLength = minimumWordLength
     self.bounds = bounds
     if OCR._engine == None:

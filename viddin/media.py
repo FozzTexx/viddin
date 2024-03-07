@@ -492,7 +492,7 @@ class DVDTitle(Media):
 
   def _loadChapters(self, debugFlag=False):
     chapters = []
-    dvdInfo = viddin.getDVDInfo(self.path, debugFlag=debugFlag)
+    dvdInfo = self.getDVDInfo(debugFlag=debugFlag)
     chaps = dvdInfo['track'][self.titleNumber - 1]['chapter']
     chapters.append(viddin.Chapter(0, None))
     offset = 0

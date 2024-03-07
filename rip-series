@@ -11,6 +11,8 @@ def build_argparser():
   parser.add_argument("--dvd", default="/dev/dvd", help="dvd device")
   parser.add_argument("--extension", default="mkv",
                       help="extension to use for output, default is mkv")
+  parser.add_argument("--split-chapters", action="store_true",
+                      help="each chapter is its own episode")
 
   parser.add_argument("--debug", action="store_true", help="print debug info")
 
@@ -33,8 +35,32 @@ def main():
     if os.path.isdir(title):
       sources.extend(viddin.videosInDirectory(title))
     else:
-      sources.append(["--title", title, args.dvd])
+      sources.append(int(title))
+
+  chap_sources = []
+  for idx in range(len(sources)):
+    source = sources[idx]
+    is_dvd = isinstance(source, int)
+    if is_dvd:
       do_eject = True
+
+    if args.split_chapters:
+      expanded = []
+      media = viddin.Media(args.dvd, titleNumber=source if is_dvd else None)
+      for chap in range(len(media.chapters) - 1):
+        chap_args = []
+        chap_args.extend(["--chapters", str(chap+1)])
+        if is_dvd:
+          chap_args.extend(["--title", str(source), args.dvd])
+        else:
+          chap_args.append(source)
+        chap_sources.append(chap_args)
+
+    elif is_dvd:
+      sources[idx] = ["--title", title, args.dvd]
+
+  if chap_sources:
+    sources = chap_sources
 
   for idx, source in enumerate(sources):
     cmd = ["rip-video"]

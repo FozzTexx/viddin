@@ -21,6 +21,7 @@ import os
 import argparse
 from termcolor import colored
 import time
+import tempfile
 import viddin
 
 def build_argparser():
@@ -248,43 +249,31 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
 
   return
 
-def vanity_offset(source, dest, start_at, stop_at, before):
-  outpath = epid + args.extension
-  temp = viddin.uniqueFile(outpath)
-  if title.chapter:
-    flags.extend(["--start-at", str(title.start),
-                  "--stop-at", str(title.start + before)])
+def vanity_offset(source, before, debugFlag=False):
+  tempdir = tempfile.TemporaryDirectory()
+  if hasattr(source, 'titleNumber'):
+    temp = tempfile.NamedTemporaryFile(dir=tempdir.name, suffix=".mkv", delete=False)
+    flags = ["--nosubtitles", "--title", str(source.titleNumber)]
+    flags.extend(["--stop-at", f"{before}"])
+    cmd = ["rip-video", *flags, source.path, temp.name]
+
+    if debugFlag:
+      print(viddin.listToShell(cmd))
+    stat = viddin.runCommand(cmd, debugFlag=True)
+    if stat != 0:
+      print("Rip failed", file=sys.stderr)
+      exit(1)
+
+    viddin.findBlack(temp.name)
+    path, ext = os.path.splitext(temp.name)
+
   else:
-    flags.extend(["--stop-at", str(before)])
+    viddin.findBlack(source.path, before)
+    path, ext = os.path.splitext(source.path)
 
-  if args.start_at:
-    flags.extend(["--start-at", "seconds:" + str(viddin.decodeTimecode(args.start_at))])
-
-  if args.stop_at:
-    stop = viddin.decodeTimecode(args.stop_at)
-    if args.start_at:
-      stop -= viddin.decodeTimecode(args.start_at)
-    flags.extend(["--stop-at", "seconds:" + str(stop)])
-
-  cmd = ["HandBrakeCLI", "--encoder", encoder]
-  cmd.extend(flags)
-  cmd.extend(["-i", source.path, "-o", dest.path])
-
-  cmd = ["rip-video", *flags, dvd, temp]
-  print(viddin.listToShell(cmd))
-  stat = viddin.runCommand(cmd, debugFlag=True)
-  if stat != 0:
-    print("Rip failed", file=sys.stderr)
-    exit(1)
-
-  viddin.findBlack(temp)
-  path, ext = os.path.splitext(temp)
   black = viddin.loadSplits(path + ".blk")
-
-  for filename in glob.glob(os.path.join(".", path) + ".*"):
-    os.remove(filename)
-
-  return black[-1][0]
+  offset = black[-1][0]
+  return offset
 
 def main():
   args = build_argparser().parse_args()
@@ -430,15 +419,6 @@ def main():
        or args.film or args.pal_film or args.tv or args.tv_bob:
     flags.extend(["--vfr"])
 
-  if args.start_at:
-    flags.extend(["--start-at", "seconds:" + str(viddin.decodeTimecode(args.start_at))])
-
-  if args.stop_at:
-    stop = viddin.decodeTimecode(args.stop_at)
-    if args.start_at:
-      stop -= viddin.decodeTimecode(args.start_at)
-    flags.extend(["--stop-at", "seconds:" + str(stop)])
-
   if not args.nosubtitles:
     flags.extend(["--subtitle", "scan", "--subtitle-forced"])
 
@@ -475,8 +455,24 @@ def main():
   encodeBegin = time.time()
 
   source = viddin.Media(path_source,
-                            int(args.title) if args.title is not None else args.title)
+                        int(args.title) if args.title is not None else args.title)
   dest = viddin.Media(path_dest, None)
+
+  source.startAt = source.stopAt = None
+  if args.start_at:
+    source.startAt = viddin.decodeTimecode(args.start_at)
+  if args.stop_at:
+    source.stopAt = viddin.decodeTimecode(args.stop_at)
+  if args.trim_vanity:
+    source.startAt = vanity_offset(source, args.trim_vanity, args.debug)
+
+  if source.startAt is not None:
+    flags.extend(["--start-at", f"seconds:{source.startAt}"])
+  if source.stopAt:
+    stop = source.stopAt
+    if source.startAt is not None:
+      stop -= source.startAt
+    flags.extend(["--stop-at", f"seconds:{stop}"])
 
   os.environ['AV_LOG_FORCE_NOCOLOR'] = "1"
 
@@ -518,10 +514,10 @@ def main():
         expect_len = chapters[int(chaps[1])].position \
           - chapters[int(chaps[0]) - 1].position
 
-    if args.stop_at:
-      expect_len = viddin.decodeTimecode(args.stop_at)
-    if args.start_at:
-      expect_len -= viddin.decodeTimecode(args.start_at)
+    if source.stopAt is not None:
+      expect_len = source.stopAt
+    if source.startAt is not None:
+      expect_len -= source.startAt
 
     if os.path.exists(dest.path):
       actual_len = dest.getTitleInfo(debugFlag=args.debug).length
@@ -535,9 +531,9 @@ def main():
       if actual_len < 0:
         actual_len = 0
       outputStatus(dest.path, source.path, args.title, "FAILED TO RIP", "red",
-                   "Expect %s  Got %s  Percent %.5f" %
-                   (viddin.formatTimecode(expect_len), viddin.formatTimecode(actual_len),
-                    percent))
+                   f"Expect {viddin.formatTimecode(expect_len)}"
+                   f"  Got {viddin.formatTimecode(actual_len)}"
+                   f"  Percent {percent:.5f}")
       exit(1)
 
     # Fix flags on any forced subs that were added
@@ -570,10 +566,10 @@ def main():
   # FIXME - can only do subtitles on mkv dest and mkv or dvd source
   if add_autosubs or args.subtitle:
     start = end = None
-    if args.start_at:
-      start = viddin.decodeTimecode(args.start_at)
-    if args.stop_at:
-      end = viddin.decodeTimecode(args.stop_at)
+    if source.startAt is not None:
+      start = source.startAt
+    if source.stopAt is not None:
+      end = source.stopAt
     addSubtitles(source, args.chapters, start, end, dest, args.lang, args.subtitle, args.debug)
 
   if args.commentary:

@@ -21,7 +21,7 @@ import sys
 import argparse
 import json
 import xmltodict
-from viddin import viddin
+import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
@@ -42,7 +42,7 @@ def main():
     print("Unable to locate " + args.source)
     sys.exit(1)
 
-  source = viddin.VideoSpec(args.source, args.title)
+  source = viddin.Media(args.source, args.title)
   tinfo = source.getTitleInfo()
   for track in tinfo.tracks:
     if 'DURATION' not in track:

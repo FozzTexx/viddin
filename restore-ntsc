@@ -23,7 +23,7 @@ import datetime
 import sys
 import tempfile
 import shutil
-from viddin import viddin
+import viddin
 import subprocess
 
 MULTIPLIER = 25 / (24000.0 / 1001)
@@ -112,7 +112,7 @@ def main():
   tempdir = os.path.dirname(path)
   tempdir = tempfile.mkdtemp(dir=tempdir)
 
-  vfile = viddin.VideoSpec(path)
+  vfile = viddin.Media(path)
   tinfo = vfile.getTitleInfo()
   vtemp = slowVideo(path, tempdir)
   atemp = slowAudio(path, tempdir)

@@ -69,10 +69,10 @@ def main():
     if res == dsize:
       inputs.append(os.path.abspath(vid.path))
     else:
-      tmp, ext = os.path.splitext(vid.path)
+      tmp, ext = os.path.splitext(os.path.basename(vid.path))
       tmp += "_%i" % (args.files.index(vid.path)) + ext
       tmp = os.path.join(tmpdir, tmp)
-      cmd = ["ffmpeg", "-i", vid,
+      cmd = ["ffmpeg", "-i", vid.path,
              "-vf", "scale=%i:%i" % (dsize[0], dsize[1]),
              "-c", "copy", "-vcodec", "libx264", "-map", "0", tmp];
       print(viddin.listToShell(cmd))

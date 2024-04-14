@@ -166,12 +166,15 @@ class OCR:
     skip_before = skip_after = None
 
     # Favor the first 5, 30, and within seconds
-    check_order = self.filterOrder(check_order, 0,
-                                   position, check_dur, (position, position + within))
-    check_order = self.filterOrder(check_order, 0,
-                                   position, check_dur, (position, position + 30))
-    check_order = self.filterOrder(check_order, 0,
-                                   position, check_dur, (position, position + 5))
+    if (within <= length):
+      check_order = self.filterOrder(check_order, 0,
+                                     position, check_dur, (position, position + within))
+    if (30 <= length):
+      check_order = self.filterOrder(check_order, 0,
+                                     position, check_dur, (position, position + 30))
+    if (5 <= length):
+      check_order = self.filterOrder(check_order, 0,
+                                     position, check_dur, (position, position + 5))
 
     idx = 0
     while idx < len(check_order):

@@ -21,6 +21,9 @@ def build_argparser():
 def main():
   args, unused = build_argparser().parse_known_args()
 
+  ripdir = os.path.dirname(__file__)
+  os.environ['PATH'] = f"{ripdir}:{os.environ['PATH']}"
+
   if args.extension[0] != '.':
     args.extension = "." + args.extension
 
@@ -57,7 +60,7 @@ def main():
         chap_sources.append(chap_args)
 
     elif is_dvd:
-      sources[idx] = ["--title", title, args.dvd]
+      sources[idx] = ["--title", f"{sources[idx]}", args.dvd]
 
   if chap_sources:
     sources = chap_sources
@@ -72,6 +75,7 @@ def main():
       cmd.append(source)
     cmd.append(epid)
     if args.debug:
+      cmd.append("--debug")
       print(viddin.listToShell(cmd))
     result = subprocess.run(cmd)
     if result.returncode:

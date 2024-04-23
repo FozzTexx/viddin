@@ -27,7 +27,7 @@ echo Package: "${PROGRAM_NAME}" >> DEBIAN/control
 echo Version: "${VERSION}" >> DEBIAN/control
 echo Maintainer: "${MAINTAINER}" >> DEBIAN/control
 echo Architecture: "$(dpkg-architecture -q DEB_HOST_ARCH)" >> DEBIAN/control
-echo Depends: libtesseract4, libgpac11 >> DEBIAN/control
+echo Depends: libtesseract5 >> DEBIAN/control
 echo Description: "${PROGRAM_NAME}" >> DEBIAN/control
 
 cd ..

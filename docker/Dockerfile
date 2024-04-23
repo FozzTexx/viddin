@@ -1,12 +1,13 @@
 # -*- mode: Fundamental; indent-tabs-mode: nil -*-
 
-ARG BASE=ubuntu:22.04
+ARG BASE=debian:12.5
 
 # Build CCExtractor
 FROM ${BASE} as ccextractor
 RUN set -e \
     ; apt-get update \
     ; apt-get install -y --no-install-recommends \
+        ca-certificates \
         clang \
         cmake \
         dpkg-dev \
@@ -16,11 +17,20 @@ RUN set -e \
         libcurl4-gnutls-dev \
         libglew-dev \
         libglfw3-dev \
-        libgpac-dev \
         libleptonica-dev \
         libtesseract-dev \
         tesseract-ocr \
+        zlib1g-dev \
     ; rm -rf /var/lib/apt/lists/* \
+    ;
+
+RUN set -e \
+    ; cd /tmp \
+    ; git clone https://github.com/gpac/gpac.git \
+    ; cd gpac \
+    ; ./configure \
+    ; make \
+    ; make install \
     ;
 
 COPY install-ccextractor.sh ccextractor.bundle /tmp/
@@ -36,11 +46,10 @@ RUN set -e \
     ; apt-get install -y --no-install-recommends \
         python3-pip \
     ; rm -rf /var/lib/apt/lists/* \
-      \
-    ; pip3 install \
+    ; pip3 install --prefix=/usr --upgrade pip \
+    ; pip3 install --prefix=/usr \
         onnx \
         openvino-dev \
-        torch \
         torchvision \
     ;
 
@@ -147,6 +156,7 @@ RUN set -e \
         libexpat1-dev \
         libgl1-mesa-dev \
         libssl-dev \
+        libtesseract-dev \
         pkg-config \
         qtbase5-dev \
         wget \
@@ -194,6 +204,7 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV WSUSER viddin
 
 RUN set -e \
+    ; sed -i 's/^Components: main$/& contrib non-free/' /etc/apt/sources.list.d/debian.sources \
     ; apt-get update \
     ; apt-get install -y --no-install-recommends \
         bc \
@@ -212,7 +223,9 @@ RUN set -e \
         tesseract-ocr-eng \
     ; rm -rf /var/lib/apt/lists/* \
      \
-    ; pip3 install \
+    ; setsid sh -c "yes | dpkg-reconfigure libdvd-pkg" \
+      \
+    ; pip3 install --prefix=/usr \
         Pillow \
         librosa \
         numpy \
@@ -228,8 +241,6 @@ RUN set -e \
     ;
 
 RUN set -e \
-    ; setsid sh -c "yes | dpkg-reconfigure libdvd-pkg" \
-      \
     ; useradd -s /bin/bash $WSUSER \
     ; eval WSHOME=~$WSUSER \
     ; mkdir -p $WSHOME \

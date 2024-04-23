@@ -17,6 +17,8 @@ import tesserocr
 from PIL import Image
 from dataclasses import dataclass
 
+DATA_PATH = "/usr/share/tesseract-ocr/5/tessdata"
+
 @dataclass
 class OCRWord:
   text: str
@@ -34,8 +36,7 @@ class OCRBlock:
 
 class TessOCR:
   def __init__(self, lang="eng"):
-    self.api = tesserocr.PyTessBaseAPI(lang="eng",
-                                       path="/usr/share/tesseract-ocr/4.00/tessdata")
+    self.api = tesserocr.PyTessBaseAPI(lang="eng", path=DATA_PATH)
     self.conf_threshold = 65
     return
 

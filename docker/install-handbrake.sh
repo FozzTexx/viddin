@@ -28,7 +28,7 @@ echo Package: "${PROGRAM_NAME}" >> DEBIAN/control
 echo Version: "${VERSION}" >> DEBIAN/control
 grep Maintainer: ${TMP}/HandBrake/pkg/linux/debian/control >> DEBIAN/control
 echo Architecture: "$(dpkg-architecture -q DEB_HOST_ARCH)" >> DEBIAN/control
-echo Depends: libjansson4, libturbojpeg >> DEBIAN/control
+echo Depends: libjansson4, libturbojpeg0 >> DEBIAN/control
 echo Description: "${PROGRAM_NAME}" >> DEBIAN/control
 
 cd ..

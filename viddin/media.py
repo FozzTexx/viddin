@@ -416,10 +416,12 @@ class DVDTitle(Media):
                                stderr=subprocess.DEVNULL)
     pstr = process.stdout.read()
     process.stdout.close()
-    pstr = pstr.decode("utf-8", "backslashreplace")
-    pstr = pstr.replace("lsdvd = {", "{").strip()
+    pstr = pstr.decode("utf-8", "backslashreplace").strip()
+    idx = pstr.find("{")
+    if idx >= 0:
+      pstr = pstr[idx:]
     tracks = None
-    if len(pstr) and pstr[-1] == '}':
+    if len(pstr) and pstr[0] == '{' and pstr[-1] == '}':
       tracks = ast.literal_eval(pstr)
     else:
       print("bad track info", pstr)

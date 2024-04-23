@@ -161,14 +161,13 @@ class OCR:
   def searchForTitleCard(self, position, length, within=3*60.0):
     # FIXME - get frame rate from media
     check_dur = 1 / 24
+    length = min(within, length)
     check_max = int(math.ceil(length) / check_dur)
     check_order = self.bisect(check_max)
     skip_before = skip_after = None
 
-    # Favor the first 5, 30, and within seconds
-    if (within <= length):
-      check_order = self.filterOrder(check_order, 0,
-                                     position, check_dur, (position, position + within))
+    print(f"Searching {position:0.3f}-{position+length:0.3f}", file=sys.stderr)
+    # Favor the first 5, 30 seconds
     if (30 <= length):
       check_order = self.filterOrder(check_order, 0,
                                      position, check_dur, (position, position + 30))
@@ -177,6 +176,7 @@ class OCR:
                                      position, check_dur, (position, position + 5))
 
     idx = 0
+    all_text = []
     while idx < len(check_order):
       offset = position + check_order[idx] * check_dur
       idx += 1
@@ -204,6 +204,7 @@ class OCR:
       self.showStatus(offset, timecode + " " + str(text))
       
       l_text = " ".join(text).lower()
+      all_text.append(l_text)
       did_filter = False
       if self.pastTitleWords:
         for word in self.pastTitleWords:
@@ -218,4 +219,4 @@ class OCR:
       if episode is not None:
         return episode, offset, text
 
-    return None, None, None
+    return None, None, all_text

@@ -7,12 +7,14 @@ import viddin
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument("first", help="number of first episode")
-  parser.add_argument("titles", nargs="+", help="title numbers to rip")
+  parser.add_argument("sources", nargs="+", help="title numbers or chapters to rip")
   parser.add_argument("--dvd", default="/dev/dvd", help="dvd device")
   parser.add_argument("--extension", default="mkv",
                       help="extension to use for output, default is mkv")
   parser.add_argument("--split-chapters", action="store_true",
                       help="each chapter is its own episode")
+  parser.add_argument("--title",
+                      help="rip only this title, sources are the chapters of each episode")
 
   parser.add_argument("--debug", action="store_true", help="print debug info")
 
@@ -32,20 +34,23 @@ def main():
   episode = int(start[1])
 
   flags = unused
-  do_eject = err = False
+  err = False
   sources = []
-  for title in args.titles:
-    if os.path.isdir(title):
-      sources.extend(viddin.videosInDirectory(title))
+  for source in args.sources:
+    if os.path.isdir(source):
+      sources.extend(viddin.videosInDirectory(source))
+    elif source.isdigit():
+      sources.append(int(source))
     else:
-      sources.append(int(title))
+      # FIXME - if source is format t:c-c then it is title:chapters
+      sources.append(source)
+
+  media = viddin.Media(args.dvd)
+  is_dvd = media.isDVD
 
   chap_sources = []
   for idx in range(len(sources)):
     source = sources[idx]
-    is_dvd = isinstance(source, int)
-    if is_dvd:
-      do_eject = True
 
     if args.split_chapters:
       expanded = []
@@ -58,6 +63,9 @@ def main():
         else:
           chap_args.append(source)
         chap_sources.append(chap_args)
+
+    elif args.title:
+      sources[idx] = ["--title", args.title, "--chapters", f"{sources[idx]}", args.dvd]
 
     elif is_dvd:
       sources[idx] = ["--title", f"{sources[idx]}", args.dvd]
@@ -82,7 +90,7 @@ def main():
       err = True
       break
 
-  if not err and do_eject:
+  if not err and is_dvd:
     cmd = ["eject", args.dvd]
     subprocess.run(cmd)
 

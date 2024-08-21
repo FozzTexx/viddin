@@ -126,14 +126,17 @@ def printSubs(subs, lang):
       print(info)
   return
 
-def outputStatus(dest, source, title, message=None, color=None, addtl=None):
+def outputStatus(dest, source, title, chapters, message=None, color=None, addtl=None):
   status = dest + ":"
   if title:
-    status += " " + str(title)
+    if chapters:
+      status += f" {title}:{chapters}"
+    else:
+      status += f" {title}"
   if message:
     status += " " + colored(message, color, attrs=["bold", "blink"])
   if addtl:
-    status += " " + addtl
+    status += f" {addtl}"
   # Clear to EOL at beginning and then at end in case this message wraps two lines
   status = viddin.Terminal().clearEOL + status + viddin.Terminal().clearEOL
   print(status)
@@ -186,6 +189,8 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
 
   if tracks is None:
     tinfo = source.getTitleInfo(debugFlag=debugFlag)
+    if tinfo is None:
+      return
     subs = tinfo.subtitles
     if len(subs) == 0:
       return
@@ -235,6 +240,7 @@ def addSubtitles(source, chapters, start, end, dest, lang, tracks, debugFlag=Fal
         return
       if subcount > 1:
         outputStatus(dest.path, source.path, getattr(source, 'titleNumber', None),
+                     args.chapters,
                      "WARNING", "yellow",
                      "multiple matching subtitles. using %i" % (longest['rv_track_id']))
         printSubs(subs, lang)
@@ -530,7 +536,8 @@ def main():
        (actual_len < expect_len and abs(actual_len - expect_len) > 0.5 and percent > 0.0014):
       if actual_len < 0:
         actual_len = 0
-      outputStatus(dest.path, source.path, args.title, "FAILED TO RIP", "red",
+      outputStatus(dest.path, source.path, args.title, args.chapters
+                   , "FAILED TO RIP", "red",
                    f"Expect {viddin.formatTimecode(expect_len)}"
                    f"  Got {viddin.formatTimecode(actual_len)}"
                    f"  Percent {percent:.5f}")
@@ -604,7 +611,7 @@ def main():
 
   encodeEnd = time.time()
 
-  outputStatus(dest.path, source.path, args.title,
+  outputStatus(dest.path, source.path, args.title, args.chapters,
                addtl=str(viddin.formatTimecode(actual_len)) + "  rip: "
                + str(viddin.formatTimecode(encodeEnd - encodeBegin)))
 

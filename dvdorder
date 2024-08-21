@@ -28,23 +28,31 @@ import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser()
-  parser.add_argument("series", help="Name of series on thetvdb.com")
+  parser.add_argument("series", help="Name of series")
   parser.add_argument("--rename", action="store_true", help="rename files to match dvd order")
-  parser.add_argument("--dvdmissing", action="store_true", help="use episode data when dvd info is missing")
+  parser.add_argument("--dvdmissing", action="store_true",
+                      help="use episode data when dvd info is missing")
   parser.add_argument("--dvdignore", action="store_true", help="ignore dvd episode data")
-  parser.add_argument("--enumerate", action="store_true", help="Episodes are in order but may have gaps")
+  parser.add_argument("--enumerate", action="store_true",
+                      help="Episodes are in order but may have gaps")
   parser.add_argument("--first", default=1, help="Start enumeration at this number")
   parser.add_argument("--minsize", help="Ignore videos smaller than this")
   parser.add_argument("--dvdorder", action="store_true", help="keep episodes in DVD order")
   parser.add_argument("--absolute", action="store_true", help="put episodes in absolute order")
-  parser.add_argument("--airedorder", action="store_true", help="episodes are currently in aired order")
+  parser.add_argument("--airedorder", action="store_true",
+                      help="episodes are currently in aired order")
   parser.add_argument("--csv", action="store_true", help="output data as csv")
-  parser.add_argument("--quiet", action="store_true", help="don't print errors about missing DVD info")
-  parser.add_argument("--regex", help="pattern for finding videos", default="[0-9]+x[0-9][0-9]+\\.(mkv|mp4)")
+  parser.add_argument("--quiet", action="store_true",
+                      help="don't print errors about missing DVD info")
+  parser.add_argument("--regex", help="pattern for finding videos",
+                      default="[0-9]+x[0-9][0-9]+\\.(mkv|mp4)")
   parser.add_argument("--glob", help="glob pattern for finding videos")
   parser.add_argument("--dryrun", action="store_true", help="Don't actually rename files")
-  parser.add_argument("--interactive", action="store_true", help="Choose from list of matching TVDB titles")
-  parser.add_argument("--split", action="store_true", help="DVD episodes have been split into individual cartoons")
+  parser.add_argument("--interactive", action="store_true",
+                      help="Choose from list of matching titles")
+  parser.add_argument("--split", action="store_true",
+                      help="DVD episodes have been split into individual cartoons")
+  parser.add_argument("--tmdb", action="store_true", help="Use TheMovieDB to get episode data")
   return parser
   
 # FIXME - make finding the file as smart as tvrenamer.pl
@@ -53,6 +61,10 @@ def main():
 
   if os.path.isfile(args.series):
     series = viddin.loadEpisodeInfoFromCSV(args.series)
+  elif args.tmdb:
+    series = viddin.loadEpisodeInfoFromTMDB(args.series, dvdIgnore=args.dvdignore,
+                                            dvdMissing=args.dvdmissing, quietFlag=args.quiet,
+                                            interactiveFlag=args.interactive)
   else:
     series = viddin.loadEpisodeInfoFromTVDB(args.series, dvdIgnore=args.dvdignore,
                                             dvdMissing=args.dvdmissing, quietFlag=args.quiet,

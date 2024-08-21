@@ -33,14 +33,16 @@ def main():
   print("Copying %i blocks of size %i from %s to %s" %
         (block_count, block_size, args.dvd, args.output))
 
-  # Put dvd drive into decrypt mode:
-  cmd = ["cvlc", "--run-time", "6", "--start-time", "16", "dvd://" + args.dvd + "#4",
-         "vlc://quit"]
-  res = subprocess.call(cmd)
-  # if res:
+  # Switched to using ddrescue with dvdcss support built in
+  # # Put dvd drive into decrypt mode:
+  # cmd = ["cvlc", "--run-time", "6", "--start-time", "16", "dvd://" + args.dvd + "#4",
+  #        "vlc://quit"]
+  # res = subprocess.call(cmd)
+  # if res != -11:
   #   print("Unable to run cvlc", res)
+  #   print(cmd)
   #   exit(1)
-  os.system("reset")
+  # os.system("reset")
 
   base, ext = os.path.splitext(args.output)
   # cmd = ["dd", "if=" + args.dvd, "of=" + args.output,

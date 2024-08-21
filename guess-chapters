@@ -32,6 +32,8 @@ def build_argparser():
   parser.add_argument("-a", "--add", action="store_true", help="Add chapters to existing chapters")
   parser.add_argument("--debug", action="store_true", help="Turn on debug output")
   parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
+  parser.add_argument("-c", "--cuts", action="store_true",
+                      help="Use scene cuts if there's no black")
   return parser
 
 def closestExpected(best):
@@ -71,7 +73,8 @@ def main():
 
   viddin.findBlack(args.file)
   viddin.findSilence(args.file)
-  viddin.findCuts(args.file)
+  if args.cuts:
+    viddin.findCuts(args.file)
 
   expected = None
   if len(args.offsets):

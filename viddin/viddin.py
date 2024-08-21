@@ -22,16 +22,6 @@ import subprocess
 import datetime
 import re
 import magic
-# import json
-# import xmltodict
-# import sys
-# import tvdb_api
-# import operator
-# import math
-# import tempfile
-# import csv
-# import stat
-# import io
 
 Chapter = namedtuple("Chapter", ["position", "name"])
 

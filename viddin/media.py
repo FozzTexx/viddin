@@ -409,35 +409,37 @@ class DVDTitle(Media):
     return
 
   def getDVDInfo(self, debugFlag=False):
-    cmd = ["lsdvd", "-asc", "-Oy", self.path]
-    if debugFlag:
-      print(viddin.listToShell(cmd))
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                               stderr=subprocess.DEVNULL)
-    pstr = process.stdout.read()
-    process.stdout.close()
-    pstr = pstr.decode("utf-8", "backslashreplace").strip()
-    idx = pstr.find("{")
-    if idx >= 0:
-      pstr = pstr[idx:]
-    tracks = None
-    if len(pstr) and pstr[0] == '{' and pstr[-1] == '}':
-      tracks = ast.literal_eval(pstr)
-    else:
-      print("bad track info", pstr)
-      return None
+    if not hasattr(self, '_dvdInfo'):
+      cmd = ["lsdvd", "-asc", "-Oy", self.path]
+      if debugFlag:
+        print(viddin.listToShell(cmd))
+      process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL)
+      pstr = process.stdout.read()
+      process.stdout.close()
+      pstr = pstr.decode("utf-8", "backslashreplace").strip()
+      idx = pstr.find("{")
+      if idx >= 0:
+        pstr = pstr[idx:]
+      tracks = None
+      if len(pstr) and pstr[0] == '{' and pstr[-1] == '}':
+        tracks = ast.literal_eval(pstr)
+      else:
+        print("bad track info", pstr)
+        return None
 
-    for trk in tracks['track']:
-      # the video track is number 0
-      rv_track_id = 1
-      for ttype in ('audio', 'subp'):
-        for strk in trk[ttype]:
-          strk['rv_track_id'] = rv_track_id
-          strk['type'] = ttype if ttype != 'subp' else 'subtitles'
-          if strk['langcode'] in dvdLangISO:
-            strk['language'] = dvdLangISO[strk['langcode']]
-          rv_track_id += 1
-    return tracks
+      for trk in tracks['track']:
+        # the video track is number 0
+        rv_track_id = 1
+        for ttype in ('audio', 'subp'):
+          for strk in trk[ttype]:
+            strk['rv_track_id'] = rv_track_id
+            strk['type'] = ttype if ttype != 'subp' else 'subtitles'
+            if strk['langcode'] in dvdLangISO:
+              strk['language'] = dvdLangISO[strk['langcode']]
+            rv_track_id += 1
+      self._dvdInfo = tracks
+    return self._dvdInfo
 
   def getTitleInfo(self, debugFlag=False):
     dvdInfo = self.getDVDInfo(debugFlag=debugFlag)

@@ -209,6 +209,7 @@ RUN set -e \
     ; apt-get install -y --no-install-recommends \
         bc \
         eject \
+        genisoimage \
         git \
         less \
         libdvd-pkg \
@@ -223,10 +224,11 @@ RUN set -e \
         tesseract-ocr-eng \
     ; rm -rf /var/lib/apt/lists/* \
      \
-    ; setsid sh -c "yes | dpkg-reconfigure libdvd-pkg" \
+    ; dpkg-reconfigure --frontend=noninteractive libdvd-pkg \
       \
     ; pip3 install --prefix=/usr \
         Pillow \
+        SpeechRecognition \
         librosa \
         numpy \
         opencv-python \
@@ -236,6 +238,7 @@ RUN set -e \
         requests-cache==0.5.2 \
         termcolor \
         tesserocr \
+        tmdbsimple \
         tvdb_api==2.0 \
         xmltodict \
     ;
@@ -270,6 +273,14 @@ COPY --from=h264-tools \
        /usr/local/bin/naluparser \
        /usr/local/bin/yuvsbspipe \
       /usr/local/bin/
+
+RUN set -e \
+    ; git clone https://github.com/puellavulnerata/ddrescue-dvdcss.git \
+    ; cd ddrescue-dvdcss \
+    ; ./configure \
+    ; make \
+    ; make install \
+    ;
 
 # Copy init script
 COPY viddin-init /usr/local/bin/

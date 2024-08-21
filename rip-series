@@ -2,6 +2,7 @@
 import argparse
 import os
 import subprocess
+import stat
 import viddin
 
 def build_argparser():
@@ -90,7 +91,7 @@ def main():
       err = True
       break
 
-  if not err and is_dvd:
+  if not err and is_dvd and stat.S_ISBLK(os.stat(args.dvd).st_mode):
     cmd = ["eject", args.dvd]
     subprocess.run(cmd)
 

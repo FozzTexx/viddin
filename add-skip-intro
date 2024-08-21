@@ -41,18 +41,30 @@ def main():
     names = args.names
     
   for path in args.files:
+    if not os.path.exists(path):
+      print("No such file:", path)
+      exit(1)
+
     print(path)
     video, ext = os.path.splitext(path)
 
     vfile = viddin.Media(path, None)
     chapters = vfile.chapters
+    if not len(chapters):
+      chapters = (viddin.Chapter(0, None), )
+    if abs(chapters[-1].position - vfile.length) > 2:
+      chapters = list(chapters) + [viddin.Chapter(vfile.length, "The End")]
 
     _, c1 = vfile.chapterWithID(names[0])
     _, c2 = vfile.chapterWithID(names[1])
     if c1 and c2:
       continue
-    
-    _, chap = vfile.chapterWithID(args.chapter)
+
+    chap_id = args.chapter
+    if re.match("^-?[0-9]+$", chap_id):
+      chap = chapters[int(chap_id)]
+    else:
+      _, chap = vfile.chapterWithID(chap_id)
     if chap is None:
       print("Unable to find specified chapter", path)
       continue
@@ -110,6 +122,8 @@ def main():
       intro[0] = viddin.Chapter(intro[0].position, names[0])
     if intro[1].name != names[1]:
       intro[1] = viddin.Chapter(intro[1].position, names[1])
+    if abs(intro[1].position - vfile.length) < 2:
+      intro.pop()
 
     if vfile.addChapters(intro, normalizeFlag=True):
       vfile.writeChapters()

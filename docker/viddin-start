@@ -26,6 +26,9 @@ DCKARGS="${DCKARGS} -v ${HOME}/.tvrenamerrc:/home/viddin/.tvrenamerrc"
 # For autorip
 DCKARGS="${DCKARGS} -v /var/lock:/var/lock --pid=host"
 
+# For TheMovieDB
+DCKARGS="${DCKARGS} -v ${HOME}/.tmdbkey:/home/viddin/.tmdbkey"
+
 DAEMON=0
 
 while [ $# -gt 0 -a `expr substr "${1:-empty}" 1 2` = "--" ] ; do

@@ -155,7 +155,7 @@ class Media:
     if isinstance(chapID, str):
       if re.match("^-?[0-9]+$", chapID):
         chapID = int(chapID)
-      elif re.search("[:,.]", chapID):
+      elif re.search("[:,.][0-9]", chapID):
         chapID = float(viddin.decodeTimecode(chapID))
 
     if isinstance(chapID, str):

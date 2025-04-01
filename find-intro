@@ -42,6 +42,7 @@ def build_argparser():
   parser.add_argument("--distance", default=10,
                       help="Maximum number of seconds away from specified offset")
   parser.add_argument("--margin", default=DISTANCE, type=float, help="allowed margin away")
+  parser.add_argument("-n", "--names", nargs=2, help="use names as chapter names")
   return parser
 
 def matchesPattern(pos, splits, pattern):
@@ -181,7 +182,13 @@ def findAudio(episode, theme, addFlag, chapterFlag, margin):
   return
 
 def main():
+  global CHAPTER_INTRO, CHAPTER_SKIP
+
   args = build_argparser().parse_args()
+
+  if args.names:
+    CHAPTER_INTRO = args.names[0]
+    CHAPTER_SKIP = args.names[1]
 
   if args.audio:
     for path in args.files:

@@ -15,15 +15,12 @@
 
 import os, sys
 import pty
-from collections import namedtuple
 import shlex
 import curses
 import subprocess
 import datetime
 import re
 import magic
-
-Chapter = namedtuple("Chapter", ["position", "name"])
 
 def findBlack(path):
   video, ext = os.path.splitext(path)

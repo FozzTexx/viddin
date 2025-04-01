@@ -124,9 +124,16 @@ def main():
 
     searcher = viddin.OCR(vfile, season_titles[season] if season is not None else titles,
                           bounds=bounds, pastTitleWords=past_words)
-    
-    start = chapters[usechap][0]
-    end = chapters[usechap+1][0]
+
+    if isinstance(chapters[usechap], viddin.chapter.Chapter):
+      start = chapters[usechap].position
+    else:
+      start = chapters[usechap][0]
+    if isinstance(chapters[usechap+1], viddin.chapter.Chapter):
+      end = chapters[usechap+1].position
+    else:
+      end = chapters[usechap+1][0]
+
     if args.offset is not None:
       offset = args.offset
       if offset < 0:

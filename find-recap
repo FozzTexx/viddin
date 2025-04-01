@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+import argparse
+import sys
+import re
+import subprocess
+from tempfile import NamedTemporaryFile
+import speech_recognition as sr
+
+sys.path.append("/usr/local/bin/")
+from viddin import viddin
+
+PHRASE = "you might need to know"
+
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("file", help="input file")
+  parser.add_argument("--phrase", default=PHRASE, help="phrase to search for")
+  parser.add_argument("--chapter", default=0, help="Chapter to search for phrase")
+  parser.add_argument("--offset", type=float,
+                      help="Position within chapter to start searching for phrase")
+  parser.add_argument("--within", type=float, default=10.0,
+                      help="Phrase is within this many seconds")
+  parser.add_argument("--flag", action="store_true", help="flag to do something")
+  return parser
+
+def main():
+  args = build_argparser().parse_args()
+
+  r = sr.Recognizer()
+
+  path = args.file
+  vfile = viddin.VideoSpec(path, None)
+  chapters = list(vfile.chapters)
+  chapters.append(viddin.Chapter(viddin.getLength(vfile.path), "end"))
+  print("Chapter", args.chapter)
+
+  usechap = args.chapter
+  if isinstance(usechap, int) or re.match("^-?[0-9]+$", usechap):
+    usechap = int(usechap)
+    if usechap < 0:
+      usechap -= 1
+  usechap, _ = vfile.chapterWithID(usechap)
+  if usechap is None:
+    print("No such chapter")
+    exit(1)
+  print("Usechap", usechap)
+
+  start = chapters[usechap][0]
+  end = chapters[usechap+1][0]
+  if args.offset is not None:
+    offset = args.offset
+    if offset < 0:
+      start = end + offset
+    else:
+      start += args.offset
+
+  #clip = NamedTemporaryFile(suffix=".wav").name
+  clip = "chuck-recap.wav"
+  cmd = ["ffmpeg", "-y", "-i", path, "-ss", str(start), "-t", str(args.within),
+         "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+         clip]
+
+  print(viddin.listToShell(cmd))
+  viddin.runCommand(cmd)
+
+  with sr.AudioFile(clip) as source:
+    audio = r.record(source)
+
+  exit_code = 1
+  try:
+    #text = r.recognize_sphinx(audio, show_all=True)
+    text = r.recognize_google(audio, show_all=True)
+    #text = r.recognize_vosk(audio)
+    print("Converted Text: ", text)
+
+    # for segment in text.seg():
+    #   word = segment.word
+    #   start_time = segment.start_frame / 100
+    #   end_time = segment.end_frame / 100
+    #   print("Word: {}, Start time: {:.4f}s, End time: {:.4f}s".format(word, start_time, end_time))
+
+    for transcript in text['alternative']:
+      transcript = transcript['transcript']
+      print(transcript)
+      if args.phrase.lower() in transcript.lower():
+        exit_code = 0
+        print("Recap found")
+        break
+    if exit_code:
+      print("No recap")
+  except sr.UnknownValueError:
+    print("Speech recognition could not understand audio")
+  except sr.RequestError as e:
+    print("Could not request results from Google's speech recognition service: {0}".format(e))
+
+  return exit_code
+
+if __name__ == '__main__':
+  exit(main() or 0)

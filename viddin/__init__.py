@@ -5,3 +5,4 @@ from .episode import \
   loadEpisodeInfoFromCSV, loadEpisodeInfoFromTVDB, \
   EpisodeOrder, EpisodeID, EpisodeList
 from .tmdb import loadEpisodeInfoFromTMDB
+from .chapter import Chapter

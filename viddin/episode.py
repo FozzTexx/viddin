@@ -41,15 +41,12 @@ class EpisodeOrder(Enum):
 class EpisodeID:
   def __init__(self, val=None, *, season=None, episode=None, segment=None):
     if isinstance(val, str):
-      start = val.split('x')
-      season = int(start[0])
-      segment = None
-      if '.' in start[1]:
-        idx = start[1].find('.')
-        episode = int(start[1][:idx])
-        segment = int(start[1][idx+1:])
-      else:
-        episode = int(start[1])
+      m = re.match(r"^([0-9])+x([0-9]+)([.]([0-9]+))?", val)
+      if not m:
+        return
+      season = m.group(1)
+      episode = m.group(2)
+      segment = m.group(4)
     elif isinstance(val, (list, tuple)):
       season, episode, segment = list(val) + [None]
 

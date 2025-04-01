@@ -25,7 +25,7 @@ import glob
 import math
 import tvdb_api
 import csv
-from viddin import viddin
+import viddin
 
 EP_ID = 0
 EP_SEASON = 1
@@ -103,36 +103,61 @@ class Segment:
          self.segChap, self.splen]
     return str(l)
 
-def findSplits(filename, vlen, chapters):
-  video, ext = os.path.splitext(filename)
-  black = viddin.loadSplits(video + ".blk")
-  silence = viddin.loadSplits(video + ".sil")
+# def findSplits(filename, vlen, chapters):
+#   video, ext = os.path.splitext(filename)
+#   black = viddin.loadSplits(video + ".blk")
+#   silence = viddin.loadSplits(video + ".sil")
 
-  splits = [Segment(0.0, None)]
-  for row in black:
-    match = viddin.bestSilence(row, silence)
-    if match:
-      splits.append(Segment((match[1] - match[0]) / 2 + match[0], None))
-    else:
-      splits.append(Segment(0 - ((row[1] - row[0]) / 2 + row[0]), None))
+#   splits = [Segment(0.0, None)]
+#   for row in black:
+#     match = viddin.bestSilence(row, silence)
+#     if match:
+#       splits.append(Segment((match[1] - match[0]) / 2 + match[0], None))
+#     else:
+#       splits.append(Segment(0 - ((row[1] - row[0]) / 2 + row[0]), None))
 
-  splits.append(Segment(vlen, 0))
+#   splits.append(Segment(vlen, 0))
 
-  for chap in chapters:
-    best = None
-    for seg in splits:
-      pos = abs(seg.position)
-      if not best or abs(chap - pos) < abs(chap - abs(best.position)):
-        best = seg
-    if best and abs(chap - abs(best.position)) < 10:
-      best.segChap = chap
-      
-  for i in range(len(splits) - 1):
-    cc = splits[i].position
-    cn = splits[i+1].position
-    splits[i].length = abs(cn) - abs(cc)
-  
-  return splits
+#   for chap in chapters:
+#     best = None
+#     for seg in splits:
+#       pos = abs(seg.position)
+#       if not best or abs(chap - pos) < abs(chap - abs(best.position)):
+#         best = seg
+#     if best and abs(chap - abs(best.position)) < 10:
+#       best.segChap = chap
+
+#   for i in range(len(splits) - 1):
+#     cc = splits[i].position
+#     cn = splits[i+1].position
+#     splits[i].length = abs(cn) - abs(cc)
+
+#   return splits
+
+def loadSegments(media, chaptersOnlyFlag):
+  if chaptersOnlyFlag:
+    segments = list(media.chapters)
+    for seg in segments:
+      seg.segChap = seg.position
+      seg.segType = None
+  else:
+    segments = [Segment(0.0, None)] + [Segment(x, None) for x in media.loadSplits()] \
+      + [Segment(media.length, 0)]
+
+    for chap in media.chapters:
+      best = None
+      for seg in segments:
+        pos = abs(seg.position)
+        if not best or abs(chap.position - pos) < abs(chap.position - abs(best.position)):
+          best = seg
+      if best and abs(chap.position - abs(best.position)) < 10:
+        best.segChap = chap.position
+
+  for seg1, seg2 in zip(segments, segments[1:]):
+    seg1.length = seg2.position - seg1.position
+  segments[-1].length = media.length - segments[-1].position
+
+  return segments
 
 def getShortTotal(segment):
   ci = segments.index(segment)
@@ -143,27 +168,27 @@ def getShortTotal(segment):
     slen += segment.length
   return slen
 
-def getChapters(filename, vlen, splitFlag=False):
-  chap = 0
-  chapters = []
-  with os.popen("ffmpeg -i \"" + filename + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
-    for line in f:
-      fields = line.split()
-      begin = float(re.sub(",", "", fields[3]))
-      end = float(fields[5])
-      if begin == 0.0 and abs(end - vlen) < 1:
-        continue
-      chapters.append(begin)
-      chap += 1
-      if not splitFlag:
-        print("# Chapter %i: %s %f" % (chap, datetime.timedelta(seconds = begin), begin))
-  return chapters
+# def getChapters(filename, vlen, splitFlag=False):
+#   chap = 0
+#   chapters = []
+#   with os.popen("ffmpeg -i \"" + filename + "\" -f ffmetadata 2>&1 | grep 'Chapter #'") as f:
+#     for line in f:
+#       fields = line.split()
+#       begin = float(re.sub(",", "", fields[3]))
+#       end = float(fields[5])
+#       if begin == 0.0 and abs(end - vlen) < 1:
+#         continue
+#       chapters.append(begin)
+#       chap += 1
+#       if not splitFlag:
+#         print("# Chapter %i: %s %f" % (chap, datetime.timedelta(seconds = begin), begin))
+#   return chapters
 
-def nearestChapter(position, chapters):
-  for chap in chapters:
-    if abs(position - chap) < 10:
-      return chap
-  return None
+# def nearestChapter(position, chapters):
+#   for chap in chapters:
+#     if abs(position - chap) < 10:
+#       return chap
+#   return None
 
 def segmentLength(seg, segments):
   si = segments.index(seg) + 1
@@ -215,14 +240,14 @@ def printSegments(segments):
       sys.stdout.write(" %9.4f" % segmentLength(segment, segments))
     else:
       sys.stdout.write("          ")
-    
+
     if schap != None:
       sys.stdout.write(" %9.4f" % schap)
     else:
       sys.stdout.write("          ")
 
     sys.stdout.write(" %9.4f" % splen)
-      
+
     sys.stdout.write("  ")
     sys.stdout.write(str(sblack))
     sys.stdout.write("  ")
@@ -238,7 +263,7 @@ def countShorts(segments):
     if seg.segType == TYPE_SHORT:
       epnum += 1
   return epnum
-  
+
 def main():
   args = build_argparser().parse_args()
   quickies = []
@@ -251,11 +276,11 @@ def main():
     quickies.append(float(times[1]))
 
   if os.path.isfile(args.series):
-    series = viddin.loadEpisodeInfoCSV(args.series)
+    series = viddin.loadEpisodeInfoFromCSV(args.series)
   else:
-    series = viddin.loadEpisodeInfoTVDB(args.series, dvdIgnore=False,
+    series = viddin.loadEpisodeInfoFromTVDB(args.series, dvdIgnore=False,
                                         dvdMissing=args.dvdmissing, quietFlag=args.quiet)
-  episodes = viddin.EpisodeList(series, "dvdSeason", "dvdEpisode")
+  episodes = viddin.EpisodeList(series, "dvdID")
 
   if args.files:
     videos = args.files
@@ -276,14 +301,13 @@ def main():
       sys.stderr.write("Unable to find episode for " + filename + "\n")
       continue
 
-    vlen = viddin.getLength(filename)
-
-    chapters = getChapters(filename, vlen, args.split)
+    vfile = viddin.Media(filename)
+    chapters = vfile.chapters
     chaponly = len(chapters) and args.chapters_only
 
     if not isinstance(episode, list):
       exit(0)
-      
+
     numshorts = len(episode)
     # numshorts = 0
     # shortindex = epindex = episodes.index(episode)
@@ -293,10 +317,7 @@ def main():
     #   numshorts += 1
     #   shortindex += 1
 
-    viddin.findBlack(filename)
-    viddin.findSilence(filename)
-
-    segments = findSplits(filename, vlen, chapters)
+    segments = loadSegments(vfile, chaponly)
 
     if args.debug:
       printSegments(segments)
@@ -607,8 +628,6 @@ def main():
       print
       printSegments(segments)
 
-    segments.append(Segment(vlen, 0.0))
-
     epnum = countShorts(segments)
     if epnum != numshorts:
       for seg in segments:
@@ -616,11 +635,12 @@ def main():
           slen = segmentLength(seg, segments)
           if slen < avglen:
             nextc = findNext(seg, segments)
-            nlen = segmentLength(nextc, segments)
-            if nlen < avglen and not nextc.segChap and nextc.segType == TYPE_SHORT:
-              if args.debug:
-                print("COMBINING", seg.position, nextc.position)
-              nextc.segType = TYPE_PREV
+            if nextc is not None:
+              nlen = segmentLength(nextc, segments)
+              if nlen < avglen and not nextc.segChap and nextc.segType == TYPE_SHORT:
+                if args.debug:
+                  print("COMBINING", seg.position, nextc.position)
+                nextc.segType = TYPE_PREV
 
       epnum = countShorts(segments)
       if epnum != numshorts:
@@ -640,7 +660,7 @@ def main():
         ep = episode[epnum]
         title = re.sub("[:/]", "-", re.sub("[.!?]$", "", ep.title))
         eptitle = "%s.%i %s%s" % (video, quickie + epnum + 1, title, ext)
-        alttitle = "%s %s%s" % (episodes.formatEpisodeID(ep, "airedSeason", "airedEpisode"),
+        alttitle = "%s %s%s" % (episodes.formatEpisodeID(ep, "airedID"),
                                 title, ext)
         epnum += 1
       elif ctype == TYPE_TITLE:

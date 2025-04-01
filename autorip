@@ -164,6 +164,7 @@ def main():
   lock = create_lock()
   if not lock:
     # FIXME - check how long pid has been running and print message if more than several hours
+    print("autorip is already running")
     exit_code = -1
 
   if exit_code == 0:

@@ -286,7 +286,7 @@ class viddin:
            "-of", "default=noprint_wrappers=1:nokey=1",
            filename]
     if debugFlag:
-      print(viddin.listToShell(cmd))
+      print(listToShell(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     jstr = process.stdout.read()
@@ -317,7 +317,7 @@ class viddin:
            "-of", "csv=s=x:p=0",
            filename]
     if debugFlag:
-      print(viddin.listToShell(cmd))
+      print(listToShell(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     res = process.stdout.read()
@@ -333,7 +333,7 @@ class viddin:
            "-of", "default=noprint_wrappers=1:nokey=1",
            filename]
     if debugFlag:
-      print(viddin.listToShell(cmd))
+      print(listToShell(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL)
     fps = process.stdout.read()

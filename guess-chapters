@@ -53,10 +53,12 @@ def closestExpected(best):
   return None
 
 def findNearest(position, chapters):
+  position = abs(position)
   for chap in chapters:
     pos = chap
     if isinstance(chap, viddin.Chapter):
       pos = chap.position
+    pos = abs(pos)
     if pos > position + 2:
       break
     diff = abs(pos - position)
@@ -148,10 +150,10 @@ def main():
     
     for row in splits:
       if row >= 0 or args.force:
-        print("%0.3f\t%s" % (row, viddin.formatTimecode(abs(row))), end="")
+        print("%9.3f\t%9s" % (row, viddin.formatTimecode(abs(row))), end="")
         chap = findNearest(row, chapters)
         if chap is not None:
-          print("\t%s\t%s" % (viddin.formatTimecode(chap.position), chap.name), end="")
+          print("\t%9s\t%s" % (viddin.formatTimecode(chap.position), chap.name), end="")
         print()
         
   return

@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+import argparse
+import viddin
+import curses
+import time
+from python_vlc_http import HttpVLC
+from dataclasses import dataclass, asdict
+
+COL_POSITION = 0
+COL_TIMECODE = 1
+COL_DELTA    = 2
+COL_NAME     = 3
+
+def build_argparser():
+  parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+  parser.add_argument("file", help="Video file to examine")
+  parser.add_argument("-i", "--interactive", action="store_true",
+                      help="edit chapters interactively")
+  parser.add_argument("--vlc", help="URL to connect to VLC");
+  parser.add_argument("--vlcpass", help="password to connect to VLC");
+
+  # edit-chapters flags
+  parser.add_argument("--fix", action="store_true", help="Fix first chapeter marker to start at exactly 0")
+  parser.add_argument("--multiplier", type=float, help="Multiplier to shift chapter markers")
+  parser.add_argument("--chapters", help="File containing list of chapters to replace existing markers")
+  parser.add_argument("--add", nargs="+", help="Positions to add as chapters")
+  parser.add_argument("--delete", nargs="+", help="Chapters to delete")
+  parser.add_argument("--rename", nargs="+", help="Chapters to rename")
+  parser.add_argument("--debug", action="store_true", help="print debug info")
+
+  # guess-chapters flags
+  # parser.add_argument("offsets", nargs="*", help="Approximate location of expected chapters")
+  # parser.add_argument("-f", "--force", action="store_true", help="Force a chapter at locations even if there's no matching silence")
+  # parser.add_argument("-a", "--add", action="store_true", help="Add chapters to existing chapters")
+  # parser.add_argument("--debug", action="store_true", help="Turn on debug output")
+  # parser.add_argument("--distance", default=10, help="Maximum number of seconds away from specified offset")
+  # parser.add_argument("-c", "--cuts", action="store_true",
+  #                     help="Use scene cuts if there's no black")
+
+  return parser
+
+@dataclass
+class ChapterItem:
+  position: float
+  timecode: str
+  delta: float
+  name: str
+
+def findNearest(position, chapters):
+  position = abs(position)
+  for chap in chapters:
+    pos = chap
+    if isinstance(chap, viddin.Chapter):
+      pos = chap.position
+    pos = abs(pos)
+    if pos > position + 2:
+      break
+    diff = abs(pos - position)
+    if diff < 1:
+      return chap
+
+  return None
+
+def draw_row(stdscr, y, values, col_widths, highlight=False):
+  x = 0
+  if isinstance(values, ChapterItem):
+    values = list(asdict(values).values())
+
+  for idx, val in enumerate(values):
+    attr = curses.A_NORMAL
+
+    sval = f"{val}"
+    if idx == COL_DELTA and isinstance(val, float):
+      sval = f"{val:0.3f}"
+
+    if idx < COL_NAME:
+      sval = sval.rjust(col_widths[idx] - 3)
+
+    if idx == COL_POSITION:
+      try:
+        if val >= 0:
+          attr = curses.color_pair(3 if highlight else 1)
+        else:
+          attr = curses.color_pair(4 if highlight else 2)
+        sval = f"{val:{col_widths[idx] - 3}.3f}"
+      except TypeError:
+        attr = curses.A_REVERSE if highlight else curses.A_NORMAL
+
+    elif highlight:
+      attr = curses.A_REVERSE
+
+    stdscr.addstr(y, x, sval, attr)
+    x += col_widths[idx]
+
+  return
+
+def edit_field(stdscr, row, col, max_len, current_value):
+  curses.curs_set(1)  # show cursor
+  stdscr.move(row, col)
+  value = list(current_value[:max_len])
+  pos = len(value)
+  while True:
+    stdscr.move(row, col)
+    stdscr.clrtoeol()
+    stdscr.addstr(row, col, ''.join(value).ljust(max_len))
+    stdscr.move(row, col + pos)
+    stdscr.refresh()
+
+    key = stdscr.getch()
+    if key in (curses.KEY_ENTER, 10, 13):  # Enter key
+      break
+    elif key in (27,):  # ESC key to cancel
+      value = list(current_value)
+      break
+    elif key in (curses.KEY_BACKSPACE, 127, 8):
+      if pos > 0:
+        del value[pos - 1]
+        pos -= 1
+    elif key == curses.KEY_DC:
+      if pos < len(value):
+        del value[pos]
+    elif key == curses.KEY_LEFT:
+      if pos > 0:
+        pos -= 1
+    elif key == curses.KEY_RIGHT:
+      if pos < len(value):
+        pos += 1
+    elif 32 <= key <= 126:  # printable characters
+      if len(value) < max_len:
+        value.insert(pos, chr(key))
+        pos += 1
+
+  curses.curs_set(0)  # hide cursor again
+  return ''.join(value)
+
+def show_status(stdscr, message):
+  h, w = stdscr.getmaxyx()
+  stdscr.move(h - 2, 0)
+  stdscr.clrtoeol()
+  stdscr.addstr(h - 2, 0, message[:w - 1])
+  stdscr.refresh()
+  return
+
+def prompt_status(stdscr, message, max_len=None, current_value=""):
+  h, w = stdscr.getmaxyx()
+  stdscr.move(h - 1, 0)
+  stdscr.clrtoeol()
+  stdscr.addstr(h - 1, 0, message)
+  stdscr.refresh()
+
+  if max_len is None:
+    max_len = w - len(message) - 1
+    if max_len < 1:
+      max_len = 1  # just in case
+
+  return edit_field(stdscr, h - 1, len(message), max_len, current_value)
+
+def update_delta(items):
+  for idx in range(len(items) - 1):
+    items[idx].delta = abs(items[idx + 1].position) - abs(items[idx].position)
+  items[-1].delta = ""
+  return
+
+def update_scroll_offset(selected_index, scroll_offset, max_items, list_length):
+  middle = max_items // 2
+
+  # If selected is above the current scroll window, scroll up
+  if selected_index < scroll_offset + middle and scroll_offset > 0:
+    scroll_offset = max(0, selected_index - middle)
+
+  # If selected is below the current screen view, scroll down
+  elif selected_index >= scroll_offset + max_items - middle:
+    scroll_offset = min(list_length - max_items, selected_index - (max_items - middle - 1))
+
+  return scroll_offset
+
+def interactive(path, vlc_url, vlc_pass):
+  vfile = viddin.Media(path)
+
+  vlc_controller = None
+  if vlc_url:
+    vlc_controller = HttpVLC(vlc_url, "", vlc_pass)
+
+  stdscr = curses.initscr()
+
+  curses.noecho()
+  curses.cbreak()
+  stdscr.keypad(True)
+  curses.curs_set(0)
+  curses.set_escdelay(5)
+
+  curses.start_color()
+  curses.use_default_colors()
+  curses.init_pair(1, curses.COLOR_GREEN, -1)       # Positive
+  curses.init_pair(2, curses.COLOR_YELLOW, -1)      # Negative
+  curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_GREEN)  # Selected positive
+  curses.init_pair(4, curses.COLOR_BLACK, curses.COLOR_YELLOW) # Selected negative
+
+  chap_menu = []
+  for chap in vfile.chapters:
+    position = chap.position
+    pos_as_tc = viddin.formatTimecode(abs(position))
+    chap_menu.append(ChapterItem(position, pos_as_tc, 0, chap.name))
+  update_delta(chap_menu)
+
+  headers = ["Seconds", "Timecode", "Delta", "Chapter Name"]
+  col_widths = [15, 15, 12, 40]
+  show_guess = False
+  show_forced = False
+  do_save = True
+
+  try:
+    selected_idx = 0
+    scroll_offset = 0
+    max_items, _ = stdscr.getmaxyx()
+    max_items -= 5
+
+    while True:
+      stdscr.clear()
+
+      draw_row(stdscr, 0, headers, col_widths)
+      stdscr.addstr(1, 0, "-" * 60)
+      status_line = vfile.path
+      if vlc_controller:
+        vlc_status = vlc_controller.fetch_status()
+        if 'information' in vlc_status:
+          vlc_len = vlc_status['information']['category']['meta']['DURATION']
+          vlc_len = viddin.decodeTimecode(vlc_len)
+          vlc_pos = float(vlc_status['position']) * vlc_len
+          vlc_res = vlc_status['information']['category']['Stream 0']['Video_resolution']
+          vlc_fps = float(vlc_status['information']['category']['Stream 0']['Frame_rate'])
+          vlc_path = vlc_status['information']['category']['meta']['filename']
+          status_line = f"{vfile.path} [{vlc_path}" \
+            f" pos: {viddin.formatTimecode(vlc_pos)} / {viddin.formatTimecode(vlc_len)}" \
+            f" {vlc_res} {vlc_fps:0.3f}fps]"
+
+      show_status(stdscr, status_line)
+
+
+      visible_items = chap_menu[scroll_offset:scroll_offset + max_items]
+      for idx, item in enumerate(visible_items):
+        draw_row(stdscr, idx + 2, item, col_widths,
+                 highlight=(idx + scroll_offset == selected_idx))
+
+      stdscr.refresh()
+      key = stdscr.getch()
+
+      if key in (curses.KEY_UP, 16) and selected_idx > 0:
+        selected_idx -= 1
+        scroll_offset = update_scroll_offset(selected_idx, scroll_offset, max_items,
+                                             len(chap_menu))
+
+      elif key in (curses.KEY_DOWN, 14) and selected_idx < len(chap_menu) - 1:
+        selected_idx += 1
+        scroll_offset = update_scroll_offset(selected_idx, scroll_offset, max_items,
+                                             len(chap_menu))
+
+      elif key in (ord('q'), 27):  # 'q' or ESC
+        # FIXME - verify they want to quit & save
+        break
+
+      elif key == 10:
+        col = COL_NAME
+        col_position = sum(col_widths[:col])
+        edited_value = edit_field(stdscr, selected_idx + 2 - scroll_offset,
+                                  col_position, col_widths[col],
+                                  chap_menu[selected_idx].name)
+        chap_menu[selected_idx].name = edited_value
+
+      elif key in (ord('f'), ord('g')):
+        if key == ord('g'):
+          show_guess = not show_guess
+        else:
+          show_forced = not show_forced
+
+        sel_pos = chap_menu[selected_idx].position
+
+        # Remove anything that doesn't have a chapter name
+        if not show_guess:
+          new_menu = []
+          for chap in chap_menu:
+            if chap.name:
+              new_menu.append(chap)
+          chap_menu = new_menu
+          update_delta(chap_menu)
+
+        else:
+          show_status(stdscr, "Loading guesses...")
+          guesses = vfile.loadSplits()
+
+          for chap in chap_menu:
+            if not chap.name:
+              continue
+            nearest = findNearest(chap.position, guesses)
+            if nearest is None:
+              guesses.append(chap.position)
+            elif nearest < 0:
+              for idx in range(len(guesses)):
+                if guesses[idx] == nearest:
+                  guesses[idx] = abs(nearest)
+          guesses = sorted(guesses, key=abs)
+
+          chapters = [viddin.Chapter(x.position, x.name) for x in chap_menu if x.name]
+          chap_menu = []
+          for position in guesses:
+            if position >= 0 or show_forced:
+              pos_as_tc = viddin.formatTimecode(abs(position))
+              chap = findNearest(position, chapters)
+              chap_menu.append(ChapterItem(position, pos_as_tc, 0, chap.name if chap else ""))
+          update_delta(chap_menu)
+
+        for idx, chap in enumerate(chap_menu):
+          if abs(chap.position) > abs(sel_pos):
+            break
+        selected_idx = idx - 1
+
+      elif key == ord('a'):
+        timecode = prompt_status(stdscr, "Add timecode: ")
+        if timecode:
+          position = viddin.decodeTimecode(timecode)
+          chap_menu.append([position, viddin.formatTimecode(position), ""])
+          chap_menu.sort(key=lambda row: abs(row.position))
+
+      elif vlc_controller:
+        if key == ord('j'):
+          percent = chap_menu[selected_idx].position * 100 / vfile.length
+          vlc_controller.seek(f"{percent}%")
+
+        elif key in (ord('e'), ord('b')):
+          direction = 1
+          if key == ord('b'):
+            direction = -1
+          vlc_status = vlc_controller.fetch_status()
+          if 'information' in vlc_status:
+            vlc_len = vlc_status['information']['category']['meta']['DURATION']
+            vlc_len = viddin.decodeTimecode(vlc_len)
+            vlc_pos = float(vlc_status['position']) * vlc_len
+            vlc_fps = float(vlc_status['information']['category']['Stream 0']['Frame_rate'])
+            frame_rate = direction / vlc_fps
+            percent = (vlc_pos + frame_rate) * 100 / vlc_len
+            vlc_controller.seek(f"{percent}%")
+
+        elif key == ord(' '):
+          vlc_controller.pause()
+
+        elif key == curses.KEY_LEFT:
+          vlc_controller.seek("-2")
+        elif key == curses.KEY_RIGHT:
+          vlc_controller.seek("+2")
+
+  finally:
+    # Always reset terminal to normal state
+    curses.nocbreak()
+    stdscr.keypad(False)
+    curses.echo()
+    curses.endwin()
+
+  new_chapters = {viddin.Chapter(round(abs(x.position), 3), x.name)
+                  for x in chap_menu if x.name}
+  old_chapters = set(vfile.chapters)
+  if new_chapters != old_chapters:
+    vfile.deleteChapters(old_chapters - new_chapters)
+    vfile.addChapters(new_chapters - old_chapters)
+    vfile.writeChapters()
+
+  return
+
+def main():
+  args = build_argparser().parse_args()
+
+  # FIXME - do what edit-chapters does
+  # FIXME - do what guess-chapters does
+
+  if args.interactive:
+    interactive(args.file, args.vlc, args.vlcpass)
+
+  return
+
+if __name__ == '__main__':
+  exit(main() or 0)

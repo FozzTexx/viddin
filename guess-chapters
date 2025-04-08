@@ -144,8 +144,13 @@ def main():
   if expected is None:
     chapters = vfile.chapters
     for chap in chapters:
-      if findNearest(chap.position, splits) is None:
+      nearest = findNearest(chap.position, splits)
+      if nearest is None:
         splits.append(chap.position)
+      elif nearest < 0:
+        for idx in range(len(splits)):
+          if splits[idx] == nearest:
+            splits[idx] = abs(nearest)
     splits = sorted(splits, key=abs)
     
     for row in splits:

@@ -15,7 +15,7 @@
 
 import sys
 import cv2
-from openvino.runtime import Core
+from openvino import Core
 from pathlib import Path
 import math
 import numpy as np

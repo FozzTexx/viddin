@@ -234,6 +234,7 @@ RUN set -e \
         opencv-python \
         openvino \
         python_magic \
+        python_vlc_http \
         pytimeparse \
         requests-cache==0.5.2 \
         termcolor \
@@ -262,7 +263,7 @@ COPY --from=ffmpeg /tmp/ffmpeg.deb /tmp/packages/
 COPY --from=makemkv /tmp/makemkv.deb /tmp/packages/
 RUN set -e \
     ; apt-get update \
-    ; apt-get install -y /tmp/packages/*.deb \
+    ; apt-get install -y --no-install-recommends /tmp/packages/*.deb \
     ; rm -rf /var/lib/apt/lists/* /tmp/packages \
     ;
 

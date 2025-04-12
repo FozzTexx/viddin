@@ -155,13 +155,16 @@ def prompt_status(stdscr, message, max_len=None, current_value=""):
 
   return edit_field(stdscr, h - 1, len(message), max_len, current_value)
 
-def update_delta(items):
+def update_delta(items, length):
   for idx in range(len(items) - 1):
     items[idx].delta = abs(items[idx + 1].position) - abs(items[idx].position)
-  items[-1].delta = ""
+  items[-1].delta = length - abs(items[-1].position)
   return
 
 def update_scroll_offset(selected_index, scroll_offset, max_items, list_length):
+  if list_length <= max_items:
+    return 0
+
   middle = max_items // 2
 
   # If selected is above the current scroll window, scroll up
@@ -173,6 +176,15 @@ def update_scroll_offset(selected_index, scroll_offset, max_items, list_length):
     scroll_offset = min(list_length - max_items, selected_index - (max_items - middle - 1))
 
   return scroll_offset
+
+def print_progress(stdscr, generator, task_name):
+  percent = ""
+  for msg in generator:
+    if msg['status'] == "progress":
+      print("\b" * len(percent), end="")
+      show_status(stdscr, f"Finding {task_name}... {int(msg['percent'])}%")
+      print(percent, end="", flush=True)
+  return
 
 def interactive(path, vlc_url, vlc_pass):
   vfile = viddin.Media(path)
@@ -201,7 +213,7 @@ def interactive(path, vlc_url, vlc_pass):
     position = chap.position
     pos_as_tc = viddin.formatTimecode(abs(position))
     chap_menu.append(ChapterItem(position, pos_as_tc, 0, chap.name))
-  update_delta(chap_menu)
+  update_delta(chap_menu, vfile.length)
 
   headers = ["Seconds", "Timecode", "Delta", "Chapter Name"]
   col_widths = [15, 15, 12, 40]
@@ -227,8 +239,11 @@ def interactive(path, vlc_url, vlc_pass):
           vlc_len = vlc_status['information']['category']['meta']['DURATION']
           vlc_len = viddin.decodeTimecode(vlc_len)
           vlc_pos = float(vlc_status['position']) * vlc_len
-          vlc_res = vlc_status['information']['category']['Stream 0']['Video_resolution']
-          vlc_fps = float(vlc_status['information']['category']['Stream 0']['Frame_rate'])
+          vlc_res = ""
+          vlc_fps = 1
+          if 'Stream 0' in vlc_status['information']['category']:
+            vlc_res = vlc_status['information']['category']['Stream 0']['Video_resolution']
+            vlc_fps = float(vlc_status['information']['category']['Stream 0']['Frame_rate'])
           vlc_path = vlc_status['information']['category']['meta']['filename']
           status_line = f"{vfile.path} [{vlc_path}" \
             f" pos: {viddin.formatTimecode(vlc_pos)} / {viddin.formatTimecode(vlc_len)}" \
@@ -282,10 +297,11 @@ def interactive(path, vlc_url, vlc_pass):
             if chap.name:
               new_menu.append(chap)
           chap_menu = new_menu
-          update_delta(chap_menu)
+          update_delta(chap_menu, vfile.length)
 
         else:
-          show_status(stdscr, "Loading guesses...")
+          print_progress(stdscr, viddin.findBlack(vfile.path), "black")
+          print_progress(stdscr, viddin.findSilence(vfile.path), "silence")
           guesses = vfile.loadSplits()
 
           for chap in chap_menu:
@@ -306,8 +322,9 @@ def interactive(path, vlc_url, vlc_pass):
             if position >= 0 or show_forced:
               pos_as_tc = viddin.formatTimecode(abs(position))
               chap = findNearest(position, chapters)
-              chap_menu.append(ChapterItem(position, pos_as_tc, 0, chap.name if chap else ""))
-          update_delta(chap_menu)
+              chap_menu.append(ChapterItem(chap.position if chap else position,
+                                           pos_as_tc, 0, chap.name if chap else ""))
+          update_delta(chap_menu, vfile.length)
 
         for idx, chap in enumerate(chap_menu):
           if abs(chap.position) > abs(sel_pos):
@@ -323,7 +340,7 @@ def interactive(path, vlc_url, vlc_pass):
 
       elif vlc_controller:
         if key == ord('j'):
-          percent = chap_menu[selected_idx].position * 100 / vfile.length
+          percent = abs(chap_menu[selected_idx].position) * 100 / vfile.length
           vlc_controller.seek(f"{percent}%")
 
         elif key in (ord('e'), ord('b')):
@@ -335,10 +352,11 @@ def interactive(path, vlc_url, vlc_pass):
             vlc_len = vlc_status['information']['category']['meta']['DURATION']
             vlc_len = viddin.decodeTimecode(vlc_len)
             vlc_pos = float(vlc_status['position']) * vlc_len
-            vlc_fps = float(vlc_status['information']['category']['Stream 0']['Frame_rate'])
-            frame_rate = direction / vlc_fps
-            percent = (vlc_pos + frame_rate) * 100 / vlc_len
-            vlc_controller.seek(f"{percent}%")
+            if 'Stream 0' in vlc_status['information']['category']:
+              vlc_fps = float(vlc_status['information']['category']['Stream 0']['Frame_rate'])
+              frame_rate = direction / vlc_fps
+              percent = (vlc_pos + frame_rate) * 100 / vlc_len
+              vlc_controller.seek(f"{percent}%")
 
         elif key == ord(' '):
           vlc_controller.pause()

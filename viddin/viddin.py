@@ -22,31 +22,75 @@ import datetime
 import re
 import magic
 
+def printFindProgress(generator, task_name):
+  percent = ""
+  for msg in generator:
+    if msg['status'] == "starting":
+      print(f"Finding {task_name}... ", end="", flush=True)
+    elif msg['status'] == "progress":
+      print("\b" * len(percent), end="")
+      percent = f"{int(msg['percent'])}%"
+      print(percent, end="", flush=True)
+    elif msg['status'] == "done":
+      print("\b" * len(percent) + "100%")
+  return
+
+def findWithProgress(cmd):
+  total_duration = None
+  time_pattern = re.compile(r'time=(\d+:\d+:\d+\.\d+)')
+  duration_pattern = re.compile(r'Duration: (\d+:\d+:\d+\.\d+)')
+
+  proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+  yield {"status": "starting"}
+
+  try:
+    for line in proc.stdout:
+      line = line.strip()
+
+      # Grab total duration if not already found
+      if total_duration is None:
+        match = duration_pattern.search(line)
+        if match:
+          total_duration = decodeTimecode(match.group(1))
+
+      # Look for current time position
+      match = time_pattern.search(line)
+      if match and total_duration:
+        current = decodeTimecode(match.group(1))
+        yield {"status": "progress", "percent": current / total_duration * 100}
+
+  except GeneratorExit:
+    proc.terminate()
+    yield {"status": "aborted"}
+
+  finally:
+    proc.wait()
+    yield {"status": "done"}
+
+  return
+
 def findBlack(path):
   video, ext = os.path.splitext(path)
   video += ".blk"
   if not os.path.exists(video):
-    print("Finding black")
     cmd = ["find-black", "--duration", "0.05", path, video]
-    subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    yield from findWithProgress(cmd)
   return
 
 def findSilence(path):
   video, ext = os.path.splitext(path)
   video += ".sil"
   if not os.path.exists(video):
-    print("Finding silence")
     cmd = ["find-silence", "--threshold", "40", "--duration", "0.01", path, video]
-    subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    yield from findWithProgress(cmd)
   return
 
 def findCuts(filename):
   video, ext = os.path.splitext(filename)
   video += ".cut"
   if not os.path.exists(video):
-    print("Finding cuts")
     cmd = ["find-cuts", "--threshold", "0.40", filename, video]
-    subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    yield from findWithProgress(cmd)
   return
 
 def loadSplits(filename):
@@ -143,7 +187,7 @@ def runCommand(cmd, debugFlag=False, stderr=None):
     master, slave = pty.openpty()
     if stderr is None:
       stderr = slave
-    
+
     with subprocess.Popen(cmd, shell=do_shell, stdin=slave, stdout=slave, stderr=stderr,
                          close_fds=True) as p:
       m = os.fdopen(master, "rb")

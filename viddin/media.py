@@ -508,12 +508,12 @@ class DVDTitle(Media):
 class VideoFile(Media):
   def loadSplits(self, withSilence=True):
     base, _ = os.path.splitext(self.path)
-    viddin.findBlack(self.path)
+    viddin.printFindProgress(viddin.findBlack(self.path), "black")
     black = viddin.loadSplits(base + ".blk")
     if not withSilence:
       splits = black
     else:
-      viddin.findSilence(self.path)
+      viddin.printFindProgress(viddin.findSilence(self.path), "silence")
       silence = viddin.loadSplits(base + ".sil")
       splits = []
       for row in black:

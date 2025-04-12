@@ -73,10 +73,10 @@ def main():
   vfile = viddin.Media(args.file, None)
   doEdit = False
 
-  viddin.findBlack(args.file)
-  viddin.findSilence(args.file)
+  viddin.printFindProgress(viddin.findBlack(args.file), "black")
+  viddin.printFindProgress(viddin.findSilence(args.file), "silence")
   if args.cuts:
-    viddin.findCuts(args.file)
+    viddin.printFindProgress(viddin.findCuts(args.file), "cuts")
 
   expected = None
   if len(args.offsets):

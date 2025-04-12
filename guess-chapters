@@ -53,10 +53,12 @@ def closestExpected(best):
   return None
 
 def findNearest(position, chapters):
+  position = abs(position)
   for chap in chapters:
     pos = chap
     if isinstance(chap, viddin.Chapter):
       pos = chap.position
+    pos = abs(pos)
     if pos > position + 2:
       break
     diff = abs(pos - position)
@@ -71,10 +73,10 @@ def main():
   vfile = viddin.Media(args.file, None)
   doEdit = False
 
-  viddin.findBlack(args.file)
-  viddin.findSilence(args.file)
+  viddin.printFindProgress(viddin.findBlack(args.file), "black")
+  viddin.printFindProgress(viddin.findSilence(args.file), "silence")
   if args.cuts:
-    viddin.findCuts(args.file)
+    viddin.printFindProgress(viddin.findCuts(args.file), "cuts")
 
   expected = None
   if len(args.offsets):
@@ -142,16 +144,21 @@ def main():
   if expected is None:
     chapters = vfile.chapters
     for chap in chapters:
-      if findNearest(chap.position, splits) is None:
+      nearest = findNearest(chap.position, splits)
+      if nearest is None:
         splits.append(chap.position)
+      elif nearest < 0:
+        for idx in range(len(splits)):
+          if splits[idx] == nearest:
+            splits[idx] = abs(nearest)
     splits = sorted(splits, key=abs)
     
     for row in splits:
       if row >= 0 or args.force:
-        print("%0.3f\t%s" % (row, viddin.formatTimecode(abs(row))), end="")
+        print("%9.3f\t%9s" % (row, viddin.formatTimecode(abs(row))), end="")
         chap = findNearest(row, chapters)
         if chap is not None:
-          print("\t%s\t%s" % (viddin.formatTimecode(chap.position), chap.name), end="")
+          print("\t%9s\t%s" % (viddin.formatTimecode(chap.position), chap.name), end="")
         print()
         
   return

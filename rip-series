@@ -3,11 +3,12 @@ import argparse
 import os
 import subprocess
 import stat
+import re
 import viddin
 
 def build_argparser():
   parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument("first", help="number of first episode")
+  parser.add_argument("first", type=validate_episode_id, help="number of first episode")
   parser.add_argument("sources", nargs="+", help="title numbers or chapters to rip")
   parser.add_argument("--dvd", default="/dev/dvd", help="dvd device")
   parser.add_argument("--extension", default="mkv",
@@ -20,6 +21,11 @@ def build_argparser():
   parser.add_argument("--debug", action="store_true", help="print debug info")
 
   return parser
+
+def validate_episode_id(val):
+  if not re.match(r"^[0-9]+x[0-9]+$", val):
+    raise argparse.ArgumentTypeError(f"Invalid episode ID: {val}")
+  return val
 
 def main():
   args, unused = build_argparser().parse_known_args()
@@ -67,6 +73,9 @@ def main():
 
     elif args.title:
       sources[idx] = ["--title", args.title, "--chapters", f"{sources[idx]}", args.dvd]
+
+    elif os.path.isfile(sources[idx]):
+      continue
 
     elif is_dvd:
       sources[idx] = ["--title", f"{sources[idx]}", args.dvd]

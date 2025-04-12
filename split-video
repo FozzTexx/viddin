@@ -90,7 +90,7 @@ def splitVideo(segrange, filename, output=None, trim=None, quality=None,
     cmd = ["rip-video", "--start-at", str(start), "--stop-at", str(end), video.path, output]
     if transcodeOptions:
       cmd.extend(transcodeOptions.split(" "))
-    print(cmd)
+    print(viddin.listToShell(cmd))
     viddin.runCommand(cmd)
   else:
     if iframeFlag:
@@ -162,12 +162,12 @@ def main():
       sys.exit(1)
 
   if args.chapters:
-    vfile = viddin.VideoSpec(args.filename)
+    vfile = viddin.Media(args.filename)
     vfile.normalizeChapters()
     chapters = vfile.chapters
     segments = []
     for beg, end in zip(chapters, chapters[1:]):
-      segments.append([beg.position, end.position])
+      segments.append([beg.position, end.position, beg.name])
 
   if len(segments) < 1:
     print("Nothing to do")
@@ -212,7 +212,10 @@ def main():
     outtype = ".mkv"
 
   for segrange in segments:
-    output = ovid + append + outtype
+    output = ovid + append
+    if len(segrange) > 2:
+      output += f"_{segrange[2]}"
+    output += outtype
     if len(append):
       output = output % (segments.index(segrange) + 1)
     splitVideo(segrange, args.filename, output, args.trimend, quality=args.quality,

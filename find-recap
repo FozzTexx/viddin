@@ -5,9 +5,7 @@ import re
 import subprocess
 from tempfile import NamedTemporaryFile
 import speech_recognition as sr
-
-sys.path.append("/usr/local/bin/")
-from viddin import viddin
+import viddin
 
 PHRASE = "you might need to know"
 
@@ -29,9 +27,9 @@ def main():
   r = sr.Recognizer()
 
   path = args.file
-  vfile = viddin.VideoSpec(path, None)
+  vfile = viddin.Media(path, None)
   chapters = list(vfile.chapters)
-  chapters.append(viddin.Chapter(viddin.getLength(vfile.path), "end"))
+  chapters.append(viddin.Chapter(vfile.length, "end"))
   print("Chapter", args.chapter)
 
   usechap = args.chapter
@@ -45,8 +43,15 @@ def main():
     exit(1)
   print("Usechap", usechap)
 
-  start = chapters[usechap][0]
-  end = chapters[usechap+1][0]
+  if isinstance(chapters[usechap], viddin.chapter.Chapter):
+    start = chapters[usechap].position
+  else:
+    start = chapters[usechap][0]
+  if isinstance(chapters[usechap+1], viddin.chapter.Chapter):
+    end = chapters[usechap+1].position
+  else:
+    end = chapters[usechap+1][0]
+
   if args.offset is not None:
     offset = args.offset
     if offset < 0:

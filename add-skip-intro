@@ -80,8 +80,8 @@ def main():
           intro.append(viddin.Chapter(abs(chap.position), "Skip Intro"))
 
       if len(intro) != 2:
-        viddin.findBlack(path)
-        viddin.findSilence(path)
+        viddin.printFindProgress(viddin.findBlack(path), "black")
+        viddin.printFindProgress(viddin.findSilence(path), "silence")
         black = viddin.loadSplits(video + ".blk")
         silence = viddin.loadSplits(video + ".sil")
 

@@ -289,10 +289,11 @@ class Media:
     sub_track = Media(source)
     tinfo = sub_track.getTitleInfo()
     subs = tinfo.subtitles
-    for trk in subs:
-      if trk['type'] == "subtitles":
-        trackNum = trk['id']
-        break
+    # Why was I ignoring the passed in trackNum?
+    # for trk in subs:
+    #   if trk['type'] == "subtitles":
+    #     trackNum = trk['id']
+    #     break
     cmd = ["mkvextract", "tracks", source,
            "%i:%s" % (trackNum, trk_path)]
     if debugFlag:
@@ -456,7 +457,7 @@ class DVDTitle(Media):
     subs = tinfo.subtitles
     trackNum = subs[0]['rv_track_id']
 
-    return self.writeTrack(source, trackNum, dest)
+    return self.writeTrack(source, trackNum, dest, debugFlag=debugFlag)
 
   def extractDVDSubtitle(self, dest, trackNum, start, end, lang, debugFlag=False):
     path, ext = os.path.splitext(dest)
@@ -714,7 +715,7 @@ class MKVContainer(VideoFile):
         print(viddin.listToShell(cmd))
       viddin.runCommand(cmd)
 
-    return self.writeTrack(source, trackNum, dest)
+    return self.writeTrack(source, trackNum, dest, debugFlag=debugFlag)
 
   @property
   def tracks(self):
